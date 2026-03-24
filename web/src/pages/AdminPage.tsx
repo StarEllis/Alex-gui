@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus } from '@/types'
+import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, SystemSettings } from '@/types'
 import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData } from '@/hooks/useWebSocket'
 import {
   Server,
@@ -27,6 +27,10 @@ import {
   Activity,
   Search,
   ChevronRight,
+  Settings,
+  Link,
+  FolderCog,
+  Save,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -59,6 +63,17 @@ export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
   const [transcodeJobs, setTranscodeJobs] = useState<TranscodeJob[]>([])
   const [scanning, setScanning] = useState<Set<string>>(new Set())
+
+  // 系统全局设置
+  const [sysSettings, setSysSettings] = useState<SystemSettings>({
+    enable_gpu_transcode: true,
+    gpu_fallback_cpu: true,
+    metadata_store_path: '',
+    play_cache_path: '',
+    enable_direct_link: false,
+  })
+  const [sysSettingsSaving, setSysSettingsSaving] = useState(false)
+  const [sysSettingsMsg, setSysSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // TMDb 配置状态
   const [tmdbConfig, setTmdbConfig] = useState<TMDbConfigStatus | null>(null)
@@ -197,18 +212,20 @@ export default function AdminPage() {
   useEffect(() => {
     const loadAll = async () => {
       try {
-        const [sysRes, libRes, userRes, transRes, tmdbRes] = await Promise.all([
+        const [sysRes, libRes, userRes, transRes, tmdbRes, settingsRes] = await Promise.all([
           adminApi.systemInfo(),
           libraryApi.list(),
           adminApi.listUsers(),
           adminApi.transcodeStatus(),
           adminApi.getTMDbConfig(),
+          adminApi.getSystemSettings(),
         ])
         setSystemInfo(sysRes.data.data)
         setLibraries(libRes.data.data || [])
         setUsers(userRes.data.data || [])
         setTranscodeJobs(transRes.data.data || [])
         setTmdbConfig(tmdbRes.data.data)
+        if (settingsRes.data.data) setSysSettings(settingsRes.data.data)
       } catch {
         // 静默处理
       }
@@ -280,6 +297,7 @@ export default function AdminPage() {
   const quickNavItems = useMemo(() => {
     const items = [
       { label: '系统状态', tab: 'dashboard' as TabId, icon: Server },
+      { label: '系统设置', tab: 'dashboard' as TabId, icon: Settings },
       { label: '实时进度', tab: 'dashboard' as TabId, icon: Loader2 },
       { label: '活动日志', tab: 'dashboard' as TabId, icon: Activity },
       { label: '媒体库管理', tab: 'library' as TabId, icon: FolderOpen },
@@ -515,6 +533,168 @@ export default function AdminPage() {
                 </div>
               </section>
             )}
+
+            {/* 系统全局设置面板 */}
+            <section>
+              <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+                <Settings size={20} className="text-neon/60" />
+                系统设置
+              </h2>
+              <div className="glass-panel rounded-xl p-5 space-y-6">
+                {/* 提示信息 */}
+                <div className="rounded-lg p-3 text-xs" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)', color: 'var(--text-tertiary)' }}>
+                  以下设置为系统全局配置，对所有媒体库统一生效。媒体库的独立设置请在「媒体库管理」标签页中配置。
+                </div>
+
+                {/* GPU 加速转码 */}
+                <div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Zap size={16} style={{ color: 'var(--neon-blue)' }} />
+                        <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>GPU 加速转码</h4>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                        启用 GPU 硬件加速转码，显著提升转码速度。支持 NVIDIA NVENC、Intel QSV、VAAPI 等。
+                      </p>
+                    </div>
+                    <button
+                      type="button" role="switch" aria-checked={sysSettings.enable_gpu_transcode}
+                      onClick={() => setSysSettings((s) => ({ ...s, enable_gpu_transcode: !s.enable_gpu_transcode }))}
+                      className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-300 focus:outline-none"
+                      style={{
+                        background: sysSettings.enable_gpu_transcode ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))' : 'var(--border-default)',
+                        boxShadow: sysSettings.enable_gpu_transcode ? '0 0 12px rgba(0,240,255,0.25)' : 'none',
+                      }}
+                    >
+                      <span className="pointer-events-none inline-block h-5 w-5 rounded-full shadow-lg transition-transform duration-300" style={{ transform: sysSettings.enable_gpu_transcode ? 'translateX(20px) translateY(2px)' : 'translateX(2px) translateY(2px)', background: sysSettings.enable_gpu_transcode ? '#fff' : 'var(--text-muted)' }} />
+                    </button>
+                  </div>
+                  {sysSettings.enable_gpu_transcode && (
+                    <div className="mt-3 ml-6 flex items-start justify-between gap-4 rounded-lg p-3" style={{ background: 'var(--nav-hover-bg)' }}>
+                      <div className="flex-1">
+                        <h4 className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>GPU 不支持时自动回退 CPU</h4>
+                        <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>当 GPU 不支持特定格式解码时，系统自动切换至 CPU 进行转码，确保兼容性。</p>
+                      </div>
+                      <button
+                        type="button" role="switch" aria-checked={sysSettings.gpu_fallback_cpu}
+                        onClick={() => setSysSettings((s) => ({ ...s, gpu_fallback_cpu: !s.gpu_fallback_cpu }))}
+                        className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-300 focus:outline-none"
+                        style={{
+                          background: sysSettings.gpu_fallback_cpu ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))' : 'var(--border-default)',
+                          boxShadow: sysSettings.gpu_fallback_cpu ? '0 0 12px rgba(0,240,255,0.25)' : 'none',
+                        }}
+                      >
+                        <span className="pointer-events-none inline-block h-5 w-5 rounded-full shadow-lg transition-transform duration-300" style={{ transform: sysSettings.gpu_fallback_cpu ? 'translateX(20px) translateY(2px)' : 'translateX(2px) translateY(2px)', background: sysSettings.gpu_fallback_cpu ? '#fff' : 'var(--text-muted)' }} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+                {/* 媒体元数据存储位置 */}
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <FolderCog size={16} style={{ color: '#F59E0B' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>媒体元数据存储位置</h4>
+                  </div>
+                  <p className="mt-1 mb-2.5 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                    自定义媒体元数据（海报、NFO、缩略图等）的保存路径。留空则使用系统默认路径。
+                  </p>
+                  <input
+                    type="text"
+                    value={sysSettings.metadata_store_path}
+                    onChange={(e) => setSysSettings((s) => ({ ...s, metadata_store_path: e.target.value }))}
+                    className="input w-full"
+                    placeholder="留空使用默认路径，如: /data/metadata"
+                  />
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+                {/* 播放缓存目录 */}
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <HardDrive size={16} style={{ color: '#10B981' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>播放缓存目录</h4>
+                  </div>
+                  <p className="mt-1 mb-2.5 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                    自定义播放时转码产生的临时文件缓存目录。留空则使用系统默认缓存路径。
+                  </p>
+                  <input
+                    type="text"
+                    value={sysSettings.play_cache_path}
+                    onChange={(e) => setSysSettings((s) => ({ ...s, play_cache_path: e.target.value }))}
+                    className="input w-full"
+                    placeholder="留空使用默认路径，如: /cache/transcode"
+                  />
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+                {/* 网盘优先直连播放 */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Link size={16} style={{ color: '#F59E0B' }} />
+                      <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>网盘优先直连播放</h4>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                      播放网盘文件时优先使用直链进行在线播放，显著提升播放速度和用户体验。需要网盘支持直链访问。
+                    </p>
+                  </div>
+                  <button
+                    type="button" role="switch" aria-checked={sysSettings.enable_direct_link}
+                    onClick={() => setSysSettings((s) => ({ ...s, enable_direct_link: !s.enable_direct_link }))}
+                    className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-300 focus:outline-none"
+                    style={{
+                      background: sysSettings.enable_direct_link ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))' : 'var(--border-default)',
+                      boxShadow: sysSettings.enable_direct_link ? '0 0 12px rgba(0,240,255,0.25)' : 'none',
+                    }}
+                  >
+                    <span className="pointer-events-none inline-block h-5 w-5 rounded-full shadow-lg transition-transform duration-300" style={{ transform: sysSettings.enable_direct_link ? 'translateX(20px) translateY(2px)' : 'translateX(2px) translateY(2px)', background: sysSettings.enable_direct_link ? '#fff' : 'var(--text-muted)' }} />
+                  </button>
+                </div>
+
+                {/* 保存按钮 + 提示 */}
+                <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: '1rem' }}>
+                  {sysSettingsMsg && (
+                    <div className={clsx(
+                      'mb-3 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm',
+                      sysSettingsMsg.type === 'success' && 'bg-green-500/10 text-green-400',
+                      sysSettingsMsg.type === 'error' && 'bg-red-500/10 text-red-400'
+                    )}>
+                      {sysSettingsMsg.type === 'success' ? <Check size={16} /> : <X size={16} />}
+                      {sysSettingsMsg.text}
+                    </div>
+                  )}
+                  <button
+                    onClick={async () => {
+                      setSysSettingsSaving(true)
+                      setSysSettingsMsg(null)
+                      try {
+                        await adminApi.updateSystemSettings(sysSettings)
+                        setSysSettingsMsg({ type: 'success', text: '系统设置已保存' })
+                        setTimeout(() => setSysSettingsMsg(null), 4000)
+                      } catch {
+                        setSysSettingsMsg({ type: 'error', text: '保存失败，请稍后重试' })
+                      } finally {
+                        setSysSettingsSaving(false)
+                      }
+                    }}
+                    disabled={sysSettingsSaving}
+                    className="btn-primary gap-1.5 px-5 py-2.5 text-sm"
+                  >
+                    {sysSettingsSaving ? (
+                      <><Loader2 size={14} className="animate-spin" />保存中...</>
+                    ) : (
+                      <><Save size={14} />保存设置</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </section>
 
             {/* 活动日志 */}
             <section>

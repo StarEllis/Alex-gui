@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/nowen-video/nowen-video/internal/config"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
@@ -25,7 +26,7 @@ type Handlers struct {
 	Comment   *CommentHandler
 }
 
-func NewHandlers(services *service.Services, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
+func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
 	return &Handlers{
 		Auth:    &AuthHandler{authService: services.Auth, logger: logger},
 		Library: &LibraryHandler{libService: services.Library, logger: logger},
@@ -41,6 +42,7 @@ func NewHandlers(services *service.Services, cfg *config.Config, logger *zap.Sug
 			permissionService: services.Permission,
 			libraryService:    services.Library,
 			metadataService:   services.Metadata,
+			settingRepo:       repos.SystemSetting,
 			cfg:               cfg,
 			logger:            logger,
 		},

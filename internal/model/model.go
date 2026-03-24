@@ -33,17 +33,8 @@ type Library struct {
 	MetadataLang      string `json:"metadata_lang" gorm:"type:text;default:zh-CN"` // 媒体元数据下载语言
 	AllowAdultContent bool   `json:"allow_adult_content" gorm:"default:false"`     // 允许成人内容
 	AutoDownloadSub   bool   `json:"auto_download_sub" gorm:"default:false"`       // 自动下载字幕
-	// GPU加速转码设置
-	EnableGPUTranscode bool `json:"enable_gpu_transcode" gorm:"default:true"` // 启用GPU加速转码
-	GPUFallbackCPU     bool `json:"gpu_fallback_cpu" gorm:"default:true"`     // GPU不支持时自动回退CPU
-	// 元数据存储位置
-	MetadataStorePath string `json:"metadata_store_path" gorm:"type:text"` // 自定义元数据存储路径，空则使用默认
-	// 播放缓存设置
-	PlayCachePath string `json:"play_cache_path" gorm:"type:text"` // 播放临时文件缓存目录，空则使用默认
-	// 实时文件监控
+	// 实时文件监控（媒体库级别设置）
 	EnableFileWatch bool `json:"enable_file_watch" gorm:"default:false"` // 启用实时文件监控
-	// 网盘直连播放
-	EnableDirectLink bool `json:"enable_direct_link" gorm:"default:false"` // 网盘优先直连播放
 	// 时间戳
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -359,11 +350,19 @@ func (up *UserPermission) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// SystemSetting 系统全局设置（KV 键值对存储）
+type SystemSetting struct {
+	Key       string    `json:"key" gorm:"primaryKey;type:text"`
+	Value     string    `json:"value" gorm:"type:text"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
 		&Library{},
+		&SystemSetting{},
 		&Series{},
 		&Media{},
 		&WatchHistory{},

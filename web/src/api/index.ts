@@ -41,6 +41,7 @@ import type {
   ContentRating,
   AccessLog,
   TMDbSearchResult,
+  SystemSettings,
 } from '@/types'
 
 // ==================== 认证 ====================
@@ -289,6 +290,13 @@ export const adminApi = {
 
   matchMetadata: (mediaId: string, tmdbId: number) =>
     api.post(`/admin/media/${mediaId}/match`, { tmdb_id: tmdbId }),
+
+  // 系统全局设置
+  getSystemSettings: () =>
+    api.get<{ data: SystemSettings }>('/admin/settings/system'),
+
+  updateSystemSettings: (data: Partial<SystemSettings>) =>
+    api.put<{ data: SystemSettings }>('/admin/settings/system', data),
 }
 
 // ==================== 智能推荐 ====================

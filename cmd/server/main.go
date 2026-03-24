@@ -47,7 +47,7 @@ func main() {
 	// 初始化各层
 	repos := repository.NewRepositories(db)
 	services := service.NewServices(repos, cfg, sugar)
-	handlers := handler.NewHandlers(services, cfg, sugar)
+	handlers := handler.NewHandlers(services, repos, cfg, sugar)
 
 	// 确保首次运行时创建管理员账号
 	if err := services.User.EnsureAdminExists(); err != nil {
@@ -201,6 +201,10 @@ func main() {
 		admin.GET("/settings/tmdb", handlers.Admin.GetTMDbConfig)
 		admin.PUT("/settings/tmdb", handlers.Admin.UpdateTMDbConfig)
 		admin.DELETE("/settings/tmdb", handlers.Admin.ClearTMDbConfig)
+
+		// 系统全局设置
+		admin.GET("/settings/system", handlers.Admin.GetSystemSettings)
+		admin.PUT("/settings/system", handlers.Admin.UpdateSystemSettings)
 
 		// 系统监控
 		admin.GET("/metrics", handlers.Admin.GetMetrics)

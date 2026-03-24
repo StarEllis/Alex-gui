@@ -12,11 +12,7 @@ import {
   AlertCircle,
   Loader2,
   Globe,
-  Zap,
-  FolderCog,
-  HardDrive,
   Eye,
-  Link,
 } from 'lucide-react'
 
 // 内容类型配置
@@ -71,7 +67,7 @@ const METADATA_LANG_OPTIONS = [
   { value: 'es', label: 'Español' },
 ]
 
-// 默认高级设置
+// 默认高级设置（媒体库级别）
 const DEFAULT_ADVANCED: LibraryAdvancedSettings = {
   prefer_local_nfo: true,
   enable_file_filter: true,
@@ -79,13 +75,7 @@ const DEFAULT_ADVANCED: LibraryAdvancedSettings = {
   metadata_lang: 'zh-CN',
   allow_adult_content: false,
   auto_download_sub: false,
-  // 新增6项功能
-  enable_gpu_transcode: true,
-  gpu_fallback_cpu: true,
-  metadata_store_path: '',
-  play_cache_path: '',
   enable_file_watch: false,
-  enable_direct_link: false,
 }
 
 interface CreateLibraryModalProps {
@@ -607,126 +597,10 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                     />
                   </div>
 
-                  {/* ===== 新增 6 项功能设置 ===== */}
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '2px solid var(--border-default)' }} />
-
-                  {/* ———— 6. GPU 加速转码 ———— */}
-                  <div>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Zap size={16} style={{ color: 'var(--neon-blue)' }} />
-                          <h4
-                            className="text-sm font-semibold"
-                            style={{ color: 'var(--text-primary)' }}
-                          >
-                            GPU 加速转码
-                          </h4>
-                        </div>
-                        <p
-                          className="mt-1 text-xs leading-relaxed"
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          启用 GPU 硬件加速转码，显著提升转码速度。支持 NVIDIA NVENC、Intel QSV、VAAPI 等。
-                        </p>
-                      </div>
-                      <ToggleSwitch
-                        checked={advanced.enable_gpu_transcode}
-                        onChange={(v) => updateAdvanced('enable_gpu_transcode', v)}
-                      />
-                    </div>
-                    {/* GPU 回退 CPU 子选项 */}
-                    {advanced.enable_gpu_transcode && (
-                      <div
-                        className="mt-3 ml-6 flex items-start justify-between gap-4 rounded-lg p-3"
-                        style={{ background: 'var(--nav-hover-bg)' }}
-                      >
-                        <div className="flex-1">
-                          <h4
-                            className="text-xs font-semibold"
-                            style={{ color: 'var(--text-secondary)' }}
-                          >
-                            GPU 不支持时自动回退 CPU
-                          </h4>
-                          <p
-                            className="mt-0.5 text-[11px] leading-relaxed"
-                            style={{ color: 'var(--text-muted)' }}
-                          >
-                            当 GPU 不支持特定格式解码时，系统自动切换至 CPU 进行转码，确保兼容性。
-                          </p>
-                        </div>
-                        <ToggleSwitch
-                          checked={advanced.gpu_fallback_cpu}
-                          onChange={(v) => updateAdvanced('gpu_fallback_cpu', v)}
-                        />
-                      </div>
-                    )}
-                  </div>
-
                   {/* 分割线 */}
                   <div style={{ borderTop: '1px solid var(--border-default)' }} />
 
-                  {/* ———— 7. 媒体元数据存储位置 ———— */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <FolderCog size={16} style={{ color: '#F59E0B' }} />
-                      <h4
-                        className="text-sm font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        媒体元数据存储位置
-                      </h4>
-                    </div>
-                    <p
-                      className="mt-1 mb-2.5 text-xs leading-relaxed"
-                      style={{ color: 'var(--text-tertiary)' }}
-                    >
-                      自定义媒体元数据（海报、NFO、缩略图等）的保存路径。留空则使用系统默认路径。
-                    </p>
-                    <input
-                      type="text"
-                      value={advanced.metadata_store_path}
-                      onChange={(e) => updateAdvanced('metadata_store_path', e.target.value)}
-                      className="input w-full"
-                      placeholder="留空使用默认路径，如: /data/metadata"
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 8. 播放缓存设置 ———— */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <HardDrive size={16} style={{ color: '#10B981' }} />
-                      <h4
-                        className="text-sm font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        播放缓存目录
-                      </h4>
-                    </div>
-                    <p
-                      className="mt-1 mb-2.5 text-xs leading-relaxed"
-                      style={{ color: 'var(--text-tertiary)' }}
-                    >
-                      自定义播放时转码产生的临时文件缓存目录。留空则使用系统默认缓存路径。
-                    </p>
-                    <input
-                      type="text"
-                      value={advanced.play_cache_path}
-                      onChange={(e) => updateAdvanced('play_cache_path', e.target.value)}
-                      className="input w-full"
-                      placeholder="留空使用默认路径，如: /cache/transcode"
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 9. 实时文件监控 ———— */}
+                  {/* ———— 6. 实时文件监控 ———— */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -748,34 +622,6 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                     <ToggleSwitch
                       checked={advanced.enable_file_watch}
                       onChange={(v) => updateAdvanced('enable_file_watch', v)}
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 10. 网盘优先直连播放 ———— */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Link size={16} style={{ color: '#F59E0B' }} />
-                        <h4
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          网盘优先直连播放
-                        </h4>
-                      </div>
-                      <p
-                        className="mt-1 text-xs leading-relaxed"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        播放网盘文件时优先使用直链进行在线播放，显著提升播放速度和用户体验。需要网盘支持直链访问。
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      checked={advanced.enable_direct_link}
-                      onChange={(v) => updateAdvanced('enable_direct_link', v)}
                     />
                   </div>
                 </div>

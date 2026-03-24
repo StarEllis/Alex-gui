@@ -33,23 +33,17 @@ export interface Library {
   last_scan: string | null
   created_at: string
   media_count?: number
-  // 高级设置
+  // 媒体库级高级设置
   prefer_local_nfo: boolean
   enable_file_filter: boolean
   min_file_size: number
   metadata_lang: string
   allow_adult_content: boolean
   auto_download_sub: boolean
-  // 新增6项功能
-  enable_gpu_transcode: boolean
-  gpu_fallback_cpu: boolean
-  metadata_store_path: string
-  play_cache_path: string
   enable_file_watch: boolean
-  enable_direct_link: boolean
 }
 
-/** 创建媒体库 — 高级设置 */
+/** 创建媒体库 — 高级设置（媒体库级别） */
 export interface LibraryAdvancedSettings {
   prefer_local_nfo: boolean
   enable_file_filter: boolean
@@ -57,13 +51,7 @@ export interface LibraryAdvancedSettings {
   metadata_lang: string
   allow_adult_content: boolean
   auto_download_sub: boolean
-  // 新增6项功能
-  enable_gpu_transcode: boolean
-  gpu_fallback_cpu: boolean
-  metadata_store_path: string
-  play_cache_path: string
   enable_file_watch: boolean
-  enable_direct_link: boolean
 }
 
 export interface CreateLibraryRequest {
@@ -77,13 +65,7 @@ export interface CreateLibraryRequest {
   metadata_lang?: string
   allow_adult_content?: boolean
   auto_download_sub?: boolean
-  // 新增6项功能
-  enable_gpu_transcode?: boolean
-  gpu_fallback_cpu?: boolean
-  metadata_store_path?: string
-  play_cache_path?: string
   enable_file_watch?: boolean
-  enable_direct_link?: boolean
 }
 
 // ==================== 媒体 ====================
@@ -458,4 +440,13 @@ export interface TMDbSearchResult {
   first_air_date: string
   vote_average: number
   genre_ids: number[]
+}
+
+// ==================== 系统全局设置 ====================
+export interface SystemSettings {
+  enable_gpu_transcode: boolean
+  gpu_fallback_cpu: boolean
+  metadata_store_path: string
+  play_cache_path: string
+  enable_direct_link: boolean
 }

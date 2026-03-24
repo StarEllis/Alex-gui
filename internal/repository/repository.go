@@ -23,6 +23,7 @@ type Repositories struct {
 	ScheduledTask  *ScheduledTaskRepo
 	ContentRating  *ContentRatingRepo
 	UserPermission *UserPermissionRepo
+	SystemSetting  *SystemSettingRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -41,6 +42,7 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		ScheduledTask:  &ScheduledTaskRepo{db: db},
 		ContentRating:  &ContentRatingRepo{db: db},
 		UserPermission: &UserPermissionRepo{db: db},
+		SystemSetting:  &SystemSettingRepo{db: db},
 	}
 }
 
@@ -802,4 +804,58 @@ func (r *UserPermissionRepo) FindByUserID(userID string) (*model.UserPermission,
 
 func (r *UserPermissionRepo) Delete(userID string) error {
 	return r.db.Where("user_id = ?", userID).Delete(&model.UserPermission{}).Error
+}
+
+// ==================== SystemSettingRepo ====================
+
+type SystemSettingRepo struct {
+	db *gorm.DB
+}
+
+// Get 获取单个设置值
+func (r *SystemSettingRepo) Get(key string) (string, error) {
+	var setting model.SystemSetting
+	err := r.db.Where("`key` = ?", key).First(&setting).Error
+	if err != nil {
+		return "", err
+	}
+	return setting.Value, nil
+}
+
+// Set 设置（Upsert）单个键值对
+func (r *SystemSettingRepo) Set(key, value string) error {
+	var existing model.SystemSetting
+	err := r.db.Where("`key` = ?", key).First(&existing).Error
+	if err == gorm.ErrRecordNotFound {
+		return r.db.Create(&model.SystemSetting{Key: key, Value: value}).Error
+	}
+	if err != nil {
+		return err
+	}
+	existing.Value = value
+	return r.db.Save(&existing).Error
+}
+
+// GetAll 获取所有系统设置
+func (r *SystemSettingRepo) GetAll() (map[string]string, error) {
+	var settings []model.SystemSetting
+	err := r.db.Find(&settings).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	for _, s := range settings {
+		result[s.Key] = s.Value
+	}
+	return result, nil
+}
+
+// SetMulti 批量设置多个键值对
+func (r *SystemSettingRepo) SetMulti(kvs map[string]string) error {
+	for key, value := range kvs {
+		if err := r.Set(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }

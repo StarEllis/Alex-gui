@@ -26,13 +26,8 @@ type CreateLibraryRequest struct {
 	MetadataLang      *string `json:"metadata_lang"`
 	AllowAdultContent *bool   `json:"allow_adult_content"`
 	AutoDownloadSub   *bool   `json:"auto_download_sub"`
-	// 新增6项功能
-	EnableGPUTranscode *bool   `json:"enable_gpu_transcode"`
-	GPUFallbackCPU     *bool   `json:"gpu_fallback_cpu"`
-	MetadataStorePath  *string `json:"metadata_store_path"`
-	PlayCachePath      *string `json:"play_cache_path"`
-	EnableFileWatch    *bool   `json:"enable_file_watch"`
-	EnableDirectLink   *bool   `json:"enable_direct_link"`
+	// 媒体库级别设置
+	EnableFileWatch *bool `json:"enable_file_watch"`
 }
 
 // List 获取所有媒体库
@@ -78,31 +73,14 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 	if req.AutoDownloadSub != nil {
 		lib.AutoDownloadSub = *req.AutoDownloadSub
 	}
-	// 新增6项功能的高级设置
-	if req.EnableGPUTranscode != nil {
-		lib.EnableGPUTranscode = *req.EnableGPUTranscode
-	}
-	if req.GPUFallbackCPU != nil {
-		lib.GPUFallbackCPU = *req.GPUFallbackCPU
-	}
-	if req.MetadataStorePath != nil {
-		lib.MetadataStorePath = *req.MetadataStorePath
-	}
-	if req.PlayCachePath != nil {
-		lib.PlayCachePath = *req.PlayCachePath
-	}
 	if req.EnableFileWatch != nil {
 		lib.EnableFileWatch = *req.EnableFileWatch
-	}
-	if req.EnableDirectLink != nil {
-		lib.EnableDirectLink = *req.EnableDirectLink
 	}
 
 	// 如果有高级设置需要更新，则再次保存
 	needUpdate := req.PreferLocalNFO != nil || req.EnableFileFilter != nil || req.MinFileSize != nil ||
 		req.MetadataLang != nil || req.AllowAdultContent != nil || req.AutoDownloadSub != nil ||
-		req.EnableGPUTranscode != nil || req.GPUFallbackCPU != nil || req.MetadataStorePath != nil ||
-		req.PlayCachePath != nil || req.EnableFileWatch != nil || req.EnableDirectLink != nil
+		req.EnableFileWatch != nil
 	if needUpdate {
 		h.libService.Update(lib)
 	}
@@ -182,23 +160,8 @@ func (h *LibraryHandler) Update(c *gin.Context) {
 	if req.AutoDownloadSub != nil {
 		lib.AutoDownloadSub = *req.AutoDownloadSub
 	}
-	if req.EnableGPUTranscode != nil {
-		lib.EnableGPUTranscode = *req.EnableGPUTranscode
-	}
-	if req.GPUFallbackCPU != nil {
-		lib.GPUFallbackCPU = *req.GPUFallbackCPU
-	}
-	if req.MetadataStorePath != nil {
-		lib.MetadataStorePath = *req.MetadataStorePath
-	}
-	if req.PlayCachePath != nil {
-		lib.PlayCachePath = *req.PlayCachePath
-	}
 	if req.EnableFileWatch != nil {
 		lib.EnableFileWatch = *req.EnableFileWatch
-	}
-	if req.EnableDirectLink != nil {
-		lib.EnableDirectLink = *req.EnableDirectLink
 	}
 
 	if err := h.libService.Update(lib); err != nil {

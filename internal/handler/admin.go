@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
@@ -20,6 +21,7 @@ type AdminHandler struct {
 	permissionService *service.PermissionService
 	libraryService    *service.LibraryService
 	metadataService   *service.MetadataService
+	settingRepo       *repository.SystemSettingRepo
 	cfg               *config.Config
 	logger            *zap.SugaredLogger
 }
@@ -458,4 +460,110 @@ func (h *AdminHandler) MatchMetadata(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "元数据已关联"})
+}
+
+// ==================== 系统设置（全局） ====================
+
+// 系统设置键名常量
+const (
+	SettingGPUTranscode   = "enable_gpu_transcode"
+	SettingGPUFallbackCPU = "gpu_fallback_cpu"
+	SettingMetadataPath   = "metadata_store_path"
+	SettingPlayCachePath  = "play_cache_path"
+	SettingDirectLink     = "enable_direct_link"
+)
+
+// GetSystemSettings 获取系统全局设置
+func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
+	all, err := h.settingRepo.GetAll()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取系统设置失败"})
+		return
+	}
+
+	// 返回带默认值的设置
+	settings := gin.H{
+		SettingGPUTranscode:   getBoolSetting(all, SettingGPUTranscode, true),
+		SettingGPUFallbackCPU: getBoolSetting(all, SettingGPUFallbackCPU, true),
+		SettingMetadataPath:   getStrSetting(all, SettingMetadataPath, ""),
+		SettingPlayCachePath:  getStrSetting(all, SettingPlayCachePath, ""),
+		SettingDirectLink:     getBoolSetting(all, SettingDirectLink, false),
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": settings})
+}
+
+// UpdateSystemSettingsRequest 更新系统设置请求
+type UpdateSystemSettingsRequest struct {
+	EnableGPUTranscode *bool   `json:"enable_gpu_transcode"`
+	GPUFallbackCPU     *bool   `json:"gpu_fallback_cpu"`
+	MetadataStorePath  *string `json:"metadata_store_path"`
+	PlayCachePath      *string `json:"play_cache_path"`
+	EnableDirectLink   *bool   `json:"enable_direct_link"`
+}
+
+// UpdateSystemSettings 更新系统全局设置
+func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
+	var req UpdateSystemSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	kvs := make(map[string]string)
+	if req.EnableGPUTranscode != nil {
+		kvs[SettingGPUTranscode] = boolToStr(*req.EnableGPUTranscode)
+	}
+	if req.GPUFallbackCPU != nil {
+		kvs[SettingGPUFallbackCPU] = boolToStr(*req.GPUFallbackCPU)
+	}
+	if req.MetadataStorePath != nil {
+		kvs[SettingMetadataPath] = *req.MetadataStorePath
+	}
+	if req.PlayCachePath != nil {
+		kvs[SettingPlayCachePath] = *req.PlayCachePath
+	}
+	if req.EnableDirectLink != nil {
+		kvs[SettingDirectLink] = boolToStr(*req.EnableDirectLink)
+	}
+
+	if len(kvs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未提供任何设置项"})
+		return
+	}
+
+	if err := h.settingRepo.SetMulti(kvs); err != nil {
+		h.logger.Errorf("更新系统设置失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存设置失败"})
+		return
+	}
+
+	h.logger.Info("系统设置已更新")
+
+	// 返回更新后的完整设置
+	h.GetSystemSettings(c)
+}
+
+// 辅助函数
+func getBoolSetting(m map[string]string, key string, defaultVal bool) bool {
+	v, ok := m[key]
+	if !ok {
+		return defaultVal
+	}
+	return v == "true" || v == "1"
+}
+
+func getStrSetting(m map[string]string, key string, defaultVal string) string {
+	v, ok := m[key]
+	if !ok {
+		return defaultVal
+	}
+	return v
+}
+
+func boolToStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
