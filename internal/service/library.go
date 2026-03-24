@@ -45,6 +45,42 @@ func (s *LibraryService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
 }
 
+// CleanOrphanedData 清理孤立数据：删除 library_id 指向已不存在的媒体库的 Media 和 Series 记录
+// 用于处理历史遗留的数据不一致问题（旧版本删除媒体库时未级联清理关联数据）
+func (s *LibraryService) CleanOrphanedData() {
+	libs, err := s.repo.List()
+	if err != nil {
+		s.logger.Errorf("清理孤立数据失败（获取媒体库列表出错）: %v", err)
+		return
+	}
+
+	// 收集所有有效的媒体库 ID
+	var validIDs []string
+	for _, lib := range libs {
+		validIDs = append(validIDs, lib.ID)
+	}
+
+	// 清理孤立的 Media 记录
+	mediaCount, err := s.mediaRepo.CleanOrphanedByLibraryIDs(validIDs)
+	if err != nil {
+		s.logger.Errorf("清理孤立媒体数据失败: %v", err)
+	} else if mediaCount > 0 {
+		s.logger.Infof("已清理 %d 条孤立媒体记录", mediaCount)
+	}
+
+	// 清理孤立的 Series 记录
+	seriesCount, err := s.seriesRepo.CleanOrphanedByLibraryIDs(validIDs)
+	if err != nil {
+		s.logger.Errorf("清理孤立剧集合集数据失败: %v", err)
+	} else if seriesCount > 0 {
+		s.logger.Infof("已清理 %d 条孤立剧集合集记录", seriesCount)
+	}
+
+	if mediaCount > 0 || seriesCount > 0 {
+		s.logger.Infof("孤立数据清理完成（媒体: %d, 合集: %d）", mediaCount, seriesCount)
+	}
+}
+
 // Create 创建媒体库
 func (s *LibraryService) Create(name, path, libType string) (*model.Library, error) {
 	lib := &model.Library{

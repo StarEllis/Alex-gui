@@ -167,7 +167,20 @@ func (r *MediaRepo) Search(keyword string, page, size int) ([]model.Media, int64
 }
 
 func (r *MediaRepo) DeleteByLibraryID(libraryID string) error {
-	return r.db.Where("library_id = ?", libraryID).Delete(&model.Media{}).Error
+	// 使用 Unscoped 硬删除，彻底清除关联数据，避免软删除导致的孤立数据
+	return r.db.Unscoped().Where("library_id = ?", libraryID).Delete(&model.Media{}).Error
+}
+
+// CleanOrphanedByLibraryIDs 清理孤立的媒体数据（library_id 不在有效列表中的记录）
+func (r *MediaRepo) CleanOrphanedByLibraryIDs(validLibraryIDs []string) (int64, error) {
+	var result *gorm.DB
+	if len(validLibraryIDs) == 0 {
+		// 没有任何有效媒体库，删除所有媒体
+		result = r.db.Unscoped().Where("1 = 1").Delete(&model.Media{})
+	} else {
+		result = r.db.Unscoped().Where("library_id NOT IN ?", validLibraryIDs).Delete(&model.Media{})
+	}
+	return result.RowsAffected, result.Error
 }
 
 func (r *MediaRepo) Update(media *model.Media) error {
@@ -359,7 +372,19 @@ func (r *SeriesRepo) Delete(id string) error {
 }
 
 func (r *SeriesRepo) DeleteByLibraryID(libraryID string) error {
-	return r.db.Where("library_id = ?", libraryID).Delete(&model.Series{}).Error
+	// 使用 Unscoped 硬删除，彻底清除关联数据
+	return r.db.Unscoped().Where("library_id = ?", libraryID).Delete(&model.Series{}).Error
+}
+
+// CleanOrphanedByLibraryIDs 清理孤立的剧集合集数据
+func (r *SeriesRepo) CleanOrphanedByLibraryIDs(validLibraryIDs []string) (int64, error) {
+	var result *gorm.DB
+	if len(validLibraryIDs) == 0 {
+		result = r.db.Unscoped().Where("1 = 1").Delete(&model.Series{})
+	} else {
+		result = r.db.Unscoped().Where("library_id NOT IN ?", validLibraryIDs).Delete(&model.Series{})
+	}
+	return result.RowsAffected, result.Error
 }
 
 // GetSeasonNumbers 获取指定合集的所有季号

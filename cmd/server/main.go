@@ -54,6 +54,9 @@ func main() {
 		sugar.Warnf("创建默认管理员失败: %v", err)
 	}
 
+	// 启动时清理孤立数据（处理历史遗留的数据不一致问题）
+	services.Library.CleanOrphanedData()
+
 	// 设置路由
 	r := gin.Default()
 
