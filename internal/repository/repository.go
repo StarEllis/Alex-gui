@@ -234,6 +234,17 @@ func (r *MediaRepo) RecentNonEpisode(limit int) ([]model.Media, error) {
 	return media, err
 }
 
+// RecentNonEpisodeAll 获取所有非剧集媒体（可选按媒体库过滤，用于混合列表）
+func (r *MediaRepo) RecentNonEpisodeAll(libraryID string) ([]model.Media, error) {
+	var media []model.Media
+	query := r.db.Where("series_id = '' OR series_id IS NULL")
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	err := query.Order("created_at DESC").Find(&media).Error
+	return media, err
+}
+
 // ListNonEpisode 获取非剧集媒体列表（分页，不包含已归入合集的剧集）
 func (r *MediaRepo) ListNonEpisode(page, size int, libraryID string) ([]model.Media, int64, error) {
 	var media []model.Media
@@ -251,6 +262,17 @@ func (r *MediaRepo) ListNonEpisode(page, size int, libraryID string) ([]model.Me
 
 // CountByLibrary 统计指定媒体库中非剧集媒体的数量
 func (r *MediaRepo) CountNonEpisodeByLibrary(libraryID string) (int64, error) {
+	var count int64
+	query := r.db.Model(&model.Media{}).Where("series_id = '' OR series_id IS NULL")
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	err := query.Count(&count).Error
+	return count, err
+}
+
+// CountNonEpisode 统计非剧集媒体的总数（可选按媒体库过滤）
+func (r *MediaRepo) CountNonEpisode(libraryID string) (int64, error) {
 	var count int64
 	query := r.db.Model(&model.Media{}).Where("series_id = '' OR series_id IS NULL")
 	if libraryID != "" {
@@ -302,6 +324,28 @@ func (r *SeriesRepo) List(page, size int, libraryID string) ([]model.Series, int
 	query.Count(&total)
 	err := query.Order("title ASC").Offset((page - 1) * size).Limit(size).Find(&series).Error
 	return series, total, err
+}
+
+// CountByLibrary 统计指定媒体库中合集的数量（可选按媒体库过滤）
+func (r *SeriesRepo) CountByLibrary(libraryID string) (int64, error) {
+	var count int64
+	query := r.db.Model(&model.Series{})
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	err := query.Count(&count).Error
+	return count, err
+}
+
+// ListAll 获取指定媒体库中的所有合集（不分页）
+func (r *SeriesRepo) ListAll(libraryID string) ([]model.Series, error) {
+	var series []model.Series
+	query := r.db
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	err := query.Order("created_at DESC").Find(&series).Error
+	return series, err
 }
 
 func (r *SeriesRepo) Update(series *model.Series) error {

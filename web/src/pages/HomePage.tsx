@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { mediaApi, recommendApi } from '@/api'
-import type { Media, WatchHistory, RecommendedMedia } from '@/types'
+import type { Media, WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Play, Clock, Sparkles } from 'lucide-react'
 import { streamApi } from '@/api'
 
 export default function HomePage() {
-  const [recentMedia, setRecentMedia] = useState<Media[]>([])
+  const [recentItems, setRecentItems] = useState<MixedItem[]>([])
   const [continueList, setContinueList] = useState<WatchHistory[]>([])
   const [recommendations, setRecommendations] = useState<RecommendedMedia[]>([])
   const [loading, setLoading] = useState(true)
@@ -16,11 +16,11 @@ export default function HomePage() {
     const fetchData = async () => {
       try {
         const [recentRes, continueRes, recommendRes] = await Promise.all([
-          mediaApi.recent(20),
+          mediaApi.recentMixed(20),
           mediaApi.continueWatching(10),
           recommendApi.getRecommendations(12),
         ])
-        setRecentMedia(recentRes.data.data || [])
+        setRecentItems(recentRes.data.data || [])
         setContinueList(continueRes.data.data || [])
         setRecommendations(recommendRes.data.data || [])
       } catch {
@@ -170,15 +170,15 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* 最近添加 */}
+      {/* 最近添加 — 混合模式（电影+合集） */}
       <MediaGrid
-        items={recentMedia}
+        mixedItems={recentItems}
         title="最近添加"
         loading={loading}
       />
 
       {/* 空状态 */}
-      {!loading && recentMedia.length === 0 && continueList.length === 0 && (
+      {!loading && recentItems.length === 0 && continueList.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div
             className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl animate-float"

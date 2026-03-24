@@ -18,6 +18,7 @@ import type {
   PaginatedResponse,
   ListResponse,
   AggregatedRecentResponse,
+  MixedItem,
   SystemInfo,
   TranscodeJob,
   MediaPlayInfo,
@@ -91,6 +92,12 @@ export const mediaApi = {
 
   recentAggregated: (limit = 20) =>
     api.get<AggregatedRecentResponse>('/media/recent/aggregated', { params: { limit } }),
+
+  recentMixed: (limit = 20) =>
+    api.get<ListResponse<MixedItem>>('/media/recent/mixed', { params: { limit } }),
+
+  listMixed: (params: { page?: number; size?: number; library_id?: string }) =>
+    api.get<PaginatedResponse<MixedItem>>('/media/mixed', { params }),
 
   continueWatching: (limit = 10) =>
     api.get<ListResponse<WatchHistory>>('/media/continue', { params: { limit } }),

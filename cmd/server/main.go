@@ -111,7 +111,9 @@ func main() {
 		api.GET("/media/:id", handlers.Media.Detail)
 		api.GET("/media/recent", handlers.Media.Recent)
 		api.GET("/media/recent/aggregated", handlers.Media.RecentAggregated)
+		api.GET("/media/recent/mixed", handlers.Media.RecentMixed)
 		api.GET("/media/aggregated", handlers.Media.ListAggregated)
+		api.GET("/media/mixed", handlers.Media.ListMixed)
 		api.GET("/media/continue", handlers.Media.Continue)
 
 		// 剧集合集

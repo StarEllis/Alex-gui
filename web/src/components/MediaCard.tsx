@@ -1,14 +1,15 @@
 import { Link } from 'react-router-dom'
-import { Play } from 'lucide-react'
+import { Play, Tv } from 'lucide-react'
 import { streamApi } from '@/api'
-import type { Media } from '@/types'
+import type { Media, Series } from '@/types'
 import { useState, useRef } from 'react'
 
 interface MediaCardProps {
-  media: Media
+  media?: Media
+  series?: Series
 }
 
-export default function MediaCard({ media }: MediaCardProps) {
+export default function MediaCard({ media, series }: MediaCardProps) {
   const cardRef = useRef<HTMLAnchorElement>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const [isHovering, setIsHovering] = useState(false)
@@ -41,10 +42,18 @@ export default function MediaCard({ media }: MediaCardProps) {
     })
   }
 
-  // 剧集类型: 点击跳转到剧集合集页面
-  const linkTo = media.series_id
-    ? `/series/${media.series_id}`
-    : `/media/${media.id}`
+  // 确定链接目标和显示数据
+  const isSeries = !!series
+  const linkTo = isSeries
+    ? `/series/${series!.id}`
+    : media!.series_id
+      ? `/series/${media!.series_id}`
+      : `/media/${media!.id}`
+
+  const title = isSeries ? series!.title : media!.title
+  const year = isSeries ? series!.year : media!.year
+  const rating = isSeries ? series!.rating : media!.rating
+  const posterUrl = isSeries ? series!.poster_path : streamApi.getPosterUrl(media!.id)
 
   return (
     <Link
@@ -68,8 +77,8 @@ export default function MediaCard({ media }: MediaCardProps) {
       {/* 海报区域 */}
       <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
         <img
-          src={streamApi.getPosterUrl(media.id)}
-          alt={media.title}
+          src={posterUrl}
+          alt={title}
           className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110 group-hover:brightness-110"
           loading="lazy"
           onError={(e) => {
@@ -78,7 +87,7 @@ export default function MediaCard({ media }: MediaCardProps) {
         />
         {/* 占位（海报加载失败时可见） */}
         <div className="absolute inset-0 -z-10 flex items-center justify-center text-surface-700">
-          <Play size={48} />
+          {isSeries ? <Tv size={48} /> : <Play size={48} />}
         </div>
 
         {/* 悬停遮罩 */}
@@ -94,43 +103,58 @@ export default function MediaCard({ media }: MediaCardProps) {
               >
                 <Play size={18} className="ml-0.5 text-white" fill="white" />
               </div>
-              <span className="text-sm font-semibold text-white">播放</span>
+              <span className="text-sm font-semibold text-white">{isSeries ? '查看' : '播放'}</span>
             </div>
           </div>
         </div>
 
-        {/* 分辨率标签 */}
-        {media.resolution && (
+        {/* 分辨率标签（仅电影） */}
+        {!isSeries && media!.resolution && (
           <span className="badge-neon absolute right-2 top-2">
-            {media.resolution}
+            {media!.resolution}
           </span>
         )}
 
-        {/* 剧集集数标签 */}
-        {media.media_type === 'episode' && media.episode_num > 0 && (
+        {/* 剧集合集标签 */}
+        {isSeries && (
           <span className="badge-accent absolute left-2 top-2">
-            S{String(media.season_num || 1).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
+            {series!.season_count} 季 · {series!.episode_count} 集
           </span>
+        )}
+
+        {/* 剧集类型标识（右下角） */}
+        {isSeries && (
+          <div className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-md"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          >
+            <Tv size={12} className="text-neon" />
+          </div>
         )}
       </div>
 
       {/* 信息区域 */}
       <div className="p-3">
         <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
-          {media.title}
+          {title}
         </h3>
         <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-          {media.year > 0 && <span>{media.year}</span>}
-          {media.duration > 0 && (
+          {year > 0 && <span>{year}</span>}
+          {rating > 0 && (
             <>
               <span className="text-neon-blue/30">·</span>
-              <span>{formatDuration(media.duration)}</span>
+              <span className="text-yellow-400">★ {rating.toFixed(1)}</span>
             </>
           )}
-          {media.file_size > 0 && (
+          {!isSeries && media!.duration > 0 && (
             <>
               <span className="text-neon-blue/30">·</span>
-              <span>{formatSize(media.file_size)}</span>
+              <span>{formatDuration(media!.duration)}</span>
+            </>
+          )}
+          {!isSeries && media!.file_size > 0 && (
+            <>
+              <span className="text-neon-blue/30">·</span>
+              <span>{formatSize(media!.file_size)}</span>
             </>
           )}
         </div>

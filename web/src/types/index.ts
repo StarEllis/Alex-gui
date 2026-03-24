@@ -265,6 +265,13 @@ export interface AggregatedRecentResponse {
   series: Series[]
 }
 
+// ==================== 混合列表（Emby风格） ====================
+export interface MixedItem {
+  type: 'movie' | 'series'
+  media?: Media
+  series?: Series
+}
+
 export interface ListResponse<T> {
   data: T[]
 }

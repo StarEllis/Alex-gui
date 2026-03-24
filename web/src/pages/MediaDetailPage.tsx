@@ -58,7 +58,13 @@ export default function MediaDetailPage() {
       recommendApi.getRecommendations(12),
     ])
       .then(([mediaRes, playInfoRes, playlistRes, recoRes]) => {
-        setMedia(mediaRes.data.data)
+        const mediaData = mediaRes.data.data
+        // Emby风格：如果是剧集(episode)且属于某个合集，自动跳转到合集详情页
+        if (mediaData.media_type === 'episode' && mediaData.series_id) {
+          navigate(`/series/${mediaData.series_id}`, { replace: true })
+          return
+        }
+        setMedia(mediaData)
         setPlayInfo(playInfoRes.data.data)
         setPlaylists(playlistRes.data.data || [])
         setRecommendations(recoRes.data.data || [])

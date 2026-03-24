@@ -1,13 +1,14 @@
-import type { Media } from '@/types'
+import type { Media, Series, MixedItem } from '@/types'
 import MediaCard from './MediaCard'
 
 interface MediaGridProps {
-  items: Media[]
+  items?: Media[]
+  mixedItems?: MixedItem[]
   title?: string
   loading?: boolean
 }
 
-export default function MediaGrid({ items, title, loading }: MediaGridProps) {
+export default function MediaGrid({ items, mixedItems, title, loading }: MediaGridProps) {
   if (loading) {
     return (
       <div className="animate-fade-in">
@@ -29,9 +30,33 @@ export default function MediaGrid({ items, title, loading }: MediaGridProps) {
     )
   }
 
-  if (items.length === 0) {
-    return null
+  // 混合模式
+  if (mixedItems) {
+    if (mixedItems.length === 0) return null
+    return (
+      <div className="animate-fade-in">
+        {title && (
+          <h2 className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+            {title}
+          </h2>
+        )}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {mixedItems.map((item) => {
+            if (item.type === 'series' && item.series) {
+              return <MediaCard key={`s-${item.series.id}`} series={item.series} />
+            }
+            if (item.media) {
+              return <MediaCard key={`m-${item.media.id}`} media={item.media} />
+            }
+            return null
+          })}
+        </div>
+      </div>
+    )
   }
+
+  // 普通模式
+  if (!items || items.length === 0) return null
 
   return (
     <div className="animate-fade-in">

@@ -105,6 +105,44 @@ func (h *MediaHandler) ListAggregated(c *gin.Context) {
 	})
 }
 
+// ListMixed 获取混合列表（电影+剧集合集按时间混合展示，Emby风格）
+func (h *MediaHandler) ListMixed(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	libraryID := c.Query("library_id")
+
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 100 {
+		size = 20
+	}
+
+	items, total, err := h.mediaService.ListMixed(page, size, libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取混合列表失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  items,
+		"total": total,
+		"page":  page,
+		"size":  size,
+	})
+}
+
+// RecentMixed 最近添加混合列表（电影+合集按时间混合排列）
+func (h *MediaHandler) RecentMixed(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	items, err := h.mediaService.RecentMixed(limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取最近媒体失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items})
+}
+
 // Continue 继续观看
 func (h *MediaHandler) Continue(c *gin.Context) {
 	userID, _ := c.Get("user_id")

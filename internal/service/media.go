@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -70,6 +72,121 @@ func (s *MediaService) RecentAggregated(limit int) ([]model.Media, []model.Serie
 // ListMediaAggregated 获取媒体列表（聚合模式：仅返回不属于合集的媒体）
 func (s *MediaService) ListMediaAggregated(page, size int, libraryID string) ([]model.Media, int64, error) {
 	return s.mediaRepo.ListNonEpisode(page, size, libraryID)
+}
+
+// MixedItem 混合项 — 统一表示电影或合集
+type MixedItem struct {
+	Type   string        `json:"type"` // "movie" 或 "series"
+	Media  *model.Media  `json:"media,omitempty"`
+	Series *model.Series `json:"series,omitempty"`
+}
+
+// ListMixed 获取电影与合集的混合列表（Emby风格：电影+合集混合展示，按时间排序）
+func (s *MediaService) ListMixed(page, size int, libraryID string) ([]MixedItem, int64, error) {
+	// 1. 获取所有独立电影（非剧集）
+	movies, err := s.mediaRepo.RecentNonEpisodeAll(libraryID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 2. 获取所有合集
+	seriesList, err := s.seriesRepo.ListAll(libraryID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 3. 合并为混合列表，按 created_at 降序排列
+	var allItems []MixedItem
+	for i := range movies {
+		allItems = append(allItems, MixedItem{
+			Type:  "movie",
+			Media: &movies[i],
+		})
+	}
+	for i := range seriesList {
+		allItems = append(allItems, MixedItem{
+			Type:   "series",
+			Series: &seriesList[i],
+		})
+	}
+
+	// 按 created_at 降序排序
+	sortMixedItems(allItems)
+
+	// 4. 分页
+	total := int64(len(allItems))
+	start := (page - 1) * size
+	if start >= int(total) {
+		return []MixedItem{}, total, nil
+	}
+	end := start + size
+	if end > int(total) {
+		end = int(total)
+	}
+
+	return allItems[start:end], total, nil
+}
+
+// sortMixedItems 按 created_at 降序排序混合列表
+func sortMixedItems(items []MixedItem) {
+	for i := 0; i < len(items)-1; i++ {
+		for j := i + 1; j < len(items); j++ {
+			ti := getMixedItemTime(items[i])
+			tj := getMixedItemTime(items[j])
+			if tj.After(ti) {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+}
+
+func getMixedItemTime(item MixedItem) time.Time {
+	if item.Media != nil {
+		return item.Media.CreatedAt
+	}
+	if item.Series != nil {
+		return item.Series.CreatedAt
+	}
+	return time.Time{}
+}
+
+// RecentMixed 最近添加混合列表（电影+合集按时间混合排列）
+func (s *MediaService) RecentMixed(limit int) ([]MixedItem, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+
+	movies, err := s.mediaRepo.RecentNonEpisode(limit)
+	if err != nil {
+		return nil, err
+	}
+
+	seriesList, err := s.seriesRepo.RecentUpdated(limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []MixedItem
+	for i := range movies {
+		items = append(items, MixedItem{
+			Type:  "movie",
+			Media: &movies[i],
+		})
+	}
+	for i := range seriesList {
+		items = append(items, MixedItem{
+			Type:   "series",
+			Series: &seriesList[i],
+		})
+	}
+
+	sortMixedItems(items)
+
+	if len(items) > limit {
+		items = items[:limit]
+	}
+
+	return items, nil
 }
 
 // CountNonEpisodeByLibrary 统计指定媒体库中非剧集媒体的数量

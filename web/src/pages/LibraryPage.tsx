@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { mediaApi, seriesApi, streamApi } from '@/api'
-import type { Media, Series } from '@/types'
+import type { Media, Series, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import {
   Tv,
@@ -31,7 +31,7 @@ const SORT_OPTIONS = [
 
 export default function LibraryPage() {
   const { id } = useParams<{ id: string }>()
-  const [media, setMedia] = useState<Media[]>([])
+  const [mixedItems, setMixedItems] = useState<MixedItem[]>([])
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -59,12 +59,12 @@ export default function LibraryPage() {
     setLoading(true)
 
     Promise.all([
-      mediaApi.list({ page, size, library_id: id }),
+      mediaApi.listMixed({ page, size, library_id: id }),
       seriesApi.list({ library_id: id }),
     ])
-      .then(([mediaRes, seriesRes]) => {
-        setMedia(mediaRes.data.data || [])
-        setTotal(mediaRes.data.total)
+      .then(([mixedRes, seriesRes]) => {
+        setMixedItems(mixedRes.data.data || [])
+        setTotal(mixedRes.data.total)
         setSeriesList(seriesRes.data.data || [])
       })
       .catch(() => {})
@@ -74,53 +74,62 @@ export default function LibraryPage() {
   const totalPages = Math.ceil(total / size)
   const hasSeries = seriesList.length > 0
 
-  // 提取所有类型标签
+  // 从混合列表中提取类型标签
   const allGenres = useMemo(() => {
     const genres = new Set<string>()
-    media.forEach((m) => {
-      if (m.genres) {
-        m.genres.split(',').forEach((g) => {
-          const trimmed = g.trim()
+    mixedItems.forEach((item) => {
+      const g = item.type === 'series' ? item.series?.genres : item.media?.genres
+      if (g) {
+        g.split(',').forEach((genre) => {
+          const trimmed = genre.trim()
           if (trimmed) genres.add(trimmed)
         })
       }
     })
     return Array.from(genres).sort()
-  }, [media])
+  }, [mixedItems])
 
-  // 筛选和排序后的媒体列表
-  const filteredMedia = useMemo(() => {
-    let items = [...media]
+  // 辅助函数：获取混合项的属性
+  const getItemTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.title || '') : (item.media?.title || '')
+  const getItemOrigTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.orig_title || '') : (item.media?.orig_title || '')
+  const getItemOverview = (item: MixedItem) => item.type === 'series' ? (item.series?.overview || '') : (item.media?.overview || '')
+  const getItemGenres = (item: MixedItem) => item.type === 'series' ? (item.series?.genres || '') : (item.media?.genres || '')
+  const getItemYear = (item: MixedItem) => item.type === 'series' ? (item.series?.year || 0) : (item.media?.year || 0)
+  const getItemRating = (item: MixedItem) => item.type === 'series' ? (item.series?.rating || 0) : (item.media?.rating || 0)
+  const getItemTime = (item: MixedItem) => item.type === 'series' ? (item.series?.created_at || '') : (item.media?.created_at || '')
+
+  // 筛选和排序后的混合列表
+  const filteredMixed = useMemo(() => {
+    let items = [...mixedItems]
 
     // 搜索
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
-      items = items.filter(
-        (m) =>
-          m.title.toLowerCase().includes(q) ||
-          m.orig_title?.toLowerCase().includes(q) ||
-          m.overview?.toLowerCase().includes(q)
+      items = items.filter((item) =>
+        getItemTitle(item).toLowerCase().includes(q) ||
+        getItemOrigTitle(item).toLowerCase().includes(q) ||
+        getItemOverview(item).toLowerCase().includes(q)
       )
     }
 
     // 类型筛选
     if (filterGenre) {
-      items = items.filter((m) => m.genres?.includes(filterGenre))
+      items = items.filter((item) => getItemGenres(item).includes(filterGenre))
     }
 
     // 排序
     const [field, dir] = sortValue.split('_')
     items.sort((a, b) => {
       let cmp = 0
-      if (field === 'title') cmp = a.title.localeCompare(b.title)
-      else if (field === 'year') cmp = (a.year || 0) - (b.year || 0)
-      else if (field === 'rating') cmp = (a.rating || 0) - (b.rating || 0)
-      else cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      if (field === 'title') cmp = getItemTitle(a).localeCompare(getItemTitle(b))
+      else if (field === 'year') cmp = getItemYear(a) - getItemYear(b)
+      else if (field === 'rating') cmp = getItemRating(a) - getItemRating(b)
+      else cmp = new Date(getItemTime(a)).getTime() - new Date(getItemTime(b)).getTime()
       return dir === 'desc' ? -cmp : cmp
     })
 
     return items
-  }, [media, searchQuery, filterGenre, sortValue])
+  }, [mixedItems, searchQuery, filterGenre, sortValue])
 
   // 筛选后的剧集
   const filteredSeries = useMemo(() => {
@@ -163,7 +172,7 @@ export default function LibraryPage() {
               }}
             >
               <Film size={14} />
-              全部内容 ({total})
+              全部内容
             </button>
             {hasSeries && (
               <button
@@ -368,7 +377,7 @@ export default function LibraryPage() {
         {(searchQuery || filterGenre) && (
           <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-tertiary)' }}>
             <span>
-              找到 <strong className="text-neon">{viewTab === 'all' ? filteredMedia.length : filteredSeries.length}</strong> 个结果
+              找到 <strong className="text-neon">{viewTab === 'all' ? filteredMixed.length : filteredSeries.length}</strong> 个结果
             </span>
             {(searchQuery || filterGenre) && (
               <button
@@ -401,17 +410,29 @@ export default function LibraryPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 animate-fade-in">
-                {filteredMedia.map((m) => (
-                  <MediaCard key={m.id} media={m} />
-                ))}
+                {filteredMixed.map((item) => {
+                  if (item.type === 'series' && item.series) {
+                    return <MediaCard key={`s-${item.series.id}`} series={item.series} />
+                  }
+                  if (item.media) {
+                    return <MediaCard key={`m-${item.media.id}`} media={item.media} />
+                  }
+                  return null
+                })}
               </div>
             )
           ) : (
             // 列表视图
             <div className="space-y-2 animate-fade-in">
-              {filteredMedia.map((m) => (
-                <ListMediaItem key={m.id} media={m} />
-              ))}
+              {filteredMixed.map((item) => {
+                if (item.type === 'series' && item.series) {
+                  return <ListSeriesItem key={`s-${item.series.id}`} series={item.series} />
+                }
+                if (item.media) {
+                  return <ListMediaItem key={`m-${item.media.id}`} media={item.media} />
+                }
+                return null
+              })}
             </div>
           )}
 
@@ -439,7 +460,7 @@ export default function LibraryPage() {
           )}
 
           {/* 空状态 */}
-          {!loading && filteredMedia.length === 0 && (
+          {!loading && filteredMixed.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Film size={48} className="mb-4 text-surface-700" />
               <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
@@ -534,6 +555,61 @@ function ListMediaItem({ media }: { media: Media }) {
         <div className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
           <Star size={14} className="text-yellow-400" fill="currentColor" />
           <span className="font-display font-semibold">{media.rating.toFixed(1)}</span>
+        </div>
+      )}
+    </Link>
+  )
+}
+
+// 列表视图的合集项
+function ListSeriesItem({ series }: { series: Series }) {
+  return (
+    <Link
+      to={`/series/${series.id}`}
+      className="group flex items-center gap-4 rounded-xl p-3 transition-all duration-300"
+      style={{ border: '1px solid var(--border-default)' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--nav-hover-bg)'; e.currentTarget.style.borderColor = 'var(--border-hover)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
+    >
+      {/* 缩略图 */}
+      <div
+        className="h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg"
+        style={{ background: 'var(--bg-surface)' }}
+      >
+        {series.poster_path ? (
+          <img
+            src={series.poster_path}
+            alt={series.title}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-surface-700">
+            <Tv size={16} />
+          </div>
+        )}
+      </div>
+
+      {/* 信息 */}
+      <div className="min-w-0 flex-1">
+        <h3
+          className="truncate text-sm font-medium transition-colors group-hover:text-neon"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          {series.title}
+        </h3>
+        <div className="mt-0.5 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {series.year > 0 && <span>{series.year}</span>}
+          <span style={{ color: 'var(--text-muted)' }}>·</span>
+          <span>{series.season_count} 季 · {series.episode_count} 集</span>
+        </div>
+      </div>
+
+      {/* 评分 */}
+      {series.rating > 0 && (
+        <div className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <Star size={14} className="text-yellow-400" fill="currentColor" />
+          <span className="font-display font-semibold">{series.rating.toFixed(1)}</span>
         </div>
       )}
     </Link>
