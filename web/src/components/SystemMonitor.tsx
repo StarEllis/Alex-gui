@@ -33,7 +33,7 @@ export default function SystemMonitor() {
   }
 
   const ProgressBar = ({ value, color = 'primary' }: { value: number; color?: string }) => (
-    <div className="h-1.5 w-full rounded-full" style={{ background: 'rgba(0,240,255,0.06)' }}>
+    <div className="h-1.5 w-full rounded-full" style={{ background: 'var(--neon-blue-6)' }}>
       <div
         className="h-full rounded-full transition-all duration-500"
         style={{
@@ -41,7 +41,7 @@ export default function SystemMonitor() {
           background: color === 'red' ? '#ef4444'
             : color === 'yellow' ? '#eab308'
             : 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-          boxShadow: color === 'green' ? '0 0 6px rgba(0,240,255,0.3)' : undefined,
+          boxShadow: color === 'green' ? 'var(--neon-glow-shadow-sm)' : undefined,
         }}
       />
     </div>

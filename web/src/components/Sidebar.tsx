@@ -23,6 +23,7 @@ import {
   Layers,
   Video,
   X,
+  BarChart3,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -172,6 +173,24 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         >
           <ListVideo size={18} />
           {(!collapsed || isMobileOpen) && <span>播放列表</span>}
+        </NavLink>
+
+        <NavLink
+          to="/stats"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <BarChart3 size={18} />
+          {(!collapsed || isMobileOpen) && <span>观影报告</span>}
+        </NavLink>
+
+        <NavLink
+          to="/profile"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <Settings size={18} />
+          {(!collapsed || isMobileOpen) && <span>个人设置</span>}
         </NavLink>
 
         {/* 媒体库列表 */}

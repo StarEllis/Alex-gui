@@ -1,6 +1,9 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -87,6 +90,37 @@ func (s *SeriesService) GetNextEpisode(seriesID string, currentSeason, currentEp
 	}
 
 	return nil, nil // 已经是最后一集
+}
+
+// GetSeriesPosterPath 获取剧集合集海报文件路径
+func (s *SeriesService) GetSeriesPosterPath(id string) (string, error) {
+	series, err := s.seriesRepo.FindByIDOnly(id)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+
+	// 优先使用数据库中存储的海报路径
+	if series.PosterPath != "" {
+		if _, err := os.Stat(series.PosterPath); err == nil {
+			return series.PosterPath, nil
+		}
+	}
+
+	// 查找剧集根目录下的海报文件
+	if series.FolderPath != "" {
+		posterExts := []string{".jpg", ".jpeg", ".png", ".webp"}
+		posterNames := []string{"poster", "cover", "folder", "show"}
+		for _, name := range posterNames {
+			for _, ext := range posterExts {
+				candidate := filepath.Join(series.FolderPath, name+ext)
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate, nil
+				}
+			}
+		}
+	}
+
+	return "", nil
 }
 
 // SeasonInfo 季信息

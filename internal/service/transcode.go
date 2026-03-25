@@ -19,12 +19,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// 质量预设
+// 质量预设（包含 4K 和 2K）
 var qualityPresets = map[string]QualityConfig{
 	"360p":  {Width: 640, Height: 360, VideoBitrate: "800k", AudioBitrate: "96k"},
 	"480p":  {Width: 854, Height: 480, VideoBitrate: "1500k", AudioBitrate: "128k"},
 	"720p":  {Width: 1280, Height: 720, VideoBitrate: "3000k", AudioBitrate: "128k"},
 	"1080p": {Width: 1920, Height: 1080, VideoBitrate: "6000k", AudioBitrate: "192k"},
+	"2K":    {Width: 2560, Height: 1440, VideoBitrate: "12000k", AudioBitrate: "192k"},
+	"4K":    {Width: 3840, Height: 2160, VideoBitrate: "25000k", AudioBitrate: "256k"},
 }
 
 // QualityConfig 质量配置
@@ -37,14 +39,15 @@ type QualityConfig struct {
 
 // TranscodeService 转码服务
 type TranscodeService struct {
-	repo    *repository.TranscodeRepo
-	cfg     *config.Config
-	logger  *zap.SugaredLogger
-	jobs    chan *TranscodeJob
-	mu      sync.RWMutex
-	running map[string]*TranscodeJob
-	hwAccel string // 检测到的硬件加速方式
-	wsHub   *WSHub // WebSocket事件广播
+	repo      *repository.TranscodeRepo
+	cfg       *config.Config
+	logger    *zap.SugaredLogger
+	jobs      chan *TranscodeJob
+	mu        sync.RWMutex
+	running   map[string]*TranscodeJob
+	hwAccel   string    // 检测到的硬件加速方式
+	hwAccelMu sync.Once // 硬件加速检测只执行一次
+	wsHub     *WSHub    // WebSocket事件广播
 }
 
 // SetWSHub 设置WebSocket Hub（延迟注入）
@@ -58,6 +61,7 @@ type TranscodeJob struct {
 	Media   *model.Media
 	Quality string
 	Cancel  chan struct{}
+	cmd     *exec.Cmd // 当前正在执行的 FFmpeg 进程，用于取消
 }
 
 func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
@@ -69,9 +73,11 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		running: make(map[string]*TranscodeJob),
 	}
 
-	// 检测硬件加速能力
-	ts.hwAccel = ts.detectHWAccel()
-	logger.Infof("硬件加速模式: %s", ts.hwAccel)
+	// 检测硬件加速能力（只检测一次，缓存结果）
+	ts.hwAccelMu.Do(func() {
+		ts.hwAccel = ts.detectHWAccel()
+		logger.Infof("硬件加速模式: %s", ts.hwAccel)
+	})
 
 	// 启动转码工作协程
 	for i := 0; i < cfg.App.MaxTranscodeJobs; i++ {
@@ -273,6 +279,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	s.logger.Debugf("FFmpeg命令: %s %s", s.cfg.App.FFmpegPath, strings.Join(args, " "))
 
 	cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
+	job.cmd = cmd // 保存引用，用于取消
 
 	// 捕获stderr以解析进度
 	stderrPipe, err := cmd.StderrPipe()
@@ -301,10 +308,40 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 		go s.parseFFmpegProgress(stderrPipe, job)
 	}
 
-	if err := cmd.Wait(); err != nil {
-		s.logger.Errorf("转码失败: %s, 错误: %v", job.Media.Title, err)
+	// 支持取消：监听 Cancel channel
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	var waitErr error
+	select {
+	case <-job.Cancel:
+		// 任务被取消，强制终止 FFmpeg 进程
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		s.logger.Infof("转码任务已取消: %s (%s)", job.Media.Title, job.Quality)
+		job.Task.Status = "cancelled"
+		s.repo.Update(job.Task)
+		s.mu.Lock()
+		delete(s.running, job.Task.ID)
+		s.mu.Unlock()
+		s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
+			TaskID:  job.Task.ID,
+			MediaID: job.Media.ID,
+			Title:   job.Media.Title,
+			Quality: job.Quality,
+			Message: fmt.Sprintf("转码已取消: %s (%s)", job.Media.Title, job.Quality),
+		})
+		return
+	case waitErr = <-done:
+	}
+
+	if waitErr != nil {
+		s.logger.Errorf("转码失败: %s, 错误: %v", job.Media.Title, waitErr)
 		job.Task.Status = "failed"
-		job.Task.Error = err.Error()
+		job.Task.Error = waitErr.Error()
 		s.repo.Update(job.Task)
 		s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
 			TaskID:  job.Task.ID,
@@ -421,4 +458,111 @@ func (s *TranscodeService) GetRunningJobs() []*TranscodeJob {
 // GetHWAccelInfo 获取硬件加速信息
 func (s *TranscodeService) GetHWAccelInfo() string {
 	return s.hwAccel
+}
+
+// GetAvailableQualities 根据原始视频分辨率动态计算可用的转码质量等级
+// 规则：只提供低于或等于原始分辨率的质量选项
+func (s *TranscodeService) GetAvailableQualities(media *model.Media) []string {
+	// 解析原始分辨率
+	origHeight := parseResolutionHeight(media.Resolution)
+	if origHeight <= 0 {
+		// 无法判断原始分辨率，返回默认选项
+		return []string{"360p", "480p", "720p", "1080p"}
+	}
+
+	// 按从低到高排序的质量等级
+	orderedQualities := []struct {
+		name   string
+		height int
+	}{
+		{"360p", 360},
+		{"480p", 480},
+		{"720p", 720},
+		{"1080p", 1080},
+		{"2K", 1440},
+		{"4K", 2160},
+	}
+
+	var available []string
+	for _, q := range orderedQualities {
+		if q.height <= origHeight {
+			available = append(available, q.name)
+		}
+	}
+
+	if len(available) == 0 {
+		available = []string{"360p"}
+	}
+
+	return available
+}
+
+// parseResolutionHeight 解析分辨率字符串获取高度
+func parseResolutionHeight(resolution string) int {
+	switch resolution {
+	case "4K":
+		return 2160
+	case "2K":
+		return 1440
+	case "1080p":
+		return 1080
+	case "720p":
+		return 720
+	case "480p":
+		return 480
+	case "360p":
+		return 360
+	default:
+		// 尝试解析 "NNNp" 格式
+		if strings.HasSuffix(resolution, "p") {
+			if h, err := strconv.Atoi(strings.TrimSuffix(resolution, "p")); err == nil {
+				return h
+			}
+		}
+		return 0
+	}
+}
+
+// CancelTranscode 取消正在运行的转码任务
+func (s *TranscodeService) CancelTranscode(taskID string) error {
+	s.mu.RLock()
+	job, exists := s.running[taskID]
+	s.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("转码任务不存在或已完成: %s", taskID)
+	}
+
+	// 发送取消信号
+	select {
+	case job.Cancel <- struct{}{}:
+		s.logger.Infof("已发送取消信号: %s", taskID)
+	default:
+		// 已经取消过了
+	}
+
+	return nil
+}
+
+// buildFFmpegHDRTonemapFilter 构建 HDR→SDR 色调映射滤镜
+// 当源视频为 HDR（如 HEVC/HDR10）且目标设备不支持 HDR 时，
+// 使用 FFmpeg 的 tonemap 滤镜进行色调映射，避免画面偏灰
+func (s *TranscodeService) buildFFmpegHDRTonemapFilter(media *model.Media, width, height int) string {
+	// 检测是否为 HDR 视频（基于编码格式推断）
+	codec := strings.ToLower(media.VideoCodec)
+	isHDR := codec == "hevc" || codec == "h265" || codec == "vp9" || codec == "av1"
+
+	if !isHDR {
+		return fmt.Sprintf("scale=%d:%d", width, height)
+	}
+
+	// HDR → SDR 色调映射滤镜链
+	// zscale: 颜色空间转换 → tonemap: 色调映射 → zscale: 输出格式 → scale: 缩放
+	return fmt.Sprintf(
+		"zscale=t=linear:npl=100,format=gbrpf32le,"+
+			"tonemap=hable:desat=0,"+
+			"zscale=p=bt709:t=bt709:m=bt709:r=tv,"+
+			"format=yuv420p,scale=%d:%d",
+		width, height,
+	)
 }

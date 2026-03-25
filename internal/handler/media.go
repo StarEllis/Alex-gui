@@ -5,14 +5,16 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
 
 // MediaHandler 媒体处理器
 type MediaHandler struct {
-	mediaService *service.MediaService
-	logger       *zap.SugaredLogger
+	mediaService    *service.MediaService
+	mediaPersonRepo *repository.MediaPersonRepo
+	logger          *zap.SugaredLogger
 }
 
 // List 获取媒体列表
@@ -179,4 +181,79 @@ func (h *MediaHandler) Search(c *gin.Context) {
 		"page":  page,
 		"size":  size,
 	})
+}
+
+// SearchAdvanced 高级搜索（支持多条件筛选和排序）
+// GET /api/search/advanced?q=xxx&type=movie&genre=动作&year_min=2020&year_max=2025&min_rating=7&sort_by=rating&sort_order=desc&page=1&size=20
+func (h *MediaHandler) SearchAdvanced(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	yearMin, _ := strconv.Atoi(c.DefaultQuery("year_min", "0"))
+	yearMax, _ := strconv.Atoi(c.DefaultQuery("year_max", "0"))
+	minRating, _ := strconv.ParseFloat(c.DefaultQuery("min_rating", "0"), 64)
+
+	params := repository.SearchAdvancedParams{
+		Keyword:   c.Query("q"),
+		MediaType: c.Query("type"),
+		Genre:     c.Query("genre"),
+		YearMin:   yearMin,
+		YearMax:   yearMax,
+		MinRating: minRating,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+		Page:      page,
+		Size:      size,
+	}
+
+	media, total, err := h.mediaService.SearchAdvanced(params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  media,
+		"total": total,
+		"page":  page,
+		"size":  size,
+	})
+}
+
+// SearchMixed 混合搜索（同时搜索媒体和合集）
+// GET /api/search/mixed?q=xxx&page=1&size=20
+func (h *MediaHandler) SearchMixed(c *gin.Context) {
+	keyword := c.Query("q")
+	if keyword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "搜索关键词不能为空"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+
+	result, err := h.mediaService.SearchMixed(keyword, page, size)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"media":        result.Media,
+		"series":       result.Series,
+		"media_total":  result.MediaTotal,
+		"series_total": result.SeriesTotal,
+		"page":         page,
+		"size":         size,
+	})
+}
+
+// GetPersons 获取媒体的演职人员列表
+func (h *MediaHandler) GetPersons(c *gin.Context) {
+	mediaID := c.Param("id")
+	persons, err := h.mediaPersonRepo.ListByMediaID(mediaID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": persons})
 }

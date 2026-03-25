@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,21 +28,108 @@ type MetadataService struct {
 	cfg        *config.Config
 	logger     *zap.SugaredLogger
 	client     *http.Client
-	wsHub      *WSHub         // WebSocket事件广播
-	douban     *DoubanService // 豆瓣刮削服务（补充源）
+	wsHub      *WSHub          // WebSocket事件广播
+	douban     *DoubanService  // 豆瓣刮削服务（补充源）
+	bangumi    *BangumiService // Bangumi刮削服务（补充源）
 }
 
 func NewMetadataService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *MetadataService {
-	return &MetadataService{
+	s := &MetadataService{
 		mediaRepo:  mediaRepo,
 		seriesRepo: seriesRepo,
 		cfg:        cfg,
 		logger:     logger,
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
-		douban: NewDoubanService(mediaRepo, cfg, logger),
+		client:     buildTMDbHTTPClient(cfg, logger),
+		douban:     NewDoubanService(mediaRepo, cfg, logger),
+		bangumi:    NewBangumiService(mediaRepo, seriesRepo, cfg, logger),
 	}
+	return s
+}
+
+// buildTMDbHTTPClient 构建专用于 TMDb 的 HTTP 客户端
+// 解决国内网络环境下直连 api.themoviedb.org / image.tmdb.org 超时/被墙的核心问题
+// 策略：
+//  1. 自定义 DNS 解析器 + 超时控制
+//  2. 连接级超时 5s（快速失败），总请求超时 12s
+//  3. 启用 KeepAlive 复用连接，减少 TLS 握手开销
+func buildTMDbHTTPClient(cfg *config.Config, logger *zap.SugaredLogger) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// 如果配置了代理，不做额外处理，直接连
+			return dialer.DialContext(ctx, network, addr)
+		},
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	}
+
+	logger.Infof("TMDb HTTP 客户端已初始化 (API代理: %s, 图片代理: %s)",
+		defaultIfEmpty(cfg.Secrets.TMDbAPIProxy, "官方直连"),
+		defaultIfEmpty(cfg.Secrets.TMDbImageProxy, "官方直连"))
+
+	return &http.Client{
+		Timeout:   12 * time.Second,
+		Transport: transport,
+	}
+}
+
+// getTMDbAPIBase 获取 TMDb API 基础地址（支持代理）
+func (s *MetadataService) getTMDbAPIBase() string {
+	if proxy := s.cfg.Secrets.TMDbAPIProxy; proxy != "" {
+		return strings.TrimRight(proxy, "/")
+	}
+	return "https://api.themoviedb.org"
+}
+
+// getTMDbImageBase 获取 TMDb 图片基础地址（支持代理）
+func (s *MetadataService) getTMDbImageBase() string {
+	if proxy := s.cfg.Secrets.TMDbImageProxy; proxy != "" {
+		return strings.TrimRight(proxy, "/")
+	}
+	return "https://image.tmdb.org"
+}
+
+// defaultIfEmpty 如果字符串为空则返回默认值
+func defaultIfEmpty(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// tmdbGetWithRetry 带重试的 TMDb GET 请求
+// 超时后自动重试 1 次（共 2 次尝试），仍然失败则返回错误
+func (s *MetadataService) tmdbGetWithRetry(url string) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			s.logger.Debugf("TMDb 请求重试 (%d/2): %s", attempt+1, url)
+			time.Sleep(500 * time.Millisecond)
+		}
+		resp, err := s.client.Get(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			return resp, nil
+		}
+		resp.Body.Close()
+		lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+		// 非临时性错误（如 401/404）不重试
+		if resp.StatusCode == 401 || resp.StatusCode == 404 {
+			return nil, lastErr
+		}
+	}
+	return nil, fmt.Errorf("TMDb 请求失败（已重试）: %w", lastErr)
 }
 
 // SetWSHub 设置WebSocket Hub（延迟注入）
@@ -76,16 +165,30 @@ type TMDbMovie struct {
 
 // TMDbMovieDetail TMDb电影详情
 type TMDbMovieDetail struct {
-	ID            int         `json:"id"`
-	Title         string      `json:"title"`
-	OriginalTitle string      `json:"original_title"`
-	Overview      string      `json:"overview"`
-	PosterPath    string      `json:"poster_path"`
-	BackdropPath  string      `json:"backdrop_path"`
-	ReleaseDate   string      `json:"release_date"`
-	VoteAverage   float64     `json:"vote_average"`
-	Runtime       int         `json:"runtime"`
-	Genres        []TMDbGenre `json:"genres"`
+	ID            int             `json:"id"`
+	Title         string          `json:"title"`
+	OriginalTitle string          `json:"original_title"`
+	Overview      string          `json:"overview"`
+	PosterPath    string          `json:"poster_path"`
+	BackdropPath  string          `json:"backdrop_path"`
+	ReleaseDate   string          `json:"release_date"`
+	VoteAverage   float64         `json:"vote_average"`
+	Runtime       int             `json:"runtime"`
+	Genres        []TMDbGenre     `json:"genres"`
+	Videos        *TMDbVideosWrap `json:"videos,omitempty"` // append_to_response=videos
+}
+
+// TMDbVideosWrap TMDb视频包装
+type TMDbVideosWrap struct {
+	Results []TMDbVideo `json:"results"`
+}
+
+// TMDbVideo TMDb视频（预告片/花絮）
+type TMDbVideo struct {
+	Key      string `json:"key"`      // YouTube video ID
+	Site     string `json:"site"`     // "YouTube"
+	Type     string `json:"type"`     // "Trailer", "Teaser", "Featurette"
+	Official bool   `json:"official"` // 是否官方
 }
 
 // TMDbGenre TMDb类型
@@ -108,7 +211,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 	// 从标题中提取搜索关键词和年份
 	searchTitle, year := s.parseTitle(media.Title)
 
-	// 第一步：尝试TMDb刮削
+	// 第一步：尝试TMDb刮削（超时 5s 快速失败，不拖慢整体流程）
 	var tmdbErr error
 	if s.cfg.Secrets.TMDbAPIKey != "" {
 		if media.MediaType == "movie" {
@@ -116,15 +219,18 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 		} else {
 			tmdbErr = s.scrapeTV(media, searchTitle, year)
 		}
+		if tmdbErr != nil {
+			s.logger.Debugf("TMDb 刮削失败: %s - %v", media.Title, tmdbErr)
+		}
 	} else {
 		tmdbErr = fmt.Errorf("TMDb API Key未配置")
 	}
 
-	// 第二步：如果TMDb失败或信息不完整，用豆瓣补充
-	needDouban := tmdbErr != nil || media.Overview == "" || media.PosterPath == "" || media.Rating == 0
+	// 第二步：如果TMDb失败或信息不完整，自动 Fallback 到豆瓣补充
+	needFallback := tmdbErr != nil || media.Overview == "" || media.PosterPath == "" || media.Rating == 0
 
-	if needDouban {
-		s.logger.Debugf("TMDb刮削%s，尝试豆瓣补充: %s",
+	if needFallback {
+		s.logger.Debugf("TMDb刮削%s，尝试补充源: %s",
 			map[bool]string{true: "失败", false: "信息不完整"}[tmdbErr != nil],
 			media.Title)
 
@@ -135,18 +241,39 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 			}
 		}
 
+		// 尝试豆瓣补充
 		if doubanErr := s.douban.ScrapeMedia(media, searchTitle, year); doubanErr != nil {
 			s.logger.Debugf("豆瓣刮削也失败: %s - %v", media.Title, doubanErr)
-			// 如果TMDb和豆瓣都失败，返回原始TMDb错误
-			if tmdbErr != nil {
-				return tmdbErr
-			}
 		} else {
 			s.logger.Infof("豆瓣补充刮削成功: %s", media.Title)
 		}
+
+		// 第三步：如果仍然不完整，继续 Fallback 到 Bangumi 补充
+		// 重新获取数据（豆瓣可能已部分更新）
+		if updated, err := s.mediaRepo.FindByID(mediaID); err == nil {
+			media = updated
+		}
+		needBangumi := media.Overview == "" || media.PosterPath == "" || media.Rating == 0
+		if needBangumi && s.bangumi.IsEnabled() {
+			s.logger.Debugf("信息仍不完整，尝试 Bangumi 补充: %s", media.Title)
+			if bangumiErr := s.bangumi.ScrapeMedia(media, searchTitle, year); bangumiErr != nil {
+				s.logger.Debugf("Bangumi 刮削也失败: %s - %v", media.Title, bangumiErr)
+			} else {
+				s.logger.Infof("Bangumi 补充刮削成功: %s", media.Title)
+			}
+		}
+
+		// 如果所有数据源都失败，返回原始TMDb错误
+		if tmdbErr != nil {
+			if updated, err := s.mediaRepo.FindByID(mediaID); err == nil {
+				if updated.Overview == "" && updated.PosterPath == "" {
+					return tmdbErr
+				}
+			}
+		}
 	}
 
-	// 等待一下避免豆瓣限流
+	// 等待一下避免限流
 	time.Sleep(200 * time.Millisecond)
 
 	return nil
@@ -365,16 +492,12 @@ func (s *MetadataService) searchTMDb(mediaType, query string, year int) ([]TMDbM
 		}
 	}
 
-	apiURL := fmt.Sprintf("https://api.themoviedb.org/3/search/%s?%s", mediaType, params.Encode())
-	resp, err := s.client.Get(apiURL)
+	apiURL := fmt.Sprintf("%s/3/search/%s?%s", s.getTMDbAPIBase(), mediaType, params.Encode())
+	resp, err := s.tmdbGetWithRetry(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("TMDb请求失败: %w", err)
+		return nil, fmt.Errorf("TMDb搜索请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TMDb返回状态码: %d", resp.StatusCode)
-	}
 
 	var result TMDbSearchResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -386,18 +509,14 @@ func (s *MetadataService) searchTMDb(mediaType, query string, year int) ([]TMDbM
 
 // getMovieDetail 获取电影详情
 func (s *MetadataService) getMovieDetail(tmdbID int) (*TMDbMovieDetail, error) {
-	apiURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%d?api_key=%s&language=zh-CN",
-		tmdbID, s.cfg.Secrets.TMDbAPIKey)
+	apiURL := fmt.Sprintf("%s/3/movie/%d?api_key=%s&language=zh-CN&append_to_response=videos",
+		s.getTMDbAPIBase(), tmdbID, s.cfg.Secrets.TMDbAPIKey)
 
-	resp, err := s.client.Get(apiURL)
+	resp, err := s.tmdbGetWithRetry(apiURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("TMDb详情请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TMDb详情请求失败: %d", resp.StatusCode)
-	}
 
 	var detail TMDbMovieDetail
 	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
@@ -461,6 +580,16 @@ func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovie
 	if len(genres) > 0 {
 		media.Genres = strings.Join(genres, ",")
 	}
+
+	// 提取预告片 YouTube 链接
+	if detail.Videos != nil {
+		for _, v := range detail.Videos.Results {
+			if v.Site == "YouTube" && (v.Type == "Trailer" || v.Type == "Teaser") {
+				media.TrailerURL = "https://www.youtube.com/watch?v=" + v.Key
+				break
+			}
+		}
+	}
 }
 
 // ==================== 图片下载 ====================
@@ -481,17 +610,13 @@ func (s *MetadataService) downloadImage(media *model.Media, tmdbPath, imageType,
 		return "", fmt.Errorf("图片路径为空")
 	}
 
-	imageURL := fmt.Sprintf("https://image.tmdb.org/t/p/%s%s", size, tmdbPath)
+	imageURL := fmt.Sprintf("%s/t/p/%s%s", s.getTMDbImageBase(), size, tmdbPath)
 
-	resp, err := s.client.Get(imageURL)
+	resp, err := s.tmdbGetWithRetry(imageURL)
 	if err != nil {
 		return "", fmt.Errorf("下载图片失败: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("图片请求失败: %d", resp.StatusCode)
-	}
 
 	// 保存到媒体文件同目录
 	mediaDir := filepath.Dir(media.FilePath)
@@ -571,6 +696,255 @@ func (s *MetadataService) SearchTMDb(mediaType, query string, year int) ([]TMDbM
 	return s.searchTMDb(mediaType, query, year)
 }
 
+// TMDbImage TMDb 图片信息
+type TMDbImage struct {
+	FilePath    string  `json:"file_path"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	AspectRatio float64 `json:"aspect_ratio"`
+	VoteAverage float64 `json:"vote_average"`
+	VoteCount   int     `json:"vote_count"`
+	Language    string  `json:"iso_639_1"`
+}
+
+// TMDbImagesResult TMDb 图片搜索结果
+type TMDbImagesResult struct {
+	Posters   []TMDbImage `json:"posters"`
+	Backdrops []TMDbImage `json:"backdrops"`
+}
+
+// SearchTMDbImages 获取TMDb条目的所有可用图片（海报+背景图）
+func (s *MetadataService) SearchTMDbImages(mediaType string, tmdbID int) (*TMDbImagesResult, error) {
+	if s.cfg.Secrets.TMDbAPIKey == "" {
+		return nil, fmt.Errorf("TMDb API Key 未配置")
+	}
+
+	apiURL := fmt.Sprintf("%s/3/%s/%d/images?api_key=%s&include_image_language=zh,en,null",
+		s.getTMDbAPIBase(), mediaType, tmdbID, s.cfg.Secrets.TMDbAPIKey)
+
+	resp, err := s.tmdbGetWithRetry(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("TMDb 图片查询失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result TMDbImagesResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 TMDb 图片响应失败: %w", err)
+	}
+
+	return &result, nil
+}
+
+// DownloadTMDbImageForMedia 从TMDb下载指定图片并保存到本地，更新Media的图片路径
+func (s *MetadataService) DownloadTMDbImageForMedia(mediaID string, tmdbPath string, imageType string) (string, error) {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+
+	size := "w500"
+	if imageType == "backdrop" {
+		size = "w1280"
+	}
+
+	localPath, err := s.downloadImage(media, tmdbPath, imageType, size)
+	if err != nil {
+		return "", err
+	}
+
+	if imageType == "poster" {
+		media.PosterPath = localPath
+	} else {
+		media.BackdropPath = localPath
+	}
+
+	if err := s.mediaRepo.Update(media); err != nil {
+		return "", fmt.Errorf("更新媒体数据失败: %w", err)
+	}
+
+	return localPath, nil
+}
+
+// DownloadTMDbImageForSeries 从TMDb下载指定图片并保存到本地，更新Series的图片路径
+func (s *MetadataService) DownloadTMDbImageForSeries(seriesID string, tmdbPath string, imageType string) (string, error) {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return "", fmt.Errorf("剧集合集不存在")
+	}
+
+	size := "w500"
+	if imageType == "backdrop" {
+		size = "w1280"
+	}
+
+	imageURL := fmt.Sprintf("%s/t/p/%s%s", s.getTMDbImageBase(), size, tmdbPath)
+	ext := filepath.Ext(tmdbPath)
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", "series", series.ID)
+	os.MkdirAll(cacheDir, 0755)
+	localPath := filepath.Join(cacheDir, imageType+ext)
+
+	if err := s.downloadToFile(imageURL, localPath); err != nil {
+		return "", fmt.Errorf("下载图片失败: %w", err)
+	}
+
+	if imageType == "poster" {
+		series.PosterPath = localPath
+	} else {
+		series.BackdropPath = localPath
+	}
+
+	if err := s.seriesRepo.Update(series); err != nil {
+		return "", fmt.Errorf("更新剧集数据失败: %w", err)
+	}
+
+	return localPath, nil
+}
+
+// SaveUploadedImageForMedia 保存上传的图片文件到本地，更新Media的图片路径
+func (s *MetadataService) SaveUploadedImageForMedia(mediaID string, imageData []byte, ext string, imageType string) (string, error) {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+
+	// 先尝试保存到媒体文件同目录
+	mediaDir := filepath.Dir(media.FilePath)
+	baseName := strings.TrimSuffix(filepath.Base(media.FilePath), filepath.Ext(media.FilePath))
+	localPath := filepath.Join(mediaDir, fmt.Sprintf("%s-%s%s", baseName, imageType, ext))
+
+	if err := os.WriteFile(localPath, imageData, 0644); err != nil {
+		// 回退到缓存目录
+		cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", media.ID)
+		os.MkdirAll(cacheDir, 0755)
+		localPath = filepath.Join(cacheDir, imageType+ext)
+		if err := os.WriteFile(localPath, imageData, 0644); err != nil {
+			return "", fmt.Errorf("保存图片文件失败: %w", err)
+		}
+	}
+
+	if imageType == "poster" {
+		media.PosterPath = localPath
+	} else {
+		media.BackdropPath = localPath
+	}
+
+	if err := s.mediaRepo.Update(media); err != nil {
+		return "", fmt.Errorf("更新媒体数据失败: %w", err)
+	}
+
+	return localPath, nil
+}
+
+// SaveUploadedImageForSeries 保存上传的图片文件到本地，更新Series的图片路径
+func (s *MetadataService) SaveUploadedImageForSeries(seriesID string, imageData []byte, ext string, imageType string) (string, error) {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return "", fmt.Errorf("剧集合集不存在")
+	}
+
+	cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", "series", series.ID)
+	os.MkdirAll(cacheDir, 0755)
+	localPath := filepath.Join(cacheDir, imageType+ext)
+
+	if err := os.WriteFile(localPath, imageData, 0644); err != nil {
+		return "", fmt.Errorf("保存图片文件失败: %w", err)
+	}
+
+	if imageType == "poster" {
+		series.PosterPath = localPath
+	} else {
+		series.BackdropPath = localPath
+	}
+
+	if err := s.seriesRepo.Update(series); err != nil {
+		return "", fmt.Errorf("更新剧集数据失败: %w", err)
+	}
+
+	return localPath, nil
+}
+
+// DownloadURLImageForMedia 从URL下载图片并保存到本地，更新Media的图片路径
+func (s *MetadataService) DownloadURLImageForMedia(mediaID string, imageURL string, imageType string) (string, error) {
+	// 先验证媒体是否存在
+	if _, err := s.mediaRepo.FindByID(mediaID); err != nil {
+		return "", ErrMediaNotFound
+	}
+
+	resp, err := s.client.Get(imageURL)
+	if err != nil {
+		return "", fmt.Errorf("下载图片失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("下载图片失败，HTTP状态码: %d", resp.StatusCode)
+	}
+
+	imageData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取图片数据失败: %w", err)
+	}
+
+	// 检查大小限制（10MB）
+	if len(imageData) > 10*1024*1024 {
+		return "", fmt.Errorf("图片文件过大，最大支持10MB")
+	}
+
+	// 根据 Content-Type 确定扩展名
+	ext := ".jpg"
+	ct := resp.Header.Get("Content-Type")
+	switch {
+	case strings.Contains(ct, "png"):
+		ext = ".png"
+	case strings.Contains(ct, "webp"):
+		ext = ".webp"
+	case strings.Contains(ct, "gif"):
+		ext = ".gif"
+	}
+
+	return s.SaveUploadedImageForMedia(mediaID, imageData, ext, imageType)
+}
+
+// DownloadURLImageForSeries 从URL下载图片并保存到本地，更新Series的图片路径
+func (s *MetadataService) DownloadURLImageForSeries(seriesID string, imageURL string, imageType string) (string, error) {
+	resp, err := s.client.Get(imageURL)
+	if err != nil {
+		return "", fmt.Errorf("下载图片失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("下载图片失败，HTTP状态码: %d", resp.StatusCode)
+	}
+
+	imageData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取图片数据失败: %w", err)
+	}
+
+	if len(imageData) > 10*1024*1024 {
+		return "", fmt.Errorf("图片文件过大，最大支持10MB")
+	}
+
+	ext := ".jpg"
+	ct := resp.Header.Get("Content-Type")
+	switch {
+	case strings.Contains(ct, "png"):
+		ext = ".png"
+	case strings.Contains(ct, "webp"):
+		ext = ".webp"
+	case strings.Contains(ct, "gif"):
+		ext = ".gif"
+	}
+
+	return s.SaveUploadedImageForSeries(seriesID, imageData, ext, imageType)
+}
+
 // ScrapeSeries 为剧集合集刮削元数据（以合集名称搜索，并将元数据同步到合集和各集）
 func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	if s.seriesRepo == nil {
@@ -630,7 +1004,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 		// 下载海报
 		if tmdbResult.PosterPath != "" {
-			imageURL := fmt.Sprintf("https://image.tmdb.org/t/p/w500%s", tmdbResult.PosterPath)
+			imageURL := fmt.Sprintf("%s/t/p/w500%s", s.getTMDbImageBase(), tmdbResult.PosterPath)
 			ext := filepath.Ext(tmdbResult.PosterPath)
 			if ext == "" {
 				ext = ".jpg"
@@ -645,7 +1019,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 		// 下载背景图
 		if tmdbResult.BackdropPath != "" {
-			imageURL := fmt.Sprintf("https://image.tmdb.org/t/p/w1280%s", tmdbResult.BackdropPath)
+			imageURL := fmt.Sprintf("%s/t/p/w1280%s", s.getTMDbImageBase(), tmdbResult.BackdropPath)
 			ext := filepath.Ext(tmdbResult.BackdropPath)
 			if ext == "" {
 				ext = ".jpg"
@@ -681,6 +1055,43 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		}
 		if series.Genres == "" && tempMedia.Genres != "" {
 			series.Genres = tempMedia.Genres
+		}
+		if series.PosterPath == "" && tempMedia.PosterPath != "" {
+			series.PosterPath = tempMedia.PosterPath
+		}
+	}
+
+	// 第三步：Bangumi 补充（如果仍不完整）
+	if (series.Overview == "" || series.PosterPath == "" || series.Rating == 0) && s.bangumi.IsEnabled() {
+		s.logger.Debugf("尝试 Bangumi 补充剧集元数据: %s", series.Title)
+		tempMedia := &model.Media{
+			Title:    series.Title,
+			FilePath: series.FolderPath + "/placeholder",
+		}
+		s.bangumi.ApplyBangumiData(tempMedia, searchTitle, year)
+		if series.Overview == "" && tempMedia.Overview != "" {
+			series.Overview = tempMedia.Overview
+		}
+		if series.Rating == 0 && tempMedia.Rating > 0 {
+			series.Rating = tempMedia.Rating
+		}
+		if series.Year == 0 && tempMedia.Year > 0 {
+			series.Year = tempMedia.Year
+		}
+		if series.Genres == "" && tempMedia.Genres != "" {
+			series.Genres = tempMedia.Genres
+		}
+		if series.OrigTitle == "" && tempMedia.OrigTitle != "" {
+			series.OrigTitle = tempMedia.OrigTitle
+		}
+		if series.Country == "" && tempMedia.Country != "" {
+			series.Country = tempMedia.Country
+		}
+		if series.Language == "" && tempMedia.Language != "" {
+			series.Language = tempMedia.Language
+		}
+		if series.Studio == "" && tempMedia.Studio != "" {
+			series.Studio = tempMedia.Studio
 		}
 		if series.PosterPath == "" && tempMedia.PosterPath != "" {
 			series.PosterPath = tempMedia.PosterPath
@@ -768,17 +1179,13 @@ func (s *MetadataService) ScrapeAllSeries(libraryID string) (int, int) {
 	return success, failed
 }
 
-// downloadToFile 下载文件到指定路径
+// downloadToFile 下载文件到指定路径（带重试）
 func (s *MetadataService) downloadToFile(url, filePath string) error {
-	resp, err := s.client.Get(url)
+	resp, err := s.tmdbGetWithRetry(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
 
 	file, err := os.Create(filePath)
 	if err != nil {
@@ -788,6 +1195,171 @@ func (s *MetadataService) downloadToFile(url, filePath string) error {
 
 	_, err = io.Copy(file, resp.Body)
 	return err
+}
+
+// UnmatchMedia 解除媒体的元数据匹配，清除刮削获取的所有信息
+func (s *MetadataService) UnmatchMedia(mediaID string) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+
+	// 清除所有从 TMDb/豆瓣获取的元数据（保留文件扫描的原始信息）
+	media.TMDbID = 0
+	media.DoubanID = ""
+	media.Overview = ""
+	media.PosterPath = ""
+	media.BackdropPath = ""
+	media.Rating = 0
+	media.Runtime = 0
+	media.Genres = ""
+	media.OrigTitle = ""
+	media.Country = ""
+	media.Language = ""
+	media.Tagline = ""
+	media.Studio = ""
+	media.TrailerURL = ""
+
+	s.logger.Infof("已解除媒体元数据匹配: %s (%s)", media.Title, mediaID)
+	return s.mediaRepo.Update(media)
+}
+
+// UnmatchSeries 解除剧集合集的元数据匹配，清除刮削获取的所有信息
+func (s *MetadataService) UnmatchSeries(seriesID string) error {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return fmt.Errorf("剧集合集不存在")
+	}
+
+	series.TMDbID = 0
+	series.DoubanID = ""
+	series.Overview = ""
+	series.PosterPath = ""
+	series.BackdropPath = ""
+	series.Rating = 0
+	series.Genres = ""
+	series.OrigTitle = ""
+	series.Country = ""
+	series.Language = ""
+	series.Studio = ""
+
+	s.logger.Infof("已解除剧集合集元数据匹配: %s (%s)", series.Title, seriesID)
+	return s.seriesRepo.Update(series)
+}
+
+// MatchSeriesWithTMDb 手动关联TMDb结果到指定剧集合集
+func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return fmt.Errorf("剧集合集不存在")
+	}
+
+	// 从 TMDb 获取 TV 详情
+	apiKey := s.cfg.Secrets.TMDbAPIKey
+	if apiKey == "" {
+		return fmt.Errorf("TMDb API Key 未配置")
+	}
+
+	reqURL := fmt.Sprintf("%s/3/tv/%d?api_key=%s&language=zh-CN",
+		s.getTMDbAPIBase(), tmdbID, apiKey)
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return fmt.Errorf("TMDb 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var detail struct {
+		ID           int     `json:"id"`
+		Name         string  `json:"name"`
+		OriginalName string  `json:"original_name"`
+		Overview     string  `json:"overview"`
+		VoteAverage  float64 `json:"vote_average"`
+		FirstAirDate string  `json:"first_air_date"`
+		PosterPath   string  `json:"poster_path"`
+		BackdropPath string  `json:"backdrop_path"`
+		Genres       []struct {
+			Name string `json:"name"`
+		} `json:"genres"`
+		OriginCountry       []string `json:"origin_country"`
+		OriginalLanguage    string   `json:"original_language"`
+		ProductionCompanies []struct {
+			Name string `json:"name"`
+		} `json:"production_companies"`
+	}
+	if err := json.Unmarshal(body, &detail); err != nil {
+		return fmt.Errorf("解析 TMDb 响应失败")
+	}
+
+	// 应用数据
+	series.TMDbID = detail.ID
+	if detail.Name != "" {
+		series.OrigTitle = detail.OriginalName
+	}
+	if detail.Overview != "" {
+		series.Overview = detail.Overview
+	}
+	series.Rating = detail.VoteAverage
+	if len(detail.FirstAirDate) >= 4 {
+		series.Year, _ = strconv.Atoi(detail.FirstAirDate[:4])
+	}
+
+	// 类型
+	var genres []string
+	for _, g := range detail.Genres {
+		genres = append(genres, g.Name)
+	}
+	if len(genres) > 0 {
+		series.Genres = strings.Join(genres, ",")
+	}
+
+	// 国家 / 语言 / 出品公司
+	if len(detail.OriginCountry) > 0 {
+		series.Country = strings.Join(detail.OriginCountry, ",")
+	}
+	if detail.OriginalLanguage != "" {
+		series.Language = detail.OriginalLanguage
+	}
+	var studios []string
+	for _, c := range detail.ProductionCompanies {
+		studios = append(studios, c.Name)
+	}
+	if len(studios) > 0 {
+		series.Studio = strings.Join(studios, ",")
+	}
+
+	// 下载海报
+	if detail.PosterPath != "" {
+		imageURL := fmt.Sprintf("%s/t/p/w500%s", s.getTMDbImageBase(), detail.PosterPath)
+		ext := filepath.Ext(detail.PosterPath)
+		if ext == "" {
+			ext = ".jpg"
+		}
+		cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", "series", series.ID)
+		os.MkdirAll(cacheDir, 0755)
+		localPath := filepath.Join(cacheDir, "poster"+ext)
+		if err := s.downloadToFile(imageURL, localPath); err == nil {
+			series.PosterPath = localPath
+		}
+	}
+
+	// 下载背景图
+	if detail.BackdropPath != "" {
+		imageURL := fmt.Sprintf("%s/t/p/w1280%s", s.getTMDbImageBase(), detail.BackdropPath)
+		ext := filepath.Ext(detail.BackdropPath)
+		if ext == "" {
+			ext = ".jpg"
+		}
+		cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", "series", series.ID)
+		os.MkdirAll(cacheDir, 0755)
+		localPath := filepath.Join(cacheDir, "backdrop"+ext)
+		if err := s.downloadToFile(imageURL, localPath); err == nil {
+			series.BackdropPath = localPath
+		}
+	}
+
+	s.logger.Infof("已手动匹配剧集合集: %s -> TMDb ID %d", series.Title, tmdbID)
+	return s.seriesRepo.Update(series)
 }
 
 // MatchMediaWithTMDb 手动关联TMDb结果到指定媒体
@@ -847,4 +1419,34 @@ func (s *MetadataService) mapGenreIDs(ids []int) string {
 		}
 	}
 	return strings.Join(genres, ",")
+}
+
+// ==================== Bangumi 公共方法 ====================
+
+// SearchBangumi 公开的 Bangumi 搜索方法（用于手动元数据匹配）
+func (s *MetadataService) SearchBangumi(query string, subjectType int, year int) ([]BangumiSubject, error) {
+	return s.bangumi.SearchSubjects(query, subjectType, year)
+}
+
+// GetBangumiSubjectDetail 获取 Bangumi 条目详情
+func (s *MetadataService) GetBangumiSubjectDetail(subjectID int) (*BangumiSubject, error) {
+	return s.bangumi.GetSubjectDetail(subjectID)
+}
+
+// MatchMediaWithBangumi 手动关联 Bangumi 结果到指定媒体
+func (s *MetadataService) MatchMediaWithBangumi(mediaID string, bangumiID int) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+	return s.bangumi.MatchMediaWithBangumi(media, bangumiID)
+}
+
+// MatchSeriesWithBangumi 手动关联 Bangumi 结果到指定剧集合集
+func (s *MetadataService) MatchSeriesWithBangumi(seriesID string, bangumiID int) error {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return fmt.Errorf("剧集合集不存在")
+	}
+	return s.bangumi.MatchSeriesWithBangumi(series, bangumiID)
 }

@@ -52,6 +52,42 @@
   --nav-active-bg: rgba(0, 240, 255, 0.08);
   --noise-opacity: 0.015;
 
+  /* 霓虹色透明度变体（供组件内联样式使用） */
+  --neon-blue-4: rgba(0, 240, 255, 0.04);
+  --neon-blue-5: rgba(0, 240, 255, 0.05);
+  --neon-blue-6: rgba(0, 240, 255, 0.06);
+  --neon-blue-8: rgba(0, 240, 255, 0.08);
+  --neon-blue-10: rgba(0, 240, 255, 0.10);
+  --neon-blue-12: rgba(0, 240, 255, 0.12);
+  --neon-blue-15: rgba(0, 240, 255, 0.15);
+  --neon-blue-20: rgba(0, 240, 255, 0.20);
+  --neon-blue-25: rgba(0, 240, 255, 0.25);
+  --neon-blue-30: rgba(0, 240, 255, 0.30);
+  --neon-blue-40: rgba(0, 240, 255, 0.40);
+  --neon-blue-50: rgba(0, 240, 255, 0.50);
+  --neon-blue-90: rgba(0, 240, 255, 0.90);
+  --neon-blue-mid: rgba(0, 180, 220, 0.90);
+  --neon-purple-8: rgba(138, 43, 226, 0.08);
+  --neon-purple-10: rgba(138, 43, 226, 0.10);
+  --neon-purple-15: rgba(138, 43, 226, 0.15);
+  --neon-purple-20: rgba(138, 43, 226, 0.20);
+  --neon-purple-glow-text: #A855F7;
+  --neon-glow-shadow-sm: 0 0 6px rgba(0, 240, 255, 0.3);
+  --neon-glow-shadow-md: 0 0 12px rgba(0, 240, 255, 0.3);
+  --neon-glow-shadow-lg: 0 0 20px rgba(0, 240, 255, 0.4);
+  --neon-glow-shadow-xl: 0 0 30px rgba(0, 240, 255, 0.3), 0 0 60px rgba(0, 240, 255, 0.1);
+  --neon-glow-shadow-inset: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 20px rgba(0, 240, 255, 0.05);
+  --progress-track-bg: rgba(255, 255, 255, 0.1);
+  --progress-bar-glow: 0 0 8px rgba(0, 240, 255, 0.3);
+  --spinner-border: rgba(0, 240, 255, 0.3);
+  --glass-panel-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  --glass-panel-strong-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  --modal-glow: 0 0 1px rgba(0, 240, 255, 0.2);
+  --modal-panel-glow: 0 0 60px rgba(0, 240, 255, 0.06);
+  --grid-line-color: rgba(0, 240, 255, 0.3);
+  --deco-glow-blue: rgba(0, 240, 255, 0.15);
+  --deco-glow-purple: rgba(138, 43, 226, 0.15);
+
   /* Tailwind surface 色板 */
   --surface-50: #f0f4f8;
   --surface-100: #d9e2ec;
@@ -72,42 +108,78 @@
   --neon-purple: #7C3AED;
   --neon-pink: #DB2777;
   --neon-green: #059669;
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(8, 145, 178, 0.12);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(8, 145, 178, 0.15);
   --glass-blur: 20px;
 
-  --bg-base: #f5f7fa;
-  --bg-surface: #eef1f5;
-  --bg-elevated: rgba(255, 255, 255, 0.92);
-  --bg-subtle: rgba(255, 255, 255, 0.6);
-  --bg-card: rgba(255, 255, 255, 0.8);
-  --bg-input: rgba(255, 255, 255, 0.85);
-  --bg-overlay: rgba(0, 0, 0, 0.3);
+  --bg-base: #f0f2f5;
+  --bg-surface: #e4e8ed;
+  --bg-elevated: #ffffff;
+  --bg-subtle: rgba(255, 255, 255, 0.7);
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(0, 0, 0, 0.35);
   --bg-tooltip: rgba(30, 41, 59, 0.95);
-  --bg-skeleton-from: rgba(8, 145, 178, 0.05);
-  --bg-skeleton-to: rgba(8, 145, 178, 0.10);
+  --bg-skeleton-from: rgba(8, 145, 178, 0.06);
+  --bg-skeleton-to: rgba(8, 145, 178, 0.12);
   --text-primary: #1e293b;
   --text-secondary: #475569;
-  --text-tertiary: #94a3b8;
-  --text-muted: #cbd5e1;
+  --text-tertiary: #64748b;
+  --text-muted: #94a3b8;
   --text-on-neon: #ffffff;
-  --border-default: rgba(0, 0, 0, 0.06);
-  --border-hover: rgba(8, 145, 178, 0.25);
-  --border-strong: rgba(8, 145, 178, 0.18);
-  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.06);
-  --shadow-card-hover: 0 8px 24px rgba(8, 145, 178, 0.10), 0 0 1px rgba(8, 145, 178, 0.2);
-  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.08);
-  --shadow-neon: 0 0 12px rgba(8, 145, 178, 0.15);
-  --gradient-overlay-from: rgba(245, 247, 250, 0.95);
-  --gradient-overlay-mid: rgba(245, 247, 250, 0.5);
-  --selection-bg: rgba(8, 145, 178, 0.15);
+  --border-default: rgba(0, 0, 0, 0.10);
+  --border-hover: rgba(8, 145, 178, 0.30);
+  --border-strong: rgba(8, 145, 178, 0.22);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-card-hover: 0 8px 24px rgba(8, 145, 178, 0.12), 0 0 1px rgba(8, 145, 178, 0.25);
+  --shadow-elevated: 0 4px 20px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-neon: 0 0 12px rgba(8, 145, 178, 0.18);
+  --gradient-overlay-from: rgba(240, 242, 245, 0.95);
+  --gradient-overlay-mid: rgba(240, 242, 245, 0.5);
+  --selection-bg: rgba(8, 145, 178, 0.18);
   --selection-text: #1e293b;
-  --scrollbar-thumb: linear-gradient(180deg, rgba(8, 145, 178, 0.25), rgba(124, 58, 237, 0.25));
-  --scrollbar-thumb-hover: linear-gradient(180deg, rgba(8, 145, 178, 0.45), rgba(124, 58, 237, 0.45));
+  --scrollbar-thumb: linear-gradient(180deg, rgba(8, 145, 178, 0.30), rgba(124, 58, 237, 0.30));
+  --scrollbar-thumb-hover: linear-gradient(180deg, rgba(8, 145, 178, 0.50), rgba(124, 58, 237, 0.50));
   --focus-ring: rgba(8, 145, 178, 0.5);
-  --nav-hover-bg: rgba(8, 145, 178, 0.06);
-  --nav-active-bg: rgba(8, 145, 178, 0.10);
+  --nav-hover-bg: rgba(8, 145, 178, 0.08);
+  --nav-active-bg: rgba(8, 145, 178, 0.12);
   --noise-opacity: 0.008;
+
+  /* 霓虹色透明度变体（亮色模式适配） */
+  --neon-blue-4: rgba(8, 145, 178, 0.04);
+  --neon-blue-5: rgba(8, 145, 178, 0.05);
+  --neon-blue-6: rgba(8, 145, 178, 0.06);
+  --neon-blue-8: rgba(8, 145, 178, 0.08);
+  --neon-blue-10: rgba(8, 145, 178, 0.10);
+  --neon-blue-12: rgba(8, 145, 178, 0.12);
+  --neon-blue-15: rgba(8, 145, 178, 0.15);
+  --neon-blue-20: rgba(8, 145, 178, 0.20);
+  --neon-blue-25: rgba(8, 145, 178, 0.25);
+  --neon-blue-30: rgba(8, 145, 178, 0.30);
+  --neon-blue-40: rgba(8, 145, 178, 0.40);
+  --neon-blue-50: rgba(8, 145, 178, 0.50);
+  --neon-blue-90: rgba(8, 145, 178, 0.95);
+  --neon-blue-mid: rgba(6, 116, 142, 0.95);
+  --neon-purple-8: rgba(124, 58, 237, 0.08);
+  --neon-purple-10: rgba(124, 58, 237, 0.10);
+  --neon-purple-15: rgba(124, 58, 237, 0.15);
+  --neon-purple-20: rgba(124, 58, 237, 0.20);
+  --neon-purple-glow-text: #7C3AED;
+  --neon-glow-shadow-sm: 0 0 4px rgba(8, 145, 178, 0.15);
+  --neon-glow-shadow-md: 0 0 8px rgba(8, 145, 178, 0.18);
+  --neon-glow-shadow-lg: 0 0 12px rgba(8, 145, 178, 0.20);
+  --neon-glow-shadow-xl: 0 0 15px rgba(8, 145, 178, 0.15), 0 0 30px rgba(8, 145, 178, 0.05);
+  --neon-glow-shadow-inset: 0 0 20px rgba(8, 145, 178, 0.08), inset 0 0 10px rgba(8, 145, 178, 0.03);
+  --progress-track-bg: rgba(0, 0, 0, 0.06);
+  --progress-bar-glow: 0 0 6px rgba(8, 145, 178, 0.20);
+  --spinner-border: rgba(8, 145, 178, 0.30);
+  --glass-panel-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
+  --glass-panel-strong-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+  --modal-glow: 0 0 1px rgba(8, 145, 178, 0.15);
+  --modal-panel-glow: 0 0 30px rgba(8, 145, 178, 0.04);
+  --grid-line-color: rgba(8, 145, 178, 0.12);
+  --deco-glow-blue: rgba(8, 145, 178, 0.08);
+  --deco-glow-purple: rgba(124, 58, 237, 0.06);
 
   /* Tailwind surface 色板（亮色版 — 数值翻转） */
   --surface-50: #1e293b;
@@ -199,7 +271,7 @@
     border: 1px solid var(--glass-border);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
-    box-shadow: var(--shadow-card), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+    box-shadow: var(--shadow-card), var(--glass-panel-inset);
   }
 
   .glass-panel-strong {
@@ -207,7 +279,7 @@
     border: 1px solid var(--border-strong);
     backdrop-filter: blur(30px);
     -webkit-backdrop-filter: blur(30px);
-    box-shadow: var(--shadow-elevated), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    box-shadow: var(--shadow-elevated), var(--glass-panel-strong-inset);
   }
 
   .glass-panel-subtle {
@@ -230,7 +302,7 @@
     inset: -1px;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, rgba(0, 240, 255, 0.3), rgba(138, 43, 226, 0.3));
+    background: linear-gradient(135deg, var(--neon-blue-30), var(--neon-purple-20));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -290,7 +362,7 @@
   /* === 能量流动进度条 === */
   .progress-bar {
     @apply relative h-1 w-full cursor-pointer rounded-full;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--progress-track-bg);
     @apply transition-all duration-150 hover:h-1.5;
   }
 
@@ -298,14 +370,14 @@
     @apply absolute left-0 top-0 h-full rounded-full;
     background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
     @apply transition-all duration-100;
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+    box-shadow: var(--progress-bar-glow);
   }
 
   .progress-bar-thumb {
     @apply absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full;
     background: var(--neon-blue);
     @apply opacity-0 transition-all duration-200;
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 20px rgba(0, 240, 255, 0.2);
+    box-shadow: var(--neon-glow-shadow-md), var(--neon-glow-shadow-lg);
   }
 
   .progress-bar:hover .progress-bar-thumb {
@@ -329,7 +401,7 @@
   .nav-item.active {
     color: var(--neon-blue);
     background: var(--nav-active-bg);
-    box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.03);
+    box-shadow: inset 0 0 20px var(--neon-blue-4);
   }
 
   /* 激活态左侧霓虹指示条 */
@@ -342,28 +414,29 @@
     width: 2px;
     background: var(--neon-blue);
     border-radius: 0 2px 2px 0;
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    box-shadow: var(--neon-glow-shadow-md);
   }
 
   /* === 按钮系统 === */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl;
-    @apply px-5 py-2.5 text-sm font-semibold text-white;
+    @apply px-5 py-2.5 text-sm font-semibold;
+    color: var(--text-on-neon);
     @apply transition-all duration-300;
-    background: linear-gradient(135deg, rgba(0, 240, 255, 0.9), rgba(0, 180, 220, 0.9));
-    box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+    background: linear-gradient(135deg, var(--neon-blue-90), var(--neon-blue-mid));
+    box-shadow: var(--shadow-neon);
     @apply focus:outline-none;
     @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
   }
 
   .btn-primary:hover:not(:disabled) {
-    box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), 0 4px 15px rgba(0, 240, 255, 0.2);
+    box-shadow: var(--neon-glow-shadow-lg), var(--shadow-neon);
     transform: translateY(-1px);
   }
 
   .btn-primary:active:not(:disabled) {
     transform: translateY(0);
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+    box-shadow: var(--neon-glow-shadow-md);
   }
 
   .btn-ghost {
@@ -402,16 +475,16 @@
   /* === 标签/徽章 === */
   .badge-neon {
     @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
-    background: rgba(0, 240, 255, 0.1);
+    background: var(--neon-blue-10);
     color: var(--neon-blue);
-    border: 1px solid rgba(0, 240, 255, 0.15);
+    border: 1px solid var(--neon-blue-15);
   }
 
   .badge-accent {
     @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
-    background: rgba(138, 43, 226, 0.15);
-    color: #A855F7;
-    border: 1px solid rgba(138, 43, 226, 0.2);
+    background: var(--neon-purple-15);
+    color: var(--neon-purple-glow-text);
+    border: 1px solid var(--neon-purple-20);
   }
 
   /* === 骨架屏加载 === */
@@ -432,11 +505,11 @@
 @layer utilities {
   /* 文字霓虹发光 */
   .text-neon-glow {
-    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 30px rgba(0, 240, 255, 0.2);
+    text-shadow: 0 0 10px var(--neon-blue-50), 0 0 30px var(--neon-blue-20);
   }
 
   .text-accent-glow {
-    text-shadow: 0 0 10px rgba(138, 43, 226, 0.5), 0 0 30px rgba(138, 43, 226, 0.2);
+    text-shadow: 0 0 10px var(--neon-purple-20), 0 0 30px var(--neon-purple-10);
   }
 
   /* 霓虹蓝文字 */
@@ -502,13 +575,13 @@
     border-radius: 50%;
     background: var(--neon-blue);
     cursor: pointer;
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    box-shadow: var(--neon-glow-shadow-md);
     transition: all 0.2s;
   }
 
   input[type="range"]::-webkit-slider-thumb:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
+    box-shadow: var(--neon-glow-shadow-lg);
   }
 
   input[type="range"]::-moz-range-thumb {
@@ -518,7 +591,7 @@
     background: var(--neon-blue);
     cursor: pointer;
     border: none;
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    box-shadow: var(--neon-glow-shadow-md);
   }
 
   /* 视频字幕样式覆盖 */
@@ -545,7 +618,7 @@
     border: 1px solid var(--glass-border);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    box-shadow: var(--shadow-elevated), 0 0 1px rgba(0, 240, 255, 0.2);
+    box-shadow: var(--shadow-elevated), var(--modal-glow);
   }
 
   /* Tooltip */
@@ -587,7 +660,7 @@
     height: 2px;
     background: var(--neon-blue);
     border-radius: 2px;
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    box-shadow: var(--neon-glow-shadow-md);
   }
 
   /* 标签页内容区过渡动画 */

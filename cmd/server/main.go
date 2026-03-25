@@ -134,6 +134,9 @@ func main() {
 
 		// 海报/缩略图
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
+		api.GET("/series/:id/poster", handlers.Series.Poster)
+		api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
+		api.GET("/media/:id/persons", handlers.Media.GetPersons)
 
 		// 字幕
 		api.GET("/subtitle/:id/tracks", handlers.Subtitle.ListTracks)
@@ -149,6 +152,8 @@ func main() {
 		api.GET("/users/me/favorites", handlers.User.Favorites)
 		api.POST("/users/me/favorites/:mediaId", handlers.User.AddFavorite)
 		api.DELETE("/users/me/favorites/:mediaId", handlers.User.RemoveFavorite)
+		api.GET("/users/me/favorites/:mediaId/check", handlers.User.CheckFavorite)
+		api.GET("/users/me/progress/:mediaId", handlers.User.GetProgress)
 
 		// 观看历史
 		api.GET("/users/me/history", handlers.User.History)
@@ -165,9 +170,12 @@ func main() {
 
 		// 搜索
 		api.GET("/search", handlers.Media.Search)
+		api.GET("/search/advanced", handlers.Media.SearchAdvanced)
+		api.GET("/search/mixed", handlers.Media.SearchMixed)
 
 		// 智能推荐
 		api.GET("/recommend", handlers.Recommend.GetRecommendations)
+		api.GET("/recommend/similar/:mediaId", handlers.Recommend.GetSimilarMedia)
 
 		// 投屏
 		api.GET("/cast/devices", handlers.Cast.ListDevices)
@@ -189,6 +197,10 @@ func main() {
 		api.GET("/media/:id/comments", handlers.Comment.ListByMedia)
 		api.POST("/media/:id/comments", handlers.Comment.Create)
 		api.DELETE("/comments/:id", handlers.Comment.Delete)
+
+		// 播放统计
+		api.POST("/stats/playback", handlers.Stats.RecordPlayback)
+		api.GET("/stats/me", handlers.Stats.GetUserStats)
 	}
 
 	// 管理路由
@@ -199,6 +211,7 @@ func main() {
 		admin.DELETE("/users/:id", handlers.Admin.DeleteUser)
 		admin.GET("/system", handlers.Admin.SystemInfo)
 		admin.GET("/transcode/status", handlers.Admin.TranscodeStatus)
+		admin.POST("/transcode/:taskId/cancel", handlers.Admin.CancelTranscode)
 
 		// TMDb 配置管理
 		admin.GET("/settings/tmdb", handlers.Admin.GetTMDbConfig)
@@ -237,9 +250,46 @@ func main() {
 		// 手动元数据匹配
 		admin.GET("/metadata/search", handlers.Admin.SearchMetadata)
 		admin.POST("/media/:mediaId/match", handlers.Admin.MatchMetadata)
+		admin.POST("/media/:mediaId/unmatch", handlers.Admin.UnmatchMetadata)
+		admin.PUT("/media/:mediaId/metadata", handlers.Admin.UpdateMediaMetadata)
+		admin.DELETE("/media/:mediaId", handlers.Admin.DeleteMedia)
+
+		// 剧集合集管理
+		admin.POST("/series/:seriesId/match", handlers.Admin.MatchSeriesMetadata)
+		admin.POST("/series/:seriesId/unmatch", handlers.Admin.UnmatchSeriesMetadata)
+		admin.POST("/series/:seriesId/scrape", handlers.Admin.ScrapeSeriesMetadata)
+		admin.PUT("/series/:seriesId/metadata", handlers.Admin.UpdateSeriesMetadata)
+		admin.DELETE("/series/:seriesId", handlers.Admin.DeleteSeries)
+
+		// 图片管理
+		admin.GET("/images/tmdb", handlers.Admin.SearchTMDbImages)
+		admin.POST("/media/:mediaId/image/upload", handlers.Admin.UploadMediaImage)
+		admin.POST("/media/:mediaId/image/url", handlers.Admin.SetMediaImageByURL)
+		admin.POST("/media/:mediaId/image/tmdb", handlers.Admin.SetMediaImageFromTMDb)
+		admin.POST("/series/:seriesId/image/upload", handlers.Admin.UploadSeriesImage)
+		admin.POST("/series/:seriesId/image/url", handlers.Admin.SetSeriesImageByURL)
+		admin.POST("/series/:seriesId/image/tmdb", handlers.Admin.SetSeriesImageFromTMDb)
 
 		// 文件系统浏览
 		admin.GET("/fs/browse", handlers.Admin.BrowseFS)
+
+		// Bangumi 数据源
+		admin.GET("/metadata/bangumi/search", handlers.Admin.SearchBangumi)
+		admin.GET("/metadata/bangumi/subject/:subjectId", handlers.Admin.GetBangumiSubject)
+		admin.POST("/media/:mediaId/match/bangumi", handlers.Admin.MatchMediaBangumi)
+		admin.POST("/series/:seriesId/match/bangumi", handlers.Admin.MatchSeriesBangumi)
+		admin.GET("/settings/bangumi", handlers.Admin.GetBangumiConfig)
+		admin.PUT("/settings/bangumi", handlers.Admin.UpdateBangumiConfig)
+		admin.DELETE("/settings/bangumi", handlers.Admin.ClearBangumiConfig)
+
+		// 数据备份与恢复
+		admin.POST("/backup/json", handlers.Backup.ExportJSON)
+		admin.POST("/backup/zip", handlers.Backup.ExportZIP)
+		admin.POST("/backup/import", handlers.Backup.ImportBackup)
+		admin.GET("/backup/list", handlers.Backup.ListBackups)
+
+		// 用户观影统计（管理员）
+		admin.GET("/stats/:userId", handlers.Stats.GetUserStatsAdmin)
 	}
 
 	// 静态文件（前端构建产物）

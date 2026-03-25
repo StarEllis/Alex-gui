@@ -34,6 +34,16 @@ type SecretsConfig struct {
 	JWTSecret string `mapstructure:"jwt_secret"`
 	// TMDb API Key，用于元数据刮削
 	TMDbAPIKey string `mapstructure:"tmdb_api_key"`
+	// TMDb API 代理地址（解决国内直连超时问题，如 https://api.tmdb.org 的镜像）
+	// 留空则使用官方地址 https://api.themoviedb.org
+	TMDbAPIProxy string `mapstructure:"tmdb_api_proxy"`
+	// TMDb 图片代理地址（解决国内图片下载超时，如 https://image.tmdb.org 的镜像）
+	// 留空则使用官方地址 https://image.tmdb.org
+	TMDbImageProxy string `mapstructure:"tmdb_image_proxy"`
+	// Bangumi Access Token（用于提高 API 请求速率限制，可选）
+	// 获取地址: https://next.bgm.tv/demo/access-token
+	// 留空也可使用（匿名请求，速率较低）
+	BangumiAccessToken string `mapstructure:"bangumi_access_token"`
 	// 预留：其他第三方服务密钥可在此扩展
 }
 
@@ -204,6 +214,9 @@ func setDefaults() {
 	// ---- 密钥 ----
 	viper.SetDefault("secrets.jwt_secret", "nowen-video-secret-change-me")
 	viper.SetDefault("secrets.tmdb_api_key", "")
+	viper.SetDefault("secrets.tmdb_api_proxy", "")
+	viper.SetDefault("secrets.tmdb_image_proxy", "")
+	viper.SetDefault("secrets.bangumi_access_token", "")
 
 	// ---- 应用 ----
 	viper.SetDefault("app.port", 8080)

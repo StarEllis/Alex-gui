@@ -89,6 +89,16 @@ export interface Media {
   resolution: string
   duration: number
   subtitle_paths: string
+  // V2 扩展字段
+  tmdb_id: number
+  douban_id: string
+  bangumi_id: number
+  country: string
+  language: string
+  tagline: string
+  studio: string
+  trailer_url: string
+  // 剧集字段
   series_id: string
   season_num: number
   episode_num: number
@@ -112,8 +122,51 @@ export interface Series {
   folder_path: string
   season_count: number
   episode_count: number
+  // V2 扩展字段
+  tmdb_id: number
+  douban_id: string
+  bangumi_id: number
+  country: string
+  language: string
+  studio: string
   created_at: string
   episodes?: Media[]
+}
+
+// ==================== 人物 ====================
+export interface Person {
+  id: string
+  name: string
+  orig_name: string
+  profile_url: string
+  tmdb_id: number
+}
+
+export interface MediaPerson {
+  id: string
+  media_id: string
+  series_id: string
+  person_id: string
+  role: 'director' | 'actor' | 'writer'
+  character: string
+  sort_order: number
+  person: Person
+}
+
+// ==================== 播放统计 ====================
+export interface UserStatsOverview {
+  total_minutes: number
+  total_hours: number
+  daily_stats: { date: string; total_minutes: number; media_count: number }[]
+  top_genres: { genres: string; total_minutes: number }[]
+  most_watched: { media_id: string; title: string; poster_path: string; total_minutes: number }[]
+}
+
+// ==================== 数据备份 ====================
+export interface BackupFile {
+  name: string
+  size: number
+  modified: string
 }
 
 export interface SeasonInfo {
@@ -442,6 +495,17 @@ export interface TMDbSearchResult {
   genre_ids: number[]
 }
 
+// ==================== TMDb图片信息 ====================
+export interface TMDbImageInfo {
+  file_path: string
+  width: number
+  height: number
+  aspect_ratio: number
+  vote_average: number
+  vote_count: number
+  iso_639_1: string
+}
+
 // ==================== 系统全局设置 ====================
 export interface SystemSettings {
   enable_gpu_transcode: boolean
@@ -449,4 +513,35 @@ export interface SystemSettings {
   metadata_store_path: string
   play_cache_path: string
   enable_direct_link: boolean
+}
+
+// ==================== Bangumi 数据源 ====================
+export interface BangumiSubject {
+  id: number
+  type: number   // 1=书籍 2=动画 3=音乐 4=游戏 6=三次元
+  name: string   // 原始名称（日文/英文）
+  name_cn: string  // 中文名称
+  summary: string
+  air_date: string
+  url: string
+  eps: number
+  platform: string
+  images: {
+    large: string
+    common: string
+    medium: string
+    small: string
+    grid: string
+  } | null
+  rating: {
+    total: number
+    score: number
+    rank: number
+  } | null
+  tags: { name: string; count: number }[]
+}
+
+export interface BangumiConfigStatus {
+  configured: boolean
+  masked_token: string
 }

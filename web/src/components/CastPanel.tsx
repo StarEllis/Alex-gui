@@ -90,12 +90,12 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
     <div className="absolute bottom-full right-0 mb-2 w-80 rounded-xl shadow-2xl"
       style={{
         background: 'rgba(11, 17, 32, 0.92)',
-        border: '1px solid rgba(0, 240, 255, 0.1)',
+        border: '1px solid var(--neon-blue-10)',
         backdropFilter: 'blur(20px)',
       }}
     >
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(0, 240, 255, 0.08)' }}>
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--neon-blue-8)' }}>
         <div className="flex items-center gap-2">
           <Monitor size={18} className="text-neon-blue" />
           <h3 className="text-sm font-medium text-white">投屏</h3>
@@ -110,7 +110,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
 
       {/* 正在投屏 */}
       {session && (
-        <div className="p-4" style={{ borderBottom: '1px solid rgba(0, 240, 255, 0.08)' }}>
+        <div className="p-4" style={{ borderBottom: '1px solid var(--neon-blue-8)' }}>
           <div className="mb-2 flex items-center gap-2">
             <div className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--neon-green)', boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)' }} />
             <span className="text-xs" style={{ color: 'var(--neon-green)' }}>正在投屏</span>
@@ -124,7 +124,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
               className="rounded-full p-2.5 text-white transition-all hover:scale-105"
               style={{
                 background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                boxShadow: '0 0 15px rgba(0, 240, 255, 0.3)',
+                boxShadow: 'var(--neon-glow-shadow-md)',
               }}
             >
               {session.status === 'playing' ? <Pause size={18} /> : <Play size={18} />}
@@ -132,7 +132,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
             <button
               onClick={() => controlCast('stop')}
               className="rounded-full p-2 text-surface-300 transition-colors hover:text-white"
-              style={{ background: 'rgba(0, 240, 255, 0.06)', border: '1px solid rgba(0, 240, 255, 0.1)' }}
+              style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)' }}
               title="停止投屏"
             >
               <Square size={16} />
@@ -191,7 +191,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
                   className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-neon-blue/5 disabled:opacity-50"
                 >
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl"
-                    style={{ background: 'rgba(0, 240, 255, 0.06)', border: '1px solid rgba(0, 240, 255, 0.1)' }}
+                    style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)' }}
                   >
                     <Monitor size={16} className="text-neon-blue" />
                   </div>

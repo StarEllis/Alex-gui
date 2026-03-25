@@ -13,6 +13,8 @@ import HistoryPage from '@/pages/HistoryPage'
 import PlaylistsPage from '@/pages/PlaylistsPage'
 import AdminPage from '@/pages/AdminPage'
 import SeriesDetailPage from '@/pages/SeriesDetailPage'
+import ProfilePage from '@/pages/ProfilePage'
+import StatsPage from '@/pages/StatsPage'
 
 // 需要登录的路由守卫
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -59,6 +61,8 @@ export default function App() {
             <Route path="history" element={<HistoryPage />} />
             <Route path="playlists" element={<PlaylistsPage />} />
             <Route path="admin" element={<AdminPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="stats" element={<StatsPage />} />
           </Route>
 
           {/* 未匹配路由 */}

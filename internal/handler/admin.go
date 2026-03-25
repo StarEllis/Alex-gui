@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
@@ -94,6 +96,22 @@ func (h *AdminHandler) TranscodeStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+// CancelTranscode 取消正在运行的转码任务
+func (h *AdminHandler) CancelTranscode(c *gin.Context) {
+	taskID := c.Param("taskId")
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务ID不能为空"})
+		return
+	}
+
+	if err := h.transcodeService.CancelTranscode(taskID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "转码任务已取消"})
 }
 
 // ==================== TMDb 配置管理 ====================
@@ -464,6 +482,100 @@ func (h *AdminHandler) MatchMetadata(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "元数据已关联"})
 }
 
+// UnmatchMetadata 解除媒体的元数据匹配
+func (h *AdminHandler) UnmatchMetadata(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	if err := h.metadataService.UnmatchMedia(mediaID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "解除匹配失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已解除元数据匹配"})
+}
+
+// DeleteMedia 删除单个媒体记录（仅从数据库移除，不删除文件）
+func (h *AdminHandler) DeleteMedia(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	if err := h.libraryService.DeleteMedia(mediaID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除影片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "影片已删除"})
+}
+
+// UpdateMediaMetadataRequest 编辑元数据请求
+type UpdateMediaMetadataRequest struct {
+	Title     *string  `json:"title"`
+	OrigTitle *string  `json:"orig_title"`
+	Year      *int     `json:"year"`
+	Overview  *string  `json:"overview"`
+	Rating    *float64 `json:"rating"`
+	Genres    *string  `json:"genres"`
+	Country   *string  `json:"country"`
+	Language  *string  `json:"language"`
+	Tagline   *string  `json:"tagline"`
+	Studio    *string  `json:"studio"`
+}
+
+// UpdateMediaMetadata 编辑媒体元数据
+func (h *AdminHandler) UpdateMediaMetadata(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	var req UpdateMediaMetadataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	media, err := h.libraryService.GetMediaByID(mediaID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "影片不存在"})
+		return
+	}
+
+	// 仅更新提供的字段
+	if req.Title != nil {
+		media.Title = *req.Title
+	}
+	if req.OrigTitle != nil {
+		media.OrigTitle = *req.OrigTitle
+	}
+	if req.Year != nil {
+		media.Year = *req.Year
+	}
+	if req.Overview != nil {
+		media.Overview = *req.Overview
+	}
+	if req.Rating != nil {
+		media.Rating = *req.Rating
+	}
+	if req.Genres != nil {
+		media.Genres = *req.Genres
+	}
+	if req.Country != nil {
+		media.Country = *req.Country
+	}
+	if req.Language != nil {
+		media.Language = *req.Language
+	}
+	if req.Tagline != nil {
+		media.Tagline = *req.Tagline
+	}
+	if req.Studio != nil {
+		media.Studio = *req.Studio
+	}
+
+	if err := h.libraryService.UpdateMedia(media); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新元数据失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "元数据已更新", "data": media})
+}
+
 // ==================== 系统设置（全局） ====================
 
 // 系统设置键名常量
@@ -622,6 +734,499 @@ func (h *AdminHandler) BrowseFS(c *gin.Context) {
 			"current": dir,
 			"parent":  parent,
 			"items":   items,
+		},
+	})
+}
+
+// ==================== 剧集合集管理 ====================
+
+// MatchSeriesMetadata 手动匹配剧集合集元数据
+func (h *AdminHandler) MatchSeriesMetadata(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req struct {
+		TMDbID int `json:"tmdb_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 tmdb_id"})
+		return
+	}
+
+	if err := h.metadataService.MatchSeriesWithTMDb(seriesID, req.TMDbID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "匹配失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "元数据已关联"})
+}
+
+// UnmatchSeriesMetadata 解除剧集合集的元数据匹配
+func (h *AdminHandler) UnmatchSeriesMetadata(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	if err := h.metadataService.UnmatchSeries(seriesID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "解除匹配失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已解除元数据匹配"})
+}
+
+// ScrapeSeriesMetadata 刷新剧集合集元数据
+func (h *AdminHandler) ScrapeSeriesMetadata(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	if err := h.metadataService.ScrapeSeries(seriesID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "刷新元数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "元数据已刷新"})
+}
+
+// UpdateSeriesMetadataRequest 编辑剧集合集元数据请求
+type UpdateSeriesMetadataRequest struct {
+	Title     *string  `json:"title"`
+	OrigTitle *string  `json:"orig_title"`
+	Year      *int     `json:"year"`
+	Overview  *string  `json:"overview"`
+	Rating    *float64 `json:"rating"`
+	Genres    *string  `json:"genres"`
+	Country   *string  `json:"country"`
+	Language  *string  `json:"language"`
+	Studio    *string  `json:"studio"`
+}
+
+// UpdateSeriesMetadata 编辑剧集合集元数据
+func (h *AdminHandler) UpdateSeriesMetadata(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req UpdateSeriesMetadataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	series, err := h.libraryService.GetSeriesByID(seriesID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "剧集合集不存在"})
+		return
+	}
+
+	if req.Title != nil {
+		series.Title = *req.Title
+	}
+	if req.OrigTitle != nil {
+		series.OrigTitle = *req.OrigTitle
+	}
+	if req.Year != nil {
+		series.Year = *req.Year
+	}
+	if req.Overview != nil {
+		series.Overview = *req.Overview
+	}
+	if req.Rating != nil {
+		series.Rating = *req.Rating
+	}
+	if req.Genres != nil {
+		series.Genres = *req.Genres
+	}
+	if req.Country != nil {
+		series.Country = *req.Country
+	}
+	if req.Language != nil {
+		series.Language = *req.Language
+	}
+	if req.Studio != nil {
+		series.Studio = *req.Studio
+	}
+
+	if err := h.libraryService.UpdateSeries(series); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新元数据失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "元数据已更新", "data": series})
+}
+
+// DeleteSeries 删除剧集合集记录（仅从数据库移除，不删除文件）
+func (h *AdminHandler) DeleteSeries(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	if err := h.libraryService.DeleteSeries(seriesID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除剧集失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "剧集已删除"})
+}
+
+// ==================== 图片管理 ====================
+
+// SearchTMDbImages 获取TMDb条目的所有可用图片
+func (h *AdminHandler) SearchTMDbImages(c *gin.Context) {
+	mediaType := c.DefaultQuery("type", "movie") // movie 或 tv
+	tmdbID, err := strconv.Atoi(c.Query("tmdb_id"))
+	if err != nil || tmdbID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供有效的 tmdb_id"})
+		return
+	}
+
+	result, err := h.metadataService.SearchTMDbImages(mediaType, tmdbID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取图片列表失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+// UploadMediaImage 上传图片到指定Media
+func (h *AdminHandler) UploadMediaImage(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+	imageType := c.DefaultQuery("type", "poster") // poster 或 backdrop
+	if imageType != "poster" && imageType != "backdrop" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type 必须为 poster 或 backdrop"})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传图片文件"})
+		return
+	}
+
+	// 检查文件大小（10MB）
+	if file.Size > 10*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "图片文件过大，最大支持10MB"})
+		return
+	}
+
+	// 检查文件格式
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
+	if !allowedExts[ext] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 JPG、PNG、WebP 格式"})
+		return
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取上传文件失败"})
+		return
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取上传文件失败"})
+		return
+	}
+
+	localPath, err := h.metadataService.SaveUploadedImageForMedia(mediaID, data, ext, imageType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存图片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "图片已更新", "path": localPath})
+}
+
+// UploadSeriesImage 上传图片到指定Series
+func (h *AdminHandler) UploadSeriesImage(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+	imageType := c.DefaultQuery("type", "poster")
+	if imageType != "poster" && imageType != "backdrop" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type 必须为 poster 或 backdrop"})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传图片文件"})
+		return
+	}
+
+	if file.Size > 10*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "图片文件过大，最大支持10MB"})
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
+	if !allowedExts[ext] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 JPG、PNG、WebP 格式"})
+		return
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取上传文件失败"})
+		return
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取上传文件失败"})
+		return
+	}
+
+	localPath, err := h.metadataService.SaveUploadedImageForSeries(seriesID, data, ext, imageType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存图片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "图片已更新", "path": localPath})
+}
+
+// SetMediaImageByURL 通过URL设置Media图片
+func (h *AdminHandler) SetMediaImageByURL(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	var req struct {
+		URL       string `json:"url" binding:"required"`
+		ImageType string `json:"image_type"` // poster 或 backdrop
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供图片URL"})
+		return
+	}
+
+	if req.ImageType == "" {
+		req.ImageType = "poster"
+	}
+	if req.ImageType != "poster" && req.ImageType != "backdrop" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image_type 必须为 poster 或 backdrop"})
+		return
+	}
+
+	localPath, err := h.metadataService.DownloadURLImageForMedia(mediaID, req.URL, req.ImageType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "下载图片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "图片已更新", "path": localPath})
+}
+
+// SetSeriesImageByURL 通过URL设置Series图片
+func (h *AdminHandler) SetSeriesImageByURL(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req struct {
+		URL       string `json:"url" binding:"required"`
+		ImageType string `json:"image_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供图片URL"})
+		return
+	}
+
+	if req.ImageType == "" {
+		req.ImageType = "poster"
+	}
+	if req.ImageType != "poster" && req.ImageType != "backdrop" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image_type 必须为 poster 或 backdrop"})
+		return
+	}
+
+	localPath, err := h.metadataService.DownloadURLImageForSeries(seriesID, req.URL, req.ImageType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "下载图片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "图片已更新", "path": localPath})
+}
+
+// SetMediaImageFromTMDb 从TMDb选择图片设置到Media
+func (h *AdminHandler) SetMediaImageFromTMDb(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	var req struct {
+		TMDbPath  string `json:"tmdb_path" binding:"required"` // TMDb图片路径，如 /abc123.jpg
+		ImageType string `json:"image_type"`                   // poster 或 backdrop
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 tmdb_path"})
+		return
+	}
+
+	if req.ImageType == "" {
+		req.ImageType = "poster"
+	}
+
+	localPath, err := h.metadataService.DownloadTMDbImageForMedia(mediaID, req.TMDbPath, req.ImageType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "下载图片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "图片已更新", "path": localPath})
+}
+
+// SetSeriesImageFromTMDb 从TMDb选择图片设置到Series
+func (h *AdminHandler) SetSeriesImageFromTMDb(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req struct {
+		TMDbPath  string `json:"tmdb_path" binding:"required"`
+		ImageType string `json:"image_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 tmdb_path"})
+		return
+	}
+
+	if req.ImageType == "" {
+		req.ImageType = "poster"
+	}
+
+	localPath, err := h.metadataService.DownloadTMDbImageForSeries(seriesID, req.TMDbPath, req.ImageType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "下载图片失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "图片已更新", "path": localPath})
+}
+
+// ==================== Bangumi 数据源管理 ====================
+
+// SearchBangumi 搜索 Bangumi 条目
+func (h *AdminHandler) SearchBangumi(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供搜索关键词"})
+		return
+	}
+
+	// type: 2=动画, 6=三次元(电视剧/电影)
+	subjectType, _ := strconv.Atoi(c.DefaultQuery("type", "2"))
+	if subjectType != 1 && subjectType != 2 && subjectType != 3 && subjectType != 4 && subjectType != 6 {
+		subjectType = 2 // 默认动画
+	}
+	year, _ := strconv.Atoi(c.Query("year"))
+
+	results, err := h.metadataService.SearchBangumi(query, subjectType, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": results})
+}
+
+// GetBangumiSubject 获取 Bangumi 条目详情
+func (h *AdminHandler) GetBangumiSubject(c *gin.Context) {
+	subjectID, err := strconv.Atoi(c.Param("subjectId"))
+	if err != nil || subjectID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供有效的 Bangumi 条目 ID"})
+		return
+	}
+
+	subject, err := h.metadataService.GetBangumiSubjectDetail(subjectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取条目详情失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": subject})
+}
+
+// MatchMediaBangumi 手动关联 Bangumi 条目到媒体
+func (h *AdminHandler) MatchMediaBangumi(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	var req struct {
+		BangumiID int `json:"bangumi_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 bangumi_id"})
+		return
+	}
+
+	if err := h.metadataService.MatchMediaWithBangumi(mediaID, req.BangumiID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "关联 Bangumi 元数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已关联 Bangumi 元数据"})
+}
+
+// MatchSeriesBangumi 手动关联 Bangumi 条目到剧集合集
+func (h *AdminHandler) MatchSeriesBangumi(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req struct {
+		BangumiID int `json:"bangumi_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 bangumi_id"})
+		return
+	}
+
+	if err := h.metadataService.MatchSeriesWithBangumi(seriesID, req.BangumiID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "关联 Bangumi 元数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已关联 Bangumi 元数据"})
+}
+
+// GetBangumiConfig 获取 Bangumi 配置状态
+func (h *AdminHandler) GetBangumiConfig(c *gin.Context) {
+	token := h.cfg.Secrets.BangumiAccessToken
+	configured := token != ""
+	maskedToken := ""
+	if configured {
+		if len(token) <= 8 {
+			maskedToken = strings.Repeat("*", len(token))
+		} else {
+			maskedToken = token[:4] + strings.Repeat("*", len(token)-8) + token[len(token)-4:]
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"configured":   configured,
+			"masked_token": maskedToken,
+		},
+	})
+}
+
+// UpdateBangumiConfig 更新 Bangumi Access Token
+func (h *AdminHandler) UpdateBangumiConfig(c *gin.Context) {
+	var req struct {
+		AccessToken string `json:"access_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 Access Token"})
+		return
+	}
+
+	h.cfg.Secrets.BangumiAccessToken = req.AccessToken
+	h.logger.Info("Bangumi Access Token 已更新")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Bangumi Access Token 已保存",
+		"data": gin.H{
+			"configured": true,
+		},
+	})
+}
+
+// ClearBangumiConfig 清除 Bangumi Access Token
+func (h *AdminHandler) ClearBangumiConfig(c *gin.Context) {
+	h.cfg.Secrets.BangumiAccessToken = ""
+	h.logger.Info("Bangumi Access Token 已清除")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Bangumi Access Token 已清除",
+		"data": gin.H{
+			"configured": false,
 		},
 	})
 }

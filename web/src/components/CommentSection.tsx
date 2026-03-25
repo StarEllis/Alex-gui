@@ -131,7 +131,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
             onClick={handleSubmit}
             disabled={!content.trim()}
             className="rounded-xl px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 transition-all"
-            style={{ background: 'linear-gradient(135deg, rgba(0,240,255,0.9), rgba(0,180,220,0.9))', boxShadow: '0 0 10px rgba(0,240,255,0.2)' }}
+style={{ background: 'linear-gradient(135deg, var(--neon-blue-90), var(--neon-blue-mid))', boxShadow: 'var(--shadow-neon)' }}
           >
             <Send size={16} />
           </button>

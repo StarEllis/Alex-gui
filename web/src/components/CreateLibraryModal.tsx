@@ -14,6 +14,7 @@ import {
   Globe,
   Eye,
 } from 'lucide-react'
+import FileBrowser from './FileBrowser'
 
 // 内容类型配置
 const LIBRARY_TYPES = [
@@ -23,8 +24,8 @@ const LIBRARY_TYPES = [
     desc: '各种类型电影',
     icon: Film,
     color: 'var(--neon-blue)',
-    bg: 'rgba(0, 240, 255, 0.08)',
-    border: 'rgba(0, 240, 255, 0.2)',
+    bg: 'var(--neon-blue-8)',
+    border: 'var(--neon-blue-20)',
   },
   {
     value: 'tvshow' as const,
@@ -32,8 +33,8 @@ const LIBRARY_TYPES = [
     desc: '电视剧、综艺等',
     icon: Tv,
     color: 'var(--neon-purple)',
-    bg: 'rgba(138, 43, 226, 0.08)',
-    border: 'rgba(138, 43, 226, 0.2)',
+    bg: 'var(--neon-purple-8)',
+    border: 'var(--neon-purple-20)',
   },
   {
     value: 'mixed' as const,
@@ -106,7 +107,7 @@ function ToggleSwitch({
         background: checked
           ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))'
           : 'var(--border-default)',
-        boxShadow: checked ? '0 0 12px rgba(0, 240, 255, 0.25)' : 'none',
+        boxShadow: checked ? 'var(--neon-glow-shadow-md)' : 'none',
       }}
     >
       <span
@@ -129,6 +130,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
   const [showLangDropdown, setShowLangDropdown] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [showFileBrowser, setShowFileBrowser] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -214,7 +216,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
         style={{
           background: 'var(--bg-elevated)',
           border: '1px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-elevated), 0 0 60px rgba(0, 240, 255, 0.06)',
+          boxShadow: 'var(--shadow-elevated), var(--modal-panel-glow)',
           backdropFilter: 'blur(30px)',
           maxHeight: '90vh',
         }}
@@ -355,15 +357,18 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                 请输入媒体文件所在的文件夹路径，如 <code className="rounded px-1 py-0.5 text-neon" style={{ background: 'var(--nav-hover-bg)' }}>/media/movies</code>
               </p>
               <div className="flex items-center gap-2">
-                <div
+                <button
+                  type="button"
+                  onClick={() => setShowFileBrowser(true)}
                   className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors cursor-pointer hover:bg-[var(--nav-hover-bg)]"
                   style={{
                     border: '1.5px dashed var(--border-hover)',
                     color: 'var(--text-tertiary)',
                   }}
+                  title="浏览服务器目录"
                 >
                   <FolderPlus size={18} />
-                </div>
+                </button>
                 <input
                   type="text"
                   value={path}
@@ -439,7 +444,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                             ? 'none'
                             : '2px solid var(--border-hover)',
                           boxShadow: advanced.enable_file_filter
-                            ? '0 0 8px rgba(0, 240, 255, 0.25)'
+                            ? '0 0 8px var(--neon-blue-25)'
                             : 'none',
                         }}
                       >
@@ -680,6 +685,17 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
           </div>
         </div>
       </div>
+
+      {/* 服务端文件浏览器 */}
+      <FileBrowser
+        open={showFileBrowser}
+        onClose={() => setShowFileBrowser(false)}
+        onSelect={(selectedPath) => {
+          setPath(selectedPath)
+          setError('')
+        }}
+        initialPath={path || '/'}
+      />
     </div>
   )
 }

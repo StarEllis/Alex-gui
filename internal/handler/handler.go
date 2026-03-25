@@ -24,13 +24,15 @@ type Handlers struct {
 	WS        *WSHandler
 	Bookmark  *BookmarkHandler
 	Comment   *CommentHandler
+	Stats     *StatsHandler
+	Backup    *BackupHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
 	return &Handlers{
 		Auth:    &AuthHandler{authService: services.Auth, logger: logger},
 		Library: &LibraryHandler{libService: services.Library, logger: logger},
-		Media:   &MediaHandler{mediaService: services.Media, logger: logger},
+		Media:   &MediaHandler{mediaService: services.Media, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Series:  &SeriesHandler{seriesService: services.Series, logger: logger},
 		Stream:  &StreamHandler{streamService: services.Stream, logger: logger},
 		User:    &UserHandler{userService: services.User, mediaService: services.Media, logger: logger},
@@ -54,5 +56,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		WS:        &WSHandler{hub: services.WSHub, logger: logger},
 		Bookmark:  &BookmarkHandler{bookmarkService: services.Bookmark, logger: logger},
 		Comment:   &CommentHandler{commentService: services.Comment, logger: logger},
+		Stats:     &StatsHandler{statsService: services.Stats, logger: logger},
+		Backup:    &BackupHandler{backupService: services.Backup, logger: logger},
 	}
 }

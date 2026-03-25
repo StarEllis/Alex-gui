@@ -3,10 +3,12 @@ import { Link, useLocation } from 'react-router-dom'
 import { mediaApi, recommendApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
+import { formatProgress } from '@/utils/format'
 import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
-import { Play, Clock, Sparkles } from 'lucide-react'
+import { Play, Clock, Sparkles, ChevronLeft, ChevronRight, Star } from 'lucide-react'
 import { streamApi } from '@/api'
+import clsx from 'clsx'
 
 export default function HomePage() {
   const [recentItems, setRecentItems] = useState<MixedItem[]>([])
@@ -75,14 +77,11 @@ export default function HomePage() {
     }
   }, [on, off, fetchData])
 
-  // 格式化进度百分比
-  const formatProgress = (position: number, duration: number) => {
-    if (!duration) return 0
-    return Math.round((position / duration) * 100)
-  }
-
   return (
     <div className="space-y-10">
+      {/* Hero Banner — 高分推荐轮播 */}
+      {recommendations.length > 0 && <HeroBanner items={recommendations.slice(0, 5)} />}
+
       {/* 继续观看 */}
       {continueList.length > 0 && (
         <section className="animate-fade-in">
@@ -101,7 +100,7 @@ export default function HomePage() {
                 <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}>
                   {item.media.poster_path ? (
                     <img
-                      src={item.media.poster_path}
+                      src={streamApi.getPosterUrl(item.media_id)}
                       alt={item.media.title}
                       className="h-full w-full object-cover"
                     />
@@ -121,7 +120,7 @@ export default function HomePage() {
                       style={{
                         width: `${formatProgress(item.position, item.duration)}%`,
                         background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                        boxShadow: '0 0 6px rgba(0, 240, 255, 0.3)',
+                        boxShadow: 'var(--neon-glow-shadow-sm)',
                       }}
                     />
                   </div>
@@ -178,7 +177,7 @@ export default function HomePage() {
                           className="flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300"
                           style={{
                             background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                            boxShadow: '0 0 20px rgba(0, 240, 255, 0.4)',
+                            boxShadow: 'var(--neon-glow-shadow-lg)',
                           }}
                         >
                           <Play size={18} className="ml-0.5 text-white" fill="white" />
@@ -220,14 +219,19 @@ export default function HomePage() {
         loading={loading}
       />
 
+      {/* 分类推荐行 — 按类型分组横向滚动 */}
+      {!loading && recentItems.length > 0 && (
+        <GenreRows items={recentItems} />
+      )}
+
       {/* 空状态 */}
       {!loading && recentItems.length === 0 && continueList.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div
             className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl animate-float"
             style={{
-              background: 'linear-gradient(135deg, rgba(0,240,255,0.1), rgba(138,43,226,0.1))',
-              border: '1px solid rgba(0, 240, 255, 0.1)',
+              background: 'linear-gradient(135deg, var(--neon-blue-10), var(--neon-purple-10))',
+              border: '1px solid var(--neon-blue-10)',
             }}
           >
             <Play size={36} className="text-surface-600" />
@@ -241,5 +245,324 @@ export default function HomePage() {
         </div>
       )}
     </div>
+  )
+}
+
+// ===================== Hero Banner 轮播组件 =====================
+function HeroBanner({ items }: { items: RecommendedMedia[] }) {
+  const [current, setCurrent] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 自动轮播
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCurrent((prev) => (prev + 1) % items.length)
+    }, 6000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [items.length])
+
+  const goTo = (index: number) => {
+    setCurrent(index)
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setCurrent((prev) => (prev + 1) % items.length)
+    }, 6000)
+  }
+
+  const goPrev = () => goTo((current - 1 + items.length) % items.length)
+  const goNext = () => goTo((current + 1) % items.length)
+
+  const item = items[current]
+  if (!item) return null
+
+  return (
+    <section className="animate-fade-in -mx-4 -mt-6 mb-4 sm:-mx-6 lg:-mx-8">
+      <div className="relative h-[280px] overflow-hidden rounded-b-2xl sm:h-[340px] lg:h-[400px]">
+        {/* 背景图 */}
+        {items.map((rec, i) => (
+          <div
+            key={rec.media.id}
+            className={clsx(
+              'absolute inset-0 transition-all duration-1000',
+              i === current ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
+            )}
+          >
+            <img
+              src={streamApi.getPosterUrl(rec.media.id)}
+              alt=""
+              className="h-full w-full object-cover"
+              loading={i === 0 ? 'eager' : 'lazy'}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
+        ))}
+
+        {/* 渐变遮罩 */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--bg-base) 5%, var(--bg-base)/70 40%, transparent 80%)' }} />
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, var(--bg-base)/80, transparent 60%)' }} />
+
+        {/* 内容 */}
+        <div className="absolute bottom-0 left-0 right-0 px-4 pb-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            {/* 推荐理由标签 */}
+            <span className="badge-accent mb-3 inline-block text-xs">{item.reason}</span>
+
+            {/* 标题 */}
+            <h2 className="mb-2 font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg sm:text-3xl lg:text-4xl">
+              {item.media.title}
+            </h2>
+
+            {/* 元数据 */}
+            <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-white/70">
+              {item.media.year > 0 && <span>{item.media.year}</span>}
+              {item.media.rating > 0 && (
+                <span className="flex items-center gap-1 text-yellow-400">
+                  <Star size={14} fill="currentColor" />
+                  {item.media.rating.toFixed(1)}
+                </span>
+              )}
+              {item.media.genres && (
+                <span>{item.media.genres.split(',').slice(0, 3).join(' / ')}</span>
+              )}
+            </div>
+
+            {/* 简介 */}
+            {item.media.overview && (
+              <p className="mb-5 line-clamp-2 max-w-2xl text-sm leading-relaxed text-white/60">
+                {item.media.overview}
+              </p>
+            )}
+
+            {/* 播放按钮 */}
+            <div className="flex items-center gap-3">
+              <Link
+                to={item.media.media_type === 'episode' && item.media.series_id
+                  ? `/series/${item.media.series_id}`
+                  : `/play/${item.media.id}`
+                }
+                className="group inline-flex items-center gap-2.5 rounded-2xl px-7 py-3 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5"
+                style={{
+                  background: 'linear-gradient(135deg, var(--neon-blue), rgba(0, 180, 220, 0.95))',
+                  boxShadow: 'var(--shadow-neon), 0 4px 15px var(--neon-blue-15)',
+                  color: 'var(--text-on-neon)',
+                }}
+              >
+                <Play size={18} fill="currentColor" />
+                立即播放
+              </Link>
+              <Link
+                to={`/media/${item.media.id}`}
+                className="rounded-2xl px-5 py-3 text-sm font-medium text-white/80 transition-all hover:text-white"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                查看详情
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* 左右切换按钮 */}
+        {items.length > 1 && (
+          <>
+            <button
+              onClick={goPrev}
+              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/40 transition-all hover:text-white hover:bg-white/10 sm:left-4"
+            >
+              <ChevronLeft size={24} />
+            </button>
+            <button
+              onClick={goNext}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/40 transition-all hover:text-white hover:bg-white/10 sm:right-4"
+            >
+              <ChevronRight size={24} />
+            </button>
+          </>
+        )}
+
+        {/* 底部指示器 */}
+        {items.length > 1 && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2">
+            {items.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i)}
+                className={clsx(
+                  'rounded-full transition-all duration-500',
+                  i === current
+                    ? 'h-2 w-6'
+                    : 'h-2 w-2 hover:bg-white/40'
+                )}
+                style={i === current
+                  ? { background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))', boxShadow: 'var(--neon-glow-shadow-md)' }
+                  : { background: 'rgba(255,255,255,0.2)' }
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ===================== 分类推荐行组件 =====================
+function GenreRows({ items }: { items: MixedItem[] }) {
+  // 按类型分组
+  const genreMap = new Map<string, MixedItem[]>()
+
+  items.forEach((item) => {
+    const media = item.type === 'media' ? item.media : item.series
+    if (!media) return
+    const genres = (media.genres || '').split(',').filter(Boolean)
+    genres.forEach((genre: string) => {
+      const g = genre.trim()
+      if (!g) return
+      if (!genreMap.has(g)) genreMap.set(g, [])
+      genreMap.get(g)!.push(item)
+    })
+  })
+
+  // 只展示至少有3个项目的分类
+  const genreEntries = Array.from(genreMap.entries())
+    .filter(([, list]) => list.length >= 3)
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 5) // 最多展示5个分类
+
+  if (genreEntries.length === 0) return null
+
+  return (
+    <div className="space-y-8">
+      {genreEntries.map(([genre, list]) => (
+        <GenreRow key={genre} genre={genre} items={list.slice(0, 20)} />
+      ))}
+    </div>
+  )
+}
+
+// ===================== 单个分类横向滚动行 =====================
+function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(true)
+
+  const updateScrollState = () => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 10)
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10)
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateScrollState, { passive: true })
+    updateScrollState()
+    return () => el.removeEventListener('scroll', updateScrollState)
+  }, [])
+
+  const scroll = (direction: 'left' | 'right') => {
+    const el = scrollRef.current
+    if (!el) return
+    const amount = el.clientWidth * 0.7
+    el.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
+  }
+
+  return (
+    <section className="animate-fade-in">
+      <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+        <span className="badge-accent text-xs">{genre}</span>
+      </h2>
+
+      <div className="group relative">
+        {/* 左箭头 */}
+        {canScrollLeft && (
+          <button
+            onClick={() => scroll('left')}
+            className="absolute -left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover:opacity-100"
+            style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-card)' }}
+          >
+            <ChevronLeft size={20} style={{ color: 'var(--text-primary)' }} />
+          </button>
+        )}
+
+        {/* 横向滚动容器 */}
+        <div
+          ref={scrollRef}
+          className="scrollbar-hide flex gap-4 overflow-x-auto scroll-smooth pb-2"
+        >
+          {items.map((item) => {
+            const media = item.type === 'media' ? item.media : item.series
+            if (!media) return null
+            const linkTo = item.type === 'series'
+              ? `/series/${media.id}`
+              : `/media/${media.id}`
+
+            return (
+              <Link
+                key={media.id}
+                to={linkTo}
+                className="media-card group w-[140px] flex-shrink-0 sm:w-[160px]"
+              >
+                <div className="relative aspect-[2/3] overflow-hidden rounded-xl" style={{ background: 'var(--bg-surface)' }}>
+                  <img
+                    src={streamApi.getPosterUrl(media.id)}
+                    alt={media.title}
+                    className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
+                    loading="lazy"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <div className="absolute inset-0 -z-10 flex items-center justify-center text-surface-700">
+                    <Play size={36} />
+                  </div>
+                  {/* 悬停播放按钮 */}
+                  <div className="gradient-overlay opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                    <div className="absolute bottom-2 left-2">
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-full"
+                        style={{
+                          background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                          boxShadow: 'var(--neon-glow-shadow-md)',
+                        }}
+                      >
+                        <Play size={14} className="ml-0.5 text-white" fill="white" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* 评分标签 */}                  {media.rating > 0 && (
+                    <span className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-yellow-400 backdrop-blur-sm">
+                      <Star size={10} fill="currentColor" />
+                      {media.rating.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                <div className="px-1 py-2">
+                  <h3 className="truncate text-xs font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
+                    {media.title}
+                  </h3>
+                  {media.year > 0 && (
+                    <p className="mt-0.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{media.year}</p>
+                  )}
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+
+        {/* 右箭头 */}
+        {canScrollRight && (
+          <button
+            onClick={() => scroll('right')}
+            className="absolute -right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover:opacity-100"
+            style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-card)' }}
+          >
+            <ChevronRight size={20} style={{ color: 'var(--text-primary)' }} />
+          </button>
+        )}
+      </div>
+    </section>
   )
 }

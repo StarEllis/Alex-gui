@@ -192,22 +192,50 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 
 // ==================== 剧集扫描逻辑 ====================
 
+// 常见分辨率数字，用于排除误匹配
+var resolutionNums = map[int]bool{
+	240: true, 360: true, 480: true, 540: true,
+	720: true, 1080: true, 1440: true, 2160: true, 4320: true,
+}
+
+// isResolutionContext 检查匹配位置前后是否有分辨率标志（如 p, P, i, I）
+func isResolutionContext(filename string, matchEnd int) bool {
+	if matchEnd < len(filename) {
+		nextChar := filename[matchEnd]
+		if nextChar == 'p' || nextChar == 'P' || nextChar == 'i' || nextChar == 'I' {
+			return true
+		}
+	}
+	return false
+}
+
 // 剧集命名模式正则
 var episodePatterns = []*regexp.Regexp{
-	// S01E01 / S1E1 / s01e01
+	// 模式0: S01E01 / S1E1 / s01e01
 	regexp.MustCompile(`(?i)S(\d{1,2})\s*E(\d{1,4})`),
-	// S01.E01
+	// 模式1: S01.E01
 	regexp.MustCompile(`(?i)S(\d{1,2})\.E(\d{1,4})`),
-	// 1x01 / 01x01
+	// 模式2: 1x01 / 01x01
 	regexp.MustCompile(`(?i)(\d{1,2})x(\d{1,4})`),
-	// 第01集 / 第1集
+	// 模式3: 第01集 / 第1集
 	regexp.MustCompile(`第\s*(\d{1,4})\s*集`),
-	// EP01 / EP.01 / Episode 01
+	// 模式4: EP01 / EP.01 / Episode 01
 	regexp.MustCompile(`(?i)(?:EP|Episode)\s*\.?\s*(\d{1,4})`),
-	// E01（单独的E+数字）
+	// 模式5: OVA01 / OVA 01 / SP01 / SP 01（特殊剧集类型+数字）
+	regexp.MustCompile(`(?i)(?:OVA|OAD|SP|SPECIAL|NCOP|NCED)\s*(\d{1,4})`),
+	// 模式6: E01（单独的E+数字）
 	regexp.MustCompile(`(?i)\bE(\d{1,4})\b`),
-	// - 01 - / .01. / [01]
-	regexp.MustCompile(`[\[\-\.\s](\d{2,4})[\]\-\.\s]`),
+	// 模式7: [01] / [001] / [12END] / [24END] — 方括号内的数字（可能带END/FINAL/完等后缀）
+	regexp.MustCompile(`(?i)\[(\d{2,4})(?:END|FINAL|完)?\]`),
+	// 模式8: - 01 - / .01. / 空格01空格
+	regexp.MustCompile(`[\-\.\s](\d{2,4})[\]\-\.\s]`),
+}
+
+// 独立季号正则：从文件名中提取 S2、Season 2 等季号（不依赖集号）
+var seasonInFilenamePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\bS(\d{1,2})\b`),
+	regexp.MustCompile(`(?i)\bSeason\s*(\d{1,2})\b`),
+	regexp.MustCompile(`第\s*(\d{1,2})\s*季`),
 }
 
 // Season目录模式
@@ -216,6 +244,13 @@ var seasonDirPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^S(\d{1,2})$`),
 	regexp.MustCompile(`^第\s*(\d{1,2})\s*季$`),
 	regexp.MustCompile(`(?i)^Specials?$`), // 特别篇
+}
+
+// seriesFolder 多季合并时使用的目录信息
+type seriesFolder struct {
+	path      string // 完整路径
+	dirName   string // 原始目录名
+	seasonNum int    // 从目录名提取的季号（0表示未识别到季号）
 }
 
 // EpisodeInfo 解析出的剧集信息
@@ -244,6 +279,10 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 	}
 	seriesGroups := make(map[string][]looseFile) // 系列名 -> 文件列表
 
+	// === 阶段一：收集所有子目录，按标准化系列名分组 ===
+	// 标准化系列名 -> 目录列表
+	seriesDirGroups := make(map[string][]seriesFolder)
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			// 根目录下的视频文件
@@ -267,16 +306,42 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 			continue
 		}
 
-		seriesFolderPath := filepath.Join(library.Path, entry.Name())
-		seriesTitle := s.extractSeriesTitle(entry.Name())
+		dirName := entry.Name()
+		folderPath := filepath.Join(library.Path, dirName)
 
-		newCount, err := s.scanSeriesFolder(library, seriesFolderPath, seriesTitle)
-		if err != nil {
-			s.logger.Warnf("扫描剧集文件夹失败: %s, 错误: %v", seriesFolderPath, err)
-			continue
+		// 从目录名提取标准化系列名（去掉季号标识）和季号
+		normalizedName := s.normalizeSeriesName(dirName)
+		seasonNum := s.extractSeasonFromDirName(dirName)
+
+		seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
+			path:      folderPath,
+			dirName:   dirName,
+			seasonNum: seasonNum,
+		})
+	}
+
+	// === 阶段二：处理分组后的目录 ===
+	for normalizedName, folders := range seriesDirGroups {
+		if len(folders) == 1 && folders[0].seasonNum == 0 {
+			// 单个目录且未识别到季号 → 按原有逻辑独立处理
+			f := folders[0]
+			seriesTitle := s.extractSeriesTitle(f.dirName)
+			newCount, err := s.scanSeriesFolder(library, f.path, seriesTitle)
+			if err != nil {
+				s.logger.Warnf("扫描剧集文件夹失败: %s, 错误: %v", f.path, err)
+				continue
+			}
+			totalNewEpisodes += newCount
+		} else {
+			// 多个目录属于同一系列（如"一拳超人 S1"和"一拳超人 S2"）
+			// 或单个目录但明确包含季号标识 → 合并到同一个 Series
+			newCount, err := s.scanMultiSeasonSeries(library, normalizedName, folders)
+			if err != nil {
+				s.logger.Warnf("扫描多季合集失败: %s, 错误: %v", normalizedName, err)
+				continue
+			}
+			totalNewEpisodes += newCount
 		}
-
-		totalNewEpisodes += newCount
 	}
 
 	// 处理根目录散落文件的智能归类
@@ -410,6 +475,266 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 	return totalNewEpisodes, nil
 }
 
+// normalizeSeriesName 标准化系列名：从目录名中去掉季号标识，返回纯系列名
+// 例如: "一拳超人 S1" → "一拳超人", "Breaking Bad Season 2" → "Breaking Bad", "一拳超人 第二季" → "一拳超人"
+func (s *ScannerService) normalizeSeriesName(dirName string) string {
+	title := s.extractSeriesTitle(dirName) // 先清理年份、编码等标记
+
+	// 移除季号标识
+	seasonPatterns := []string{
+		`(?i)\s*S\d{1,2}\s*$`,            // 末尾 S1, S02
+		`(?i)\s*Season\s*\d{1,2}\s*$`,    // 末尾 Season 1
+		`\s*第\s*[一二三四五六七八九十\d]+\s*季\s*$`, // 末尾 第一季, 第2季
+	}
+	for _, p := range seasonPatterns {
+		re := regexp.MustCompile(p)
+		title = re.ReplaceAllString(title, "")
+	}
+
+	title = strings.TrimSpace(title)
+	if title == "" {
+		// 如果标准化后为空（极端情况），回退使用原始清理标题
+		return s.extractSeriesTitle(dirName)
+	}
+	return title
+}
+
+// extractSeasonFromDirName 从目录名中提取季号
+// 例如: "一拳超人 S2" → 2, "Breaking Bad Season 1" → 1, "一拳超人 第二季" → 2
+func (s *ScannerService) extractSeasonFromDirName(dirName string) int {
+	// 支持 S1, S02 格式
+	if m := regexp.MustCompile(`(?i)\bS(\d{1,2})\b`).FindStringSubmatch(dirName); len(m) >= 2 {
+		num, _ := strconv.Atoi(m[1])
+		if num > 0 && num <= 30 {
+			return num
+		}
+	}
+	// 支持 Season 1, Season 02 格式
+	if m := regexp.MustCompile(`(?i)\bSeason\s*(\d{1,2})\b`).FindStringSubmatch(dirName); len(m) >= 2 {
+		num, _ := strconv.Atoi(m[1])
+		if num > 0 && num <= 30 {
+			return num
+		}
+	}
+	// 支持中文 "第1季", "第二季"
+	if m := regexp.MustCompile(`第\s*(\d{1,2})\s*季`).FindStringSubmatch(dirName); len(m) >= 2 {
+		num, _ := strconv.Atoi(m[1])
+		if num > 0 && num <= 30 {
+			return num
+		}
+	}
+	// 支持中文数字 "第一季" ~ "第十季"
+	cnNumMap := map[string]int{
+		"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+		"六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+	}
+	if m := regexp.MustCompile(`第\s*([一二三四五六七八九十]+)\s*季`).FindStringSubmatch(dirName); len(m) >= 2 {
+		if num, ok := cnNumMap[m[1]]; ok {
+			return num
+		}
+	}
+	return 0
+}
+
+// scanMultiSeasonSeries 扫描属于同一系列的多季目录，将其合并到一个 Series 中
+// folders 中的 seriesFolder 包含各个季目录的路径、目录名和从目录名提取的季号
+func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTitle string, folders []seriesFolder) (int, error) {
+	s.logger.Infof("扫描多季合集: %s (%d 个目录)", seriesTitle, len(folders))
+
+	// 查找或创建统一的 Series 合集
+	// 优先按第一个目录的 FolderPath 查找（兼容旧数据），
+	// 然后按标题+媒体库查找，最后创建新的
+	var series *model.Series
+
+	// 1. 尝试按任意一个目录的 FolderPath 查找已有 Series
+	for _, f := range folders {
+		if existing, err := s.seriesRepo.FindByFolderPath(f.path); err == nil {
+			series = existing
+			break
+		}
+	}
+
+	// 2. 按标题+媒体库查找（可能之前已经合并过）
+	if series == nil {
+		if existing, err := s.seriesRepo.FindByTitleAndLibrary(seriesTitle, library.ID); err == nil {
+			series = existing
+		}
+	}
+
+	// 3. 创建新合集，FolderPath 使用第一个目录（或虚拟路径）
+	if series == nil {
+		// 使用"__multi__:系列名"作为虚拟路径，标识这是一个多季合并的合集
+		virtualPath := filepath.Join(library.Path, "__multi__:"+seriesTitle)
+		series = &model.Series{
+			LibraryID:  library.ID,
+			Title:      seriesTitle,
+			FolderPath: virtualPath,
+		}
+		if err := s.seriesRepo.Create(series); err != nil {
+			return 0, fmt.Errorf("创建多季合集失败: %w", err)
+		}
+		s.logger.Infof("创建多季合集: %s (ID=%s, %d 个季目录)", seriesTitle, series.ID, len(folders))
+	}
+
+	var totalNewCount int
+	seasonSet := make(map[int]bool)
+
+	// 扫描每个季目录
+	for _, f := range folders {
+		episodes := s.collectEpisodes(f.path)
+		if len(episodes) == 0 {
+			s.logger.Debugf("多季合集目录无视频文件: %s", f.path)
+			continue
+		}
+
+		// 如果目录名带有明确的季号，且剧集文件未识别出季号，则使用目录季号
+		dirSeasonNum := f.seasonNum
+		if dirSeasonNum == 0 {
+			// 尝试用 parseSeasonFromDir 再识别一次
+			dirSeasonNum = s.parseSeasonFromDir(f.dirName)
+		}
+
+		// === 集号重编逻辑 ===
+		// 当检测到同一季目录下的集号是全局连续编号（延续上一季），而非从1开始时，
+		// 自动重新编为季内相对编号。
+		// 例如：第二季目录下文件名编号 [13][14]...[24]，应重编为 1,2,...,12
+		if dirSeasonNum > 1 && len(episodes) > 0 {
+			// 收集本目录下属于相同季号的"普通"剧集（排除OVA/SP等特殊类型的集号）
+			var normalEpNums []int
+			for _, ep := range episodes {
+				// 判断是否为特殊剧集类型（OVA/SP等），它们的集号不参与重编判断
+				isSpecial := false
+				if m := episodePatterns[5].FindStringSubmatch(filepath.Base(ep.FilePath)); len(m) >= 2 {
+					isSpecial = true
+				}
+				if !isSpecial && ep.EpisodeNum > 0 {
+					normalEpNums = append(normalEpNums, ep.EpisodeNum)
+				}
+			}
+
+			// 如果普通集号的最小值大于1，且集号是连续的，说明是全局编号需要重编
+			if len(normalEpNums) > 0 {
+				sort.Ints(normalEpNums)
+				minEp := normalEpNums[0]
+
+				if minEp > 1 {
+					// 检查集号是否大致连续（允许少量缺失）
+					isSequential := true
+					for i := 1; i < len(normalEpNums); i++ {
+						gap := normalEpNums[i] - normalEpNums[i-1]
+						if gap > 2 { // 允许最多跳1集
+							isSequential = false
+							break
+						}
+					}
+
+					if isSequential {
+						// 计算偏移量，将集号重编为从1开始
+						offset := minEp - 1
+						s.logger.Infof("多季合集集号重编: %s 第%d季, 集号偏移 -%d (原始范围: %d~%d → 重编为 1~%d)",
+							seriesTitle, dirSeasonNum, offset, minEp, normalEpNums[len(normalEpNums)-1], len(normalEpNums))
+
+						for i := range episodes {
+							// 只重编普通剧集，不重编OVA/SP等
+							isSpecial := false
+							if m := episodePatterns[5].FindStringSubmatch(filepath.Base(episodes[i].FilePath)); len(m) >= 2 {
+								isSpecial = true
+							}
+							if !isSpecial && episodes[i].EpisodeNum > offset {
+								episodes[i].EpisodeNum -= offset
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for _, ep := range episodes {
+			// 季号分配：
+			// 当目录名有明确季号时，优先使用目录季号（除非文件名中有不同的、合理的季号如S2标识的OVA）
+			seasonNum := ep.SeasonNum
+			if dirSeasonNum > 0 {
+				// 如果文件名中的季号与目录季号不同且>1，说明文件自带了明确季号（如OVA标S2），保留它
+				// 否则一律使用目录季号
+				if seasonNum <= 1 || seasonNum == dirSeasonNum {
+					seasonNum = dirSeasonNum
+				}
+			}
+			if seasonNum == 0 {
+				seasonNum = 1
+			}
+
+			// 检查是否已存在，如果存在则修正可能的脏数据（如 episode_title、season_num、episode_num）
+			if existing, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
+				seasonSet[seasonNum] = true
+				needUpdate := false
+				if existing.EpisodeTitle != ep.EpisodeTitle {
+					existing.EpisodeTitle = ep.EpisodeTitle
+					needUpdate = true
+				}
+				if existing.SeasonNum != seasonNum {
+					existing.SeasonNum = seasonNum
+					needUpdate = true
+				}
+				if existing.EpisodeNum != ep.EpisodeNum {
+					existing.EpisodeNum = ep.EpisodeNum
+					needUpdate = true
+				}
+				if needUpdate {
+					s.mediaRepo.Update(existing)
+				}
+				continue
+			}
+
+			media := &model.Media{
+				LibraryID:    library.ID,
+				SeriesID:     series.ID,
+				Title:        seriesTitle,
+				FilePath:     ep.FilePath,
+				FileSize:     ep.FileInfo.Size(),
+				MediaType:    "episode",
+				SeasonNum:    seasonNum,
+				EpisodeNum:   ep.EpisodeNum,
+				EpisodeTitle: ep.EpisodeTitle,
+			}
+
+			s.probeMediaInfo(media)
+			s.scanExternalSubtitles(media)
+
+			if err := s.mediaRepo.Create(media); err != nil {
+				s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
+				continue
+			}
+
+			seasonSet[seasonNum] = true
+			totalNewCount++
+
+			s.logger.Debugf("发现剧集(多季): %s S%02dE%02d [%s | %s]",
+				seriesTitle, seasonNum, ep.EpisodeNum, media.Resolution, media.VideoCodec)
+			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+				LibraryID:   library.ID,
+				LibraryName: library.Name,
+				Phase:       "scanning",
+				NewFound:    totalNewCount,
+				Message:     fmt.Sprintf("发现: %s S%02dE%02d", seriesTitle, seasonNum, ep.EpisodeNum),
+			})
+		}
+	}
+
+	// 更新合集统计信息
+	allEpisodes, _ := s.mediaRepo.ListBySeriesID(series.ID)
+	series.EpisodeCount = len(allEpisodes)
+	series.SeasonCount = len(seasonSet)
+	s.seriesRepo.Update(series)
+
+	if totalNewCount > 0 {
+		s.logger.Infof("多季合集扫描完成: %s, 新增 %d 集, 共 %d 季 %d 集",
+			seriesTitle, totalNewCount, series.SeasonCount, series.EpisodeCount)
+	}
+
+	return totalNewCount, nil
+}
+
 // scanSeriesFolder 扫描单个剧集文件夹
 func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, seriesTitle string) (int, error) {
 	s.logger.Infof("扫描剧集: %s (%s)", seriesTitle, folderPath)
@@ -434,6 +759,12 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 
 	if len(episodes) == 0 {
 		s.logger.Debugf("剧集文件夹无视频文件: %s", folderPath)
+		// 如果该合集下已经没有任何剧集，清理这个空合集
+		existingEpisodes, _ := s.mediaRepo.ListBySeriesID(series.ID)
+		if len(existingEpisodes) == 0 {
+			s.seriesRepo.Delete(series.ID)
+			s.logger.Infof("清理空合集: %s (ID=%s)", seriesTitle, series.ID)
+		}
 		return 0, nil
 	}
 
@@ -442,9 +773,25 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 	seasonSet := make(map[int]bool)
 
 	for _, ep := range episodes {
-		// 检查是否已存在
-		if _, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
+		// 检查是否已存在，如果存在则修正可能的脏数据
+		if existing, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
 			seasonSet[ep.SeasonNum] = true
+			needUpdate := false
+			if existing.EpisodeTitle != ep.EpisodeTitle {
+				existing.EpisodeTitle = ep.EpisodeTitle
+				needUpdate = true
+			}
+			if existing.SeasonNum != ep.SeasonNum {
+				existing.SeasonNum = ep.SeasonNum
+				needUpdate = true
+			}
+			if existing.EpisodeNum != ep.EpisodeNum {
+				existing.EpisodeNum = ep.EpisodeNum
+				needUpdate = true
+			}
+			if needUpdate {
+				s.mediaRepo.Update(existing)
+			}
 			continue
 		}
 
@@ -558,59 +905,171 @@ func (s *ScannerService) collectEpisodes(folderPath string) []EpisodeInfo {
 }
 
 // parseEpisodeInfo 从文件名解析剧集信息
+// 支持的命名格式：
+//
+//	标准格式: [字幕组][剧名][One-Punch Man][01][1280x720][简体]
+//	季集格式: [HYSUB][ONE PUNCH MAN S2][OVA01][GB_MP4][1280X720].mp4
+//	通用格式: S01E01, 1x01, 第1集, EP01, OVA01 等
 func (s *ScannerService) parseEpisodeInfo(filename string) EpisodeInfo {
 	var ep EpisodeInfo
 
-	// 模式 1: S01E01
+	// 预处理：移除文件扩展名，方便后续解析
+	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	// === 阶段一：提取集号 ===
+
+	// 模式 0: S01E01 — 最精确的格式，同时包含季号和集号
 	if m := episodePatterns[0].FindStringSubmatch(filename); len(m) >= 3 {
-		ep.SeasonNum, _ = strconv.Atoi(m[1])
-		ep.EpisodeNum, _ = strconv.Atoi(m[2])
-		return ep
+		sNum, _ := strconv.Atoi(m[1])
+		eNum, _ := strconv.Atoi(m[2])
+		// 排除明显不合理的值：集号恰好是分辨率
+		if !resolutionNums[eNum] || sNum <= 30 {
+			ep.SeasonNum = sNum
+			ep.EpisodeNum = eNum
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+			return ep
+		}
 	}
 
-	// 模式 2: S01.E01
+	// 模式 1: S01.E01
 	if m := episodePatterns[1].FindStringSubmatch(filename); len(m) >= 3 {
-		ep.SeasonNum, _ = strconv.Atoi(m[1])
-		ep.EpisodeNum, _ = strconv.Atoi(m[2])
-		return ep
+		sNum, _ := strconv.Atoi(m[1])
+		eNum, _ := strconv.Atoi(m[2])
+		if !resolutionNums[eNum] || sNum <= 30 {
+			ep.SeasonNum = sNum
+			ep.EpisodeNum = eNum
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+			return ep
+		}
 	}
 
-	// 模式 3: 1x01
+	// 模式 2: 1x01 — 排除分辨率如 "1920x1080" "1280x720"
 	if m := episodePatterns[2].FindStringSubmatch(filename); len(m) >= 3 {
-		ep.SeasonNum, _ = strconv.Atoi(m[1])
-		ep.EpisodeNum, _ = strconv.Atoi(m[2])
-		return ep
+		sNum, _ := strconv.Atoi(m[1])
+		eNum, _ := strconv.Atoi(m[2])
+		if !resolutionNums[eNum] && !resolutionNums[sNum] && sNum < 100 {
+			ep.SeasonNum = sNum
+			ep.EpisodeNum = eNum
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+			return ep
+		}
 	}
 
-	// 模式 4: 第01集
+	// 模式 3: 第01集
 	if m := episodePatterns[3].FindStringSubmatch(filename); len(m) >= 2 {
 		ep.EpisodeNum, _ = strconv.Atoi(m[1])
+		ep.SeasonNum = s.extractSeasonFromFilename(filename)
+		ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
 		return ep
 	}
 
-	// 模式 5: EP01 / Episode 01
+	// 模式 4: EP01 / Episode 01
 	if m := episodePatterns[4].FindStringSubmatch(filename); len(m) >= 2 {
 		ep.EpisodeNum, _ = strconv.Atoi(m[1])
+		ep.SeasonNum = s.extractSeasonFromFilename(filename)
+		ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
 		return ep
 	}
 
-	// 模式 6: E01
+	// 模式 5: OVA01 / SP01 / SPECIAL01 等特殊剧集类型
 	if m := episodePatterns[5].FindStringSubmatch(filename); len(m) >= 2 {
 		ep.EpisodeNum, _ = strconv.Atoi(m[1])
+		ep.SeasonNum = s.extractSeasonFromFilename(filename)
+		ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
 		return ep
 	}
 
-	// 模式 7: [01] / - 01 -
-	if m := episodePatterns[6].FindStringSubmatch(filename); len(m) >= 2 {
-		num, _ := strconv.Atoi(m[1])
-		// 避免将年份误识为集号
-		if num > 0 && num < 1900 {
-			ep.EpisodeNum = num
+	// 模式 6: E01（单独的E+数字）— 需排除分辨率上下文
+	if m := episodePatterns[6].FindStringSubmatchIndex(filename); m != nil {
+		full := filename[m[0]:m[1]]
+		sub := filename[m[2]:m[3]]
+		eNum, _ := strconv.Atoi(sub)
+		if !resolutionNums[eNum] && !isResolutionContext(filename, m[1]) {
+			ep.EpisodeNum = eNum
+			ep.SeasonNum = s.extractSeasonFromFilename(filename)
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, full)
+			return ep
 		}
-		return ep
+	}
+
+	// 模式 7: [01] / [001] — 方括号内的纯数字（字幕组常用格式）
+	if m := episodePatterns[7].FindStringSubmatch(filename); len(m) >= 2 {
+		num, _ := strconv.Atoi(m[1])
+		// 排除年份和分辨率数字
+		if num > 0 && num < 1900 && !resolutionNums[num] {
+			ep.EpisodeNum = num
+			ep.SeasonNum = s.extractSeasonFromFilename(filename)
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+			return ep
+		}
+	}
+
+	// 模式 8: - 01 - / .01. — 最宽松的匹配，需要严格过滤
+	if m := episodePatterns[8].FindStringSubmatchIndex(filename); m != nil {
+		sub := filename[m[2]:m[3]]
+		num, _ := strconv.Atoi(sub)
+		if num > 0 && num < 1900 && !resolutionNums[num] && !isResolutionContext(filename, m[1]) {
+			ep.EpisodeNum = num
+			ep.SeasonNum = s.extractSeasonFromFilename(filename)
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, filename[m[0]:m[1]])
+			return ep
+		}
 	}
 
 	return ep
+}
+
+// extractSeasonFromFilename 从文件名中独立提取季号
+// 处理文件名中包含 S2、Season 2、第2季 等情况（不依赖集号格式）
+func (s *ScannerService) extractSeasonFromFilename(filename string) int {
+	for _, pattern := range seasonInFilenamePatterns {
+		if m := pattern.FindStringSubmatch(filename); len(m) >= 2 {
+			num, _ := strconv.Atoi(m[1])
+			if num > 0 && num <= 30 {
+				return num
+			}
+		}
+	}
+	return 0
+}
+
+// extractEpisodeTitle 从文件名中提取集标题（集号模式之后的部分）
+func (s *ScannerService) extractEpisodeTitle(nameWithoutExt string, matchedPattern string) string {
+	idx := strings.Index(nameWithoutExt, matchedPattern)
+	if idx < 0 {
+		return ""
+	}
+	after := nameWithoutExt[idx+len(matchedPattern):]
+	// 清理开头的分隔符和空格
+	after = strings.TrimLeft(after, " .-_")
+	if after == "" {
+		return ""
+	}
+	// 去除尾部常见的元信息标记（分辨率/编码/组名等括号内容）
+	// 例如 "[1080p]" "(BDRip)" "[FLAC]" 等
+	metaPattern := regexp.MustCompile(`[\[\(].*[\]\)]`)
+	after = metaPattern.ReplaceAllString(after, "")
+	after = strings.TrimRight(after, " .-_")
+	// 如果剩余内容太短或全是数字，则不作为标题
+	if len(after) <= 1 {
+		return ""
+	}
+	// 排除纯数字（可能是分辨率等残留）
+	if _, err := strconv.Atoi(after); err == nil {
+		return ""
+	}
+	// 排除分辨率字符串（如 720p、1080p、4K 等）
+	resPattern := regexp.MustCompile(`(?i)^\d{3,4}[pi]$|^[248]K$`)
+	if resPattern.MatchString(after) {
+		return ""
+	}
+	// 排除纯技术性标记（编码/混流/来源等），这些不是有意义的剧集标题
+	// 例如：remux, remux nvl, x264, HEVC, BDRip, WEB-DL 等
+	techPattern := regexp.MustCompile(`(?i)^[\s\-\.]*(?:remux|re-?mux|nvl|x26[45]|h\.?26[45]|hevc|avc|aac|flac|dts|bdri?p|dvdri?p|web-?dl|web-?rip|blu-?ray|hdr|10bit|ma[25]\.?[01]|truehd|atmos|opus)(?:[\s\-\.]+(?:remux|nvl|x26[45]|h\.?26[45]|hevc|avc|aac|flac|dts|bdri?p|dvdri?p|web-?dl|web-?rip|blu-?ray|hdr|10bit|ma[25]\.?[01]|truehd|atmos|opus))*[\s\-\.]*$`)
+	if techPattern.MatchString(after) {
+		return ""
+	}
+	return after
 }
 
 // parseSeasonFromDir 从Season目录名解析季号

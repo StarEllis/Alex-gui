@@ -20,7 +20,7 @@ export default function PlayerPage() {
     setLoading(true)
     setNextEpisode(null)
 
-    // 并行获取媒体详情和播放信息
+    // 并行获取媒体详情和播放信�?
     Promise.all([
       mediaApi.detail(id),
       streamApi.getPlayInfo(id),
@@ -30,7 +30,7 @@ export default function PlayerPage() {
         setMedia(mediaData)
         setPlayInfo(playInfoRes.data.data)
 
-        // 如果是剧集，获取下一集信息
+        // 如果是剧集，获取下一集信�?
         if (mediaData.media_type === 'episode' && mediaData.series_id) {
           seriesApi
             .nextEpisode(mediaData.series_id, mediaData.season_num, mediaData.episode_num)
@@ -51,7 +51,7 @@ export default function PlayerPage() {
       })
   }, [id, navigate, toast])
 
-  // 下一集回调
+  // 下一集回�?
   const handleNext = useCallback(() => {
     if (nextEpisode) {
       navigate(`/play/${nextEpisode.id}`, { replace: true })
@@ -62,7 +62,7 @@ export default function PlayerPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: 'rgba(0,240,255,0.3)', borderTopColor: 'transparent' }} />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: 'var(--neon-blue-30)', borderTopColor: 'transparent' }} />
           <p className="text-sm text-surface-500">正在加载播放信息...</p>
         </div>
       </div>
@@ -75,12 +75,12 @@ export default function PlayerPage() {
     ? streamApi.getDirectUrl(id)
     : streamApi.getMasterUrl(id)
 
-  // 构建播放标题（剧集显示 S01E02 格式）
+  // 构建播放标题（剧集显�?S01E02 格式�?
   const playerTitle = media.media_type === 'episode'
     ? `${media.series?.title || media.title} S${String(media.season_num).padStart(2, '0')}E${String(media.episode_num).padStart(2, '0')}${media.episode_title ? ` - ${media.episode_title}` : ''}`
     : media.title
 
-  // 下一集标题
+  // 下一集标�?
   const nextTitle = nextEpisode
     ? `S${String(nextEpisode.season_num).padStart(2, '0')}E${String(nextEpisode.episode_num).padStart(2, '0')}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
     : undefined

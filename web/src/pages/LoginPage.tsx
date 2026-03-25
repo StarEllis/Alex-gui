@@ -41,19 +41,19 @@ export default function LoginPage() {
         {/* 主光晕 */}
         <div
           className="absolute top-1/4 left-1/4 h-[500px] w-[500px] rounded-full opacity-30 blur-[120px]"
-          style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.15), transparent)' }}
+          style={{ background: 'radial-gradient(circle, var(--deco-glow-blue), transparent)' }}
         />
         <div
           className="absolute bottom-1/4 right-1/4 h-[400px] w-[400px] rounded-full opacity-20 blur-[100px]"
-          style={{ background: 'radial-gradient(circle, rgba(138,43,226,0.15), transparent)' }}
+          style={{ background: 'radial-gradient(circle, var(--deco-glow-purple), transparent)' }}
         />
         {/* 网格线（科技感） */}
         <div
           className="absolute inset-0 opacity-[0.02]"
           style={{
             backgroundImage: `
-              linear-gradient(rgba(0,240,255,0.3) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(0,240,255,0.3) 1px, transparent 1px)
+              linear-gradient(var(--grid-line-color) 1px, transparent 1px),
+              linear-gradient(90deg, var(--grid-line-color) 1px, transparent 1px)
             `,
             backgroundSize: '60px 60px',
           }}
@@ -67,7 +67,7 @@ export default function LoginPage() {
             className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl animate-float"
             style={{
               background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-              boxShadow: '0 0 30px rgba(0, 240, 255, 0.3), 0 0 60px rgba(0, 240, 255, 0.1)',
+              boxShadow: 'var(--neon-glow-shadow-xl)',
             }}
           >
             <Zap size={32} className="text-white" />

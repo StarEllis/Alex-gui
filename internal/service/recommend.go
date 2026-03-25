@@ -528,3 +528,75 @@ func (s *RecommendService) getPopularRecommendations(limit int) ([]RecommendedMe
 
 	return results, nil
 }
+
+// GetSimilarMedia 基于当前媒体的类型/标签获取相关推荐
+func (s *RecommendService) GetSimilarMedia(mediaID string, limit int) ([]RecommendedMedia, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 12
+	}
+
+	// 获取当前媒体详情
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解析当前媒体的类型标签
+	if media.Genres == "" {
+		// 没有类型信息，返回热门推荐
+		return s.getPopularRecommendations(limit)
+	}
+
+	genres := strings.Split(media.Genres, ",")
+	var cleanGenres []string
+	genreWeights := make(map[string]float64)
+	for _, g := range genres {
+		g = strings.TrimSpace(g)
+		if g != "" {
+			cleanGenres = append(cleanGenres, g)
+			genreWeights[g] = 1.0
+		}
+	}
+
+	if len(cleanGenres) == 0 {
+		return s.getPopularRecommendations(limit)
+	}
+
+	// 使用类型标签检索候选媒体，排除自身
+	candidates, err := s.mediaRepo.ListByGenres(cleanGenres, []string{mediaID}, limit*3)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []RecommendedMedia
+	for _, candidate := range candidates {
+		score := s.calculateContentScore(candidate, genreWeights)
+		if score > 0 {
+			// 构建推荐理由：找到最匹配的类型
+			reason := "相似类型"
+			candidateGenres := strings.Split(candidate.Genres, ",")
+			for _, cg := range candidateGenres {
+				cg = strings.TrimSpace(cg)
+				if _, ok := genreWeights[cg]; ok {
+					reason = "同为「" + cg + "」类影片"
+					break
+				}
+			}
+			results = append(results, RecommendedMedia{
+				Media:  candidate,
+				Score:  score,
+				Reason: reason,
+			})
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	return results, nil
+}

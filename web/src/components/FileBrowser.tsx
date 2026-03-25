@@ -75,7 +75,7 @@ export default function FileBrowser({ open, onClose, onSelect, initialPath }: Fi
         style={{
           background: 'var(--bg-elevated)',
           border: '1px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-elevated), 0 0 60px rgba(0, 240, 255, 0.06)',
+          boxShadow: 'var(--shadow-elevated), var(--modal-panel-glow)',
           backdropFilter: 'blur(30px)',
           maxHeight: '80vh',
         }}

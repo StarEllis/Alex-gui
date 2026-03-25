@@ -2,7 +2,10 @@ package handler
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
@@ -93,4 +96,64 @@ func (h *SeriesHandler) NextEpisode(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": next})
+}
+
+// Poster 获取剧集合集海报图片
+func (h *SeriesHandler) Poster(c *gin.Context) {
+	id := c.Param("id")
+	posterPath, err := h.seriesService.GetSeriesPosterPath(id)
+	if err != nil || posterPath == "" {
+		// 返回默认占位图
+		c.Header("Content-Type", "image/svg+xml")
+		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(posterPath))
+	switch ext {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".webp":
+		c.Header("Content-Type", "image/webp")
+	default:
+		c.Header("Content-Type", "application/octet-stream")
+	}
+
+	c.Header("Cache-Control", "public, max-age=604800") // 缓存7天
+	c.File(posterPath)
+}
+
+// Backdrop 获取剧集合集背景图片
+func (h *SeriesHandler) Backdrop(c *gin.Context) {
+	id := c.Param("id")
+	series, err := h.seriesService.GetSeriesDetail(id)
+	if err != nil || series.BackdropPath == "" {
+		// 返回透明占位图
+		c.Header("Content-Type", "image/svg+xml")
+		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect fill="#1e1e2e" width="1280" height="720"/></svg>`)
+		return
+	}
+
+	if _, statErr := os.Stat(series.BackdropPath); statErr != nil {
+		c.Header("Content-Type", "image/svg+xml")
+		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect fill="#1e1e2e" width="1280" height="720"/></svg>`)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(series.BackdropPath))
+	switch ext {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".webp":
+		c.Header("Content-Type", "image/webp")
+	default:
+		c.Header("Content-Type", "application/octet-stream")
+	}
+
+	c.Header("Cache-Control", "public, max-age=604800")
+	c.File(series.BackdropPath)
 }

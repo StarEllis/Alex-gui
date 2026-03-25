@@ -102,6 +102,29 @@ func (h *UserHandler) RemoveFavorite(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已取消收藏"})
 }
 
+// CheckFavorite 检查是否已收藏
+func (h *UserHandler) CheckFavorite(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	mediaID := c.Param("mediaId")
+
+	favorited := h.mediaService.IsFavorited(userID.(string), mediaID)
+	c.JSON(http.StatusOK, gin.H{"data": favorited})
+}
+
+// GetProgress 获取用户对指定媒体的观看进度
+func (h *UserHandler) GetProgress(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	mediaID := c.Param("mediaId")
+
+	progress, err := h.mediaService.GetProgress(userID.(string), mediaID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": nil})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": progress})
+}
+
 // History 获取观看历史列表
 func (h *UserHandler) History(c *gin.Context) {
 	userID, _ := c.Get("user_id")

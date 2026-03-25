@@ -225,8 +225,8 @@ export default function PlaylistsPage() {
               <div
                 className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl animate-float"
                 style={{
-                  background: 'rgba(0, 240, 255, 0.05)',
-                  border: '1px solid rgba(0, 240, 255, 0.08)',
+                  background: 'var(--neon-blue-5)',
+                  border: '1px solid var(--neon-blue-8)',
                 }}
               >
                 <ListVideo size={36} className="text-surface-600" />

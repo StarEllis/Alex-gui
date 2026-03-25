@@ -40,7 +40,18 @@ func (s *MediaService) ListMedia(page, size int, libraryID string) ([]model.Medi
 
 // GetDetail 获取媒体详情
 func (s *MediaService) GetDetail(id string) (*model.Media, error) {
-	return s.mediaRepo.FindByID(id)
+	media, err := s.mediaRepo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	// 如果是剧集类型，加载关联的合集信息
+	if media.MediaType == "episode" && media.SeriesID != "" {
+		series, err := s.seriesRepo.FindByIDOnly(media.SeriesID)
+		if err == nil {
+			media.Series = series
+		}
+	}
+	return media, nil
 }
 
 // Recent 最近添加
@@ -199,6 +210,39 @@ func (s *MediaService) Search(keyword string, page, size int) ([]model.Media, in
 	return s.mediaRepo.Search(keyword, page, size)
 }
 
+// SearchAdvanced 高级搜索（支持多条件筛选和排序）
+func (s *MediaService) SearchAdvanced(params repository.SearchAdvancedParams) ([]model.Media, int64, error) {
+	return s.mediaRepo.SearchAdvanced(params)
+}
+
+// SearchMixedResult 混合搜索结果
+type SearchMixedResult struct {
+	Media       []model.Media  `json:"media"`
+	Series      []model.Series `json:"series"`
+	MediaTotal  int64          `json:"media_total"`
+	SeriesTotal int64          `json:"series_total"`
+}
+
+// SearchMixed 混合搜索（同时搜索媒体和合集）
+func (s *MediaService) SearchMixed(keyword string, page, size int) (*SearchMixedResult, error) {
+	media, mediaTotal, err := s.mediaRepo.Search(keyword, page, size)
+	if err != nil {
+		return nil, err
+	}
+
+	series, seriesTotal, err := s.seriesRepo.SearchSeries(keyword, page, size)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SearchMixedResult{
+		Media:       media,
+		Series:      series,
+		MediaTotal:  mediaTotal,
+		SeriesTotal: seriesTotal,
+	}, nil
+}
+
 // ContinueWatching 获取续播列表
 func (s *MediaService) ContinueWatching(userID string, limit int) ([]model.WatchHistory, error) {
 	if limit <= 0 || limit > 20 {
@@ -241,6 +285,11 @@ func (s *MediaService) RemoveFavorite(userID, mediaID string) error {
 	return s.favRepo.Remove(userID, mediaID)
 }
 
+// IsFavorited 检查是否已收藏
+func (s *MediaService) IsFavorited(userID, mediaID string) bool {
+	return s.favRepo.Exists(userID, mediaID)
+}
+
 // ListFavorites 获取收藏列表
 func (s *MediaService) ListFavorites(userID string, page, size int) ([]model.Favorite, int64, error) {
 	return s.favRepo.List(userID, page, size)
@@ -251,9 +300,29 @@ func (s *MediaService) ListHistory(userID string, page, size int) ([]model.Watch
 	return s.historyRepo.ListHistory(userID, page, size)
 }
 
+// GetProgress 获取用户对指定媒体的观看进度
+func (s *MediaService) GetProgress(userID, mediaID string) (*model.WatchHistory, error) {
+	return s.historyRepo.GetByUserAndMedia(userID, mediaID)
+}
+
 // DeleteHistory 删除单条观看记录
 func (s *MediaService) DeleteHistory(userID, mediaID string) error {
 	return s.historyRepo.DeleteHistory(userID, mediaID)
+}
+
+// DeleteMedia 删除单个媒体记录
+func (s *MediaService) DeleteMedia(id string) error {
+	return s.mediaRepo.DeleteByID(id)
+}
+
+// UpdateMedia 更新媒体元数据
+func (s *MediaService) UpdateMedia(media *model.Media) error {
+	return s.mediaRepo.Update(media)
+}
+
+// GetMediaByID 获取媒体（不加载关联，用于管理操作）
+func (s *MediaService) GetMediaByID(id string) (*model.Media, error) {
+	return s.mediaRepo.FindByID(id)
 }
 
 // ClearHistory 清空观看历史

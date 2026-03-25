@@ -33,3 +33,22 @@ func (h *RecommendHandler) GetRecommendations(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": recommendations})
 }
+
+// GetSimilarMedia 获取与指定媒体相关的推荐
+func (h *RecommendHandler) GetSimilarMedia(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "12"))
+
+	if limit < 1 || limit > 50 {
+		limit = 12
+	}
+
+	recommendations, err := h.recommendService.GetSimilarMedia(mediaID, limit)
+	if err != nil {
+		h.logger.Errorf("获取相关推荐失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取相关推荐失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": recommendations})
+}

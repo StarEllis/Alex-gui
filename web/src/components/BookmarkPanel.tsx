@@ -72,9 +72,9 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm backdrop-blur-md transition-all hover:text-white"
         style={{
-          background: 'rgba(0, 240, 255, 0.06)',
-          border: '1px solid rgba(0, 240, 255, 0.1)',
-          color: 'rgba(255,255,255,0.7)',
+          background: 'var(--neon-blue-6)',
+          border: '1px solid var(--neon-blue-10)',
+          color: 'var(--text-secondary)',
         }}
         title="书签"
       >
@@ -95,12 +95,12 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
     <div className="absolute bottom-16 right-4 z-50 w-80 rounded-xl shadow-2xl"
       style={{
         background: 'rgba(11, 17, 32, 0.92)',
-        border: '1px solid rgba(0, 240, 255, 0.1)',
+        border: '1px solid var(--neon-blue-10)',
         backdropFilter: 'blur(20px)',
       }}
     >
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(0, 240, 255, 0.08)' }}>
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--neon-blue-8)' }}>
         <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
           <BookmarkIcon size={16} className="text-neon-blue" />
           视频书签
@@ -124,7 +124,7 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
 
       {/* 添加表单 */}
       {showAdd && (
-        <div className="p-4 space-y-2" style={{ borderBottom: '1px solid rgba(0, 240, 255, 0.08)' }}>
+        <div className="p-4 space-y-2" style={{ borderBottom: '1px solid var(--neon-blue-8)' }}>
           <div className="text-xs text-surface-400">
             在 <span className="font-display font-bold tracking-wide text-neon-blue">{formatTime(currentTime)}</span> 添加书签
           </div>
@@ -165,14 +165,14 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
             <div
               key={bm.id}
               className="group flex items-center gap-3 cursor-pointer px-4 py-3 transition-colors hover:bg-neon-blue/3"
-              style={{ borderBottom: '1px solid rgba(0, 240, 255, 0.04)' }}
+              style={{ borderBottom: '1px solid var(--neon-blue-4)' }}
               onClick={() => onSeek(bm.position)}
             >
               <span className="shrink-0 rounded-md px-2 py-0.5 font-display text-xs font-bold tracking-wide"
                 style={{
-                  background: 'rgba(0, 240, 255, 0.08)',
+                  background: 'var(--neon-blue-8)',
                   color: 'var(--neon-blue)',
-                  border: '1px solid rgba(0, 240, 255, 0.12)',
+                  border: '1px solid var(--neon-blue-12)',
                 }}
               >
                 {formatTime(bm.position)}

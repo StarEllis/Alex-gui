@@ -12,14 +12,15 @@ import (
 
 // LibraryService 媒体库服务
 type LibraryService struct {
-	repo       *repository.LibraryRepo
-	mediaRepo  *repository.MediaRepo
-	seriesRepo *repository.SeriesRepo
-	scanner    *ScannerService
-	metadata   *MetadataService
-	logger     *zap.SugaredLogger
-	scanning   sync.Map // 记录正在扫描的媒体库ID
-	wsHub      *WSHub   // WebSocket事件广播
+	repo        *repository.LibraryRepo
+	mediaRepo   *repository.MediaRepo
+	seriesRepo  *repository.SeriesRepo
+	scanner     *ScannerService
+	metadata    *MetadataService
+	logger      *zap.SugaredLogger
+	scanning    sync.Map            // 记录正在扫描的媒体库ID
+	wsHub       *WSHub              // WebSocket事件广播
+	fileWatcher *FileWatcherService // 文件监听服务
 }
 
 func NewLibraryService(
@@ -43,6 +44,11 @@ func NewLibraryService(
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
 func (s *LibraryService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+// SetFileWatcher 设置文件监听服务（延迟注入）
+func (s *LibraryService) SetFileWatcher(fw *FileWatcherService) {
+	s.fileWatcher = fw
 }
 
 // CleanOrphanedData 清理孤立数据：删除 library_id 指向已不存在的媒体库的 Media 和 Series 记录
@@ -84,8 +90,16 @@ func (s *LibraryService) CleanOrphanedData() {
 		s.logger.Infof("已清理 %d 条孤立剧集合集记录", seriesCount)
 	}
 
-	if mediaCount > 0 || ghostCount > 0 || seriesCount > 0 {
-		s.logger.Infof("数据清理完成（孤立媒体: %d, 幽灵媒体: %d, 孤立合集: %d）", mediaCount, ghostCount, seriesCount)
+	// 清理空合集（episode_count 为 0 的合集记录，通常是文件被删除后的残留）
+	emptyCount, err := s.seriesRepo.CleanEmptySeries()
+	if err != nil {
+		s.logger.Errorf("清理空合集数据失败: %v", err)
+	} else if emptyCount > 0 {
+		s.logger.Infof("已清理 %d 条空合集记录（episode_count = 0）", emptyCount)
+	}
+
+	if mediaCount > 0 || ghostCount > 0 || seriesCount > 0 || emptyCount > 0 {
+		s.logger.Infof("数据清理完成（孤立媒体: %d, 幽灵媒体: %d, 孤立合集: %d, 空合集: %d）", mediaCount, ghostCount, seriesCount, emptyCount)
 	}
 }
 
@@ -100,6 +114,12 @@ func (s *LibraryService) Create(name, path, libType string) (*model.Library, err
 		return nil, err
 	}
 	s.logger.Infof("创建媒体库: %s -> %s", name, path)
+
+	// 如果启用了文件监控，自动注册监听
+	if lib.EnableFileWatch && s.fileWatcher != nil {
+		s.fileWatcher.WatchLibrary(lib)
+	}
+
 	return lib, nil
 }
 
@@ -167,6 +187,11 @@ func (s *LibraryService) Delete(id string) error {
 		libName = lib.Name
 	}
 
+	// 取消文件监听
+	if lib != nil && s.fileWatcher != nil {
+		s.fileWatcher.UnwatchLibrary(lib.Path)
+	}
+
 	// 级联删除关联数据
 	if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
 		s.logger.Errorf("删除媒体库 %s 的媒体数据失败: %v", libName, err)
@@ -200,6 +225,46 @@ func (s *LibraryService) Update(lib *model.Library) error {
 	return s.repo.Update(lib)
 }
 
+// DeleteMedia 删除单个媒体记录（仅从数据库移除，不删除文件）
+func (s *LibraryService) DeleteMedia(mediaID string) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return fmt.Errorf("影片不存在")
+	}
+	s.logger.Infof("删除影片: %s (%s)", media.Title, mediaID)
+	return s.mediaRepo.DeleteByID(mediaID)
+}
+
+// UpdateMedia 更新媒体信息
+func (s *LibraryService) UpdateMedia(media *model.Media) error {
+	return s.mediaRepo.Update(media)
+}
+
+// GetMediaByID 获取单个媒体（用于管理操作）
+func (s *LibraryService) GetMediaByID(id string) (*model.Media, error) {
+	return s.mediaRepo.FindByID(id)
+}
+
+// DeleteSeries 删除剧集合集记录（仅从数据库移除，不删除文件）
+func (s *LibraryService) DeleteSeries(seriesID string) error {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return fmt.Errorf("剧集合集不存在")
+	}
+	s.logger.Infof("删除剧集合集: %s (%s)", series.Title, seriesID)
+	return s.seriesRepo.Delete(seriesID)
+}
+
+// UpdateSeries 更新剧集合集信息
+func (s *LibraryService) UpdateSeries(series *model.Series) error {
+	return s.seriesRepo.Update(series)
+}
+
+// GetSeriesByID 获取单个剧集合集（用于管理操作）
+func (s *LibraryService) GetSeriesByID(id string) (*model.Series, error) {
+	return s.seriesRepo.FindByID(id)
+}
+
 // FindByID 查找媒体库
 func (s *LibraryService) FindByID(id string) (*model.Library, error) {
 	return s.repo.FindByID(id)
@@ -220,12 +285,16 @@ func (s *LibraryService) Reindex(id string) error {
 	go func() {
 		defer s.scanning.Delete(id)
 
-		// 第一步：清除该媒体库下所有旧媒体记录
+		// 第一步：清除该媒体库下所有旧媒体和合集记录
 		if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
-			s.logger.Errorf("清除媒体库旧记录失败: %s, 错误: %v", lib.Name, err)
+			s.logger.Errorf("清除媒体库旧媒体记录失败: %s, 错误: %v", lib.Name, err)
 			return
 		}
-		s.logger.Infof("已清除媒体库 %s 的旧索引数据", lib.Name)
+		if err := s.seriesRepo.DeleteByLibraryID(id); err != nil {
+			s.logger.Errorf("清除媒体库旧合集记录失败: %s, 错误: %v", lib.Name, err)
+			return
+		}
+		s.logger.Infof("已清除媒体库 %s 的旧索引数据（含媒体和合集）", lib.Name)
 
 		// 第二步：重新扫描文件
 		count, err := s.scanner.ScanLibrary(lib)

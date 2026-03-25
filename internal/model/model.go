@@ -56,6 +56,13 @@ type Series struct {
 	FolderPath   string  `json:"folder_path" gorm:"uniqueIndex;type:text;not null"` // 剧集根目录路径
 	SeasonCount  int     `json:"season_count"`                                      // 季数
 	EpisodeCount int     `json:"episode_count"`                                     // 总集数
+	// V2 扩展字段
+	TMDbID    int    `json:"tmdb_id" gorm:"index"`
+	DoubanID  string `json:"douban_id" gorm:"type:text"`
+	BangumiID int    `json:"bangumi_id" gorm:"index"` // Bangumi 条目 ID
+	Country   string `json:"country" gorm:"type:text"`
+	Language  string `json:"language" gorm:"type:text"`
+	Studio    string `json:"studio" gorm:"type:text"`
 	// 时间戳
 	CreatedAt time.Time      `json:"created_at" gorm:"index"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -95,6 +102,15 @@ type Media struct {
 	Duration   float64 `json:"duration"`                    // 时长（秒）
 	// 字幕
 	SubtitlePaths string `json:"subtitle_paths" gorm:"type:text"` // 外挂字幕路径，| 分隔
+	// V2 扩展字段
+	TMDbID     int    `json:"tmdb_id" gorm:"index"`         // TMDb 唯一 ID
+	DoubanID   string `json:"douban_id" gorm:"type:text"`   // 豆瓣 ID
+	BangumiID  int    `json:"bangumi_id" gorm:"index"`      // Bangumi 条目 ID
+	Country    string `json:"country" gorm:"type:text"`     // 制片国家
+	Language   string `json:"language" gorm:"type:text"`    // 语言
+	Tagline    string `json:"tagline" gorm:"type:text"`     // 标语/宣传语
+	Studio     string `json:"studio" gorm:"type:text"`      // 出品公司
+	TrailerURL string `json:"trailer_url" gorm:"type:text"` // 预告片链接（YouTube）
 	// 剧集专属字段
 	SeriesID     string `json:"series_id" gorm:"index;type:text"`
 	SeasonNum    int    `json:"season_num"`
@@ -107,6 +123,46 @@ type Media struct {
 
 	Library Library `json:"-" gorm:"foreignKey:LibraryID"`
 	Series  *Series `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
+}
+
+// Person 演职人员
+type Person struct {
+	ID         string `json:"id" gorm:"primaryKey;type:text"`
+	Name       string `json:"name" gorm:"index;type:text;not null"`
+	OrigName   string `json:"orig_name" gorm:"type:text"`
+	ProfileURL string `json:"profile_url" gorm:"type:text"` // 头像路径
+	TMDbID     int    `json:"tmdb_id" gorm:"index"`
+	// 时间戳
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (p *Person) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == "" {
+		p.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// MediaPerson 媒体-人物关联表
+type MediaPerson struct {
+	ID        string `json:"id" gorm:"primaryKey;type:text"`
+	MediaID   string `json:"media_id" gorm:"index;type:text;not null"`
+	SeriesID  string `json:"series_id" gorm:"index;type:text"` // 也可以关联到 Series
+	PersonID  string `json:"person_id" gorm:"index;type:text;not null"`
+	Role      string `json:"role" gorm:"type:text;not null"` // director / actor / writer
+	Character string `json:"character" gorm:"type:text"`     // 饰演角色名
+	SortOrder int    `json:"sort_order" gorm:"default:0"`
+	// 时间戳
+	CreatedAt time.Time `json:"created_at"`
+
+	Person Person `json:"person" gorm:"foreignKey:PersonID"`
+}
+
+func (mp *MediaPerson) BeforeCreate(tx *gorm.DB) error {
+	if mp.ID == "" {
+		mp.ID = uuid.New().String()
+	}
+	return nil
 }
 
 // WatchHistory 观看记录
@@ -357,6 +413,23 @@ type SystemSetting struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// PlaybackStats 播放统计
+type PlaybackStats struct {
+	ID           string    `json:"id" gorm:"primaryKey;type:text"`
+	UserID       string    `json:"user_id" gorm:"index;type:text;not null"`
+	MediaID      string    `json:"media_id" gorm:"index;type:text;not null"`
+	WatchMinutes float64   `json:"watch_minutes"`               // 本次观看分钟数
+	Date         string    `json:"date" gorm:"index;type:text"` // YYYY-MM-DD 格式
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (ps *PlaybackStats) BeforeCreate(tx *gorm.DB) error {
+	if ps.ID == "" {
+		ps.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
@@ -365,6 +438,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&SystemSetting{},
 		&Series{},
 		&Media{},
+		&Person{},
+		&MediaPerson{},
 		&WatchHistory{},
 		&Favorite{},
 		&TranscodeTask{},
@@ -376,5 +451,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&ScheduledTask{},
 		&ContentRating{},
 		&UserPermission{},
+		&PlaybackStats{},
 	)
 }

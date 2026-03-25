@@ -17,6 +17,7 @@ import {
   Monitor,
   Gauge,
   ChevronRight,
+  PictureInPicture2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import CastPanel from './CastPanel'
@@ -28,7 +29,7 @@ interface VideoPlayerProps {
   title?: string
   startPosition?: number
   onBack?: () => void
-  /** 下一集回调 — 存在时显示"下一集"按钮，播放结束自动触发 */
+  /** 下一集回调，存在时显示「下一集」按钮，播放结束自动触发 */
   onNext?: () => void
   /** 下一集标题（用于提示） */
   nextTitle?: string
@@ -237,7 +238,7 @@ export default function VideoPlayer({
       setVolume(video.volume)
       setMuted(video.muted)
     }
-    // 播放结束 — 自动下一集
+    // 播放结束 → 自动下一集
     const onEnded = () => {
       setPlaying(false)
       if (onNext) {
@@ -484,7 +485,7 @@ export default function VideoPlayer({
             <button
               onClick={onBack}
               className="btn-ghost mt-4 rounded-xl px-5 py-2.5 text-sm"
-              style={{ border: '1px solid rgba(0, 240, 255, 0.15)' }}
+              style={{ border: '1px solid var(--neon-blue-15)' }}
             >
               返回
             </button>
@@ -498,14 +499,14 @@ export default function VideoPlayer({
           <div className="flex flex-col items-center gap-5 rounded-2xl p-8 text-center"
             style={{
               background: 'rgba(11, 17, 32, 0.85)',
-              border: '1px solid rgba(0, 240, 255, 0.15)',
+              border: '1px solid var(--neon-blue-15)',
               backdropFilter: 'blur(20px)',
             }}
           >
             {/* 倒计时圆环 */}
             <div className="relative flex h-20 w-20 items-center justify-center">
               <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(0,240,255,0.1)" strokeWidth="3" />
+                <circle cx="40" cy="40" r="36" fill="none" stroke="var(--neon-blue-10)" strokeWidth="3" />
                 <circle cx="40" cy="40" r="36" fill="none" stroke="url(#neon-grad)" strokeWidth="3"
                   strokeDasharray={`${2 * Math.PI * 36}`}
                   strokeDashoffset={`${2 * Math.PI * 36 * (1 - nextCountdown / 5)}`}
@@ -544,7 +545,7 @@ export default function VideoPlayer({
                 onClick={() => { setNextCountdown(null); onNext() }}
                 className="rounded-xl px-5 py-2.5 text-sm font-bold transition-all hover:-translate-y-0.5"
                 style={{
-                  background: 'linear-gradient(135deg, var(--neon-blue), rgba(0, 180, 220, 0.95))',
+                  background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))',
                   boxShadow: 'var(--shadow-neon)',
                   color: 'var(--text-on-neon)',
                 }}
@@ -562,7 +563,7 @@ export default function VideoPlayer({
         seekHint.visible ? 'opacity-100 scale-100' : 'opacity-0 scale-75'
       )}>
         <div className="rounded-2xl px-6 py-3 font-display text-2xl font-bold tracking-wider text-white backdrop-blur-md"
-          style={{ background: 'rgba(0, 240, 255, 0.12)', border: '1px solid rgba(0, 240, 255, 0.2)' }}
+          style={{ background: 'var(--neon-blue-12)', border: '1px solid var(--neon-blue-20)' }}
         >
           {seekHint.text}
         </div>
@@ -576,10 +577,10 @@ export default function VideoPlayer({
         >
           <div className="flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 hover:scale-110"
             style={{
-              background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(138, 43, 226, 0.2))',
+              background: 'linear-gradient(135deg, var(--neon-blue-20), var(--neon-purple-20))',
               backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(0, 240, 255, 0.15)',
-              boxShadow: '0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 20px rgba(0, 240, 255, 0.05)',
+              border: '1px solid var(--neon-blue-15)',
+              boxShadow: '0 0 40px var(--neon-blue-15), inset 0 0 20px var(--neon-blue-5)',
             }}
           >
             <Play size={40} className="ml-1 text-white drop-shadow-lg" fill="white" />
@@ -601,7 +602,7 @@ export default function VideoPlayer({
               <button
                 onClick={onBack}
                 className="rounded-full p-2 text-white backdrop-blur-md transition-all hover:scale-105"
-                style={{ background: 'rgba(0, 240, 255, 0.08)', border: '1px solid rgba(0, 240, 255, 0.1)' }}
+                style={{ background: 'var(--neon-blue-8)', border: '1px solid var(--neon-blue-10)' }}
               >
                 <SkipBack size={18} />
               </button>
@@ -631,8 +632,8 @@ export default function VideoPlayer({
               className="absolute -top-8 -translate-x-1/2 rounded-md px-2 py-1 text-xs font-display text-white tracking-wide pointer-events-none"
               style={{
                 left: `${hoverProgress}%`,
-                background: 'rgba(0, 240, 255, 0.15)',
-                border: '1px solid rgba(0, 240, 255, 0.2)',
+                background: 'var(--neon-blue-15)',
+                border: '1px solid var(--neon-blue-20)',
                 backdropFilter: 'blur(8px)',
               }}
             >
@@ -723,7 +724,7 @@ export default function VideoPlayer({
               <div className="absolute bottom-full right-0 mb-2 min-w-[120px] rounded-xl py-1 shadow-2xl"
                 style={{
                   background: 'rgba(11, 17, 32, 0.9)',
-                  border: '1px solid rgba(0, 240, 255, 0.1)',
+                  border: '1px solid var(--neon-blue-10)',
                   backdropFilter: 'blur(20px)',
                 }}
               >
@@ -737,7 +738,7 @@ export default function VideoPlayer({
                         ? 'text-neon-blue'
                         : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
                     )}
-                    style={speed === playbackRate ? { background: 'rgba(0, 240, 255, 0.06)' } : {}}
+                    style={speed === playbackRate ? { background: 'var(--neon-blue-6)' } : {}}
                   >
                     {speed === 1 ? '正常' : `${speed}x`}
                   </button>
@@ -768,7 +769,7 @@ export default function VideoPlayer({
                 <div className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-xl py-1 shadow-2xl"
                   style={{
                     background: 'rgba(11, 17, 32, 0.9)',
-                    border: '1px solid rgba(0, 240, 255, 0.1)',
+                    border: '1px solid var(--neon-blue-10)',
                     backdropFilter: 'blur(20px)',
                   }}
                 >
@@ -778,7 +779,7 @@ export default function VideoPlayer({
                       'block w-full px-4 py-2.5 text-left text-sm transition-colors',
                       !activeSubtitle ? 'text-neon-blue' : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
                     )}
-                    style={!activeSubtitle ? { background: 'rgba(0, 240, 255, 0.06)' } : {}}
+                    style={!activeSubtitle ? { background: 'var(--neon-blue-6)' } : {}}
                   >
                     关闭字幕
                   </button>
@@ -797,7 +798,7 @@ export default function VideoPlayer({
                               ? 'text-neon-blue'
                               : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
                           )}
-                          style={activeSubtitle === `embedded:${sub.index}` ? { background: 'rgba(0, 240, 255, 0.06)' } : {}}
+                          style={activeSubtitle === `embedded:${sub.index}` ? { background: 'var(--neon-blue-6)' } : {}}
                         >
                           {sub.title || sub.language || `轨道 ${sub.index}`}
                           {sub.codec && <span className="ml-2 text-xs text-surface-600">[{sub.codec}]</span>}
@@ -821,7 +822,7 @@ export default function VideoPlayer({
                               ? 'text-neon-blue'
                               : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
                           )}
-                          style={activeSubtitle === `external:${sub.path}` ? { background: 'rgba(0, 240, 255, 0.06)' } : {}}
+                          style={activeSubtitle === `external:${sub.path}` ? { background: 'var(--neon-blue-6)' } : {}}
                         >
                           {sub.language || sub.filename}
                           <span className="ml-2 text-xs text-surface-600">[{sub.format}]</span>
@@ -874,7 +875,7 @@ export default function VideoPlayer({
                 <div className="absolute bottom-full right-0 mb-2 min-w-[140px] rounded-xl py-1 shadow-2xl"
                   style={{
                     background: 'rgba(11, 17, 32, 0.9)',
-                    border: '1px solid rgba(0, 240, 255, 0.1)',
+                    border: '1px solid var(--neon-blue-10)',
                     backdropFilter: 'blur(20px)',
                   }}
                 >
@@ -888,7 +889,7 @@ export default function VideoPlayer({
                           ? 'text-neon-blue'
                           : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
                       )}
-                      style={q.index === currentQuality ? { background: 'rgba(0, 240, 255, 0.06)' } : {}}
+                      style={q.index === currentQuality ? { background: 'var(--neon-blue-6)' } : {}}
                     >
                       {q.label}
                     </button>
@@ -897,6 +898,23 @@ export default function VideoPlayer({
               )}
             </div>
           )}
+
+          {/* 画中画 */}
+          <button
+            onClick={() => {
+              const video = videoRef.current
+              if (!video) return
+              if (document.pictureInPictureElement) {
+                document.exitPictureInPicture().catch(() => {})
+              } else {
+                video.requestPictureInPicture().catch(() => {})
+              }
+            }}
+            className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
+            title="画中画"
+          >
+            <PictureInPicture2 size={18} />
+          </button>
 
           {/* 全屏 */}
           <button onClick={toggleFullscreen} className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5">

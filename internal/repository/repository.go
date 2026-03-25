@@ -13,6 +13,8 @@ type Repositories struct {
 	Library        *LibraryRepo
 	Media          *MediaRepo
 	Series         *SeriesRepo
+	Person         *PersonRepo
+	MediaPerson    *MediaPersonRepo
 	WatchHistory   *WatchHistoryRepo
 	Favorite       *FavoriteRepo
 	Transcode      *TranscodeRepo
@@ -24,6 +26,7 @@ type Repositories struct {
 	ContentRating  *ContentRatingRepo
 	UserPermission *UserPermissionRepo
 	SystemSetting  *SystemSettingRepo
+	PlaybackStats  *PlaybackStatsRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -32,6 +35,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		Library:        &LibraryRepo{db: db},
 		Media:          &MediaRepo{db: db},
 		Series:         &SeriesRepo{db: db},
+		Person:         &PersonRepo{db: db},
+		MediaPerson:    &MediaPersonRepo{db: db},
 		WatchHistory:   &WatchHistoryRepo{db: db},
 		Favorite:       &FavoriteRepo{db: db},
 		Transcode:      &TranscodeRepo{db: db},
@@ -43,6 +48,7 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		ContentRating:  &ContentRatingRepo{db: db},
 		UserPermission: &UserPermissionRepo{db: db},
 		SystemSetting:  &SystemSettingRepo{db: db},
+		PlaybackStats:  &PlaybackStatsRepo{db: db},
 	}
 }
 
@@ -164,6 +170,106 @@ func (r *MediaRepo) Search(keyword string, page, size int) ([]model.Media, int64
 	query.Count(&total)
 	err := query.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&media).Error
 	return media, total, err
+}
+
+// SearchAdvancedParams 高级搜索参数
+type SearchAdvancedParams struct {
+	Keyword   string  // 关键词（模糊匹配标题）
+	MediaType string  // 媒体类型过滤（movie/episode）
+	Genre     string  // 类型过滤（如"动作"）
+	YearMin   int     // 最小年份
+	YearMax   int     // 最大年份
+	MinRating float64 // 最低评分
+	SortBy    string  // 排序字段（title/year/rating/created_at）
+	SortOrder string  // 排序方向（asc/desc）
+	Page      int
+	Size      int
+}
+
+// SearchAdvanced 高级搜索 — 支持多条件组合筛选、排序
+func (r *MediaRepo) SearchAdvanced(params SearchAdvancedParams) ([]model.Media, int64, error) {
+	var media []model.Media
+	var total int64
+
+	query := r.db.Model(&model.Media{})
+
+	// 关键词搜索（标题 LIKE 匹配）
+	if params.Keyword != "" {
+		query = query.Where("title LIKE ?", "%"+params.Keyword+"%")
+	}
+
+	// 媒体类型过滤
+	if params.MediaType != "" {
+		query = query.Where("media_type = ?", params.MediaType)
+	}
+
+	// 类型（genre）过滤
+	if params.Genre != "" {
+		query = query.Where("genres LIKE ?", "%"+params.Genre+"%")
+	}
+
+	// 年份范围
+	if params.YearMin > 0 {
+		query = query.Where("year >= ?", params.YearMin)
+	}
+	if params.YearMax > 0 {
+		query = query.Where("year <= ?", params.YearMax)
+	}
+
+	// 最低评分
+	if params.MinRating > 0 {
+		query = query.Where("rating >= ?", params.MinRating)
+	}
+
+	// 计算总数
+	query.Count(&total)
+
+	// 排序
+	sortField := "created_at"
+	sortDir := "DESC"
+	switch params.SortBy {
+	case "title":
+		sortField = "title"
+	case "year":
+		sortField = "year"
+	case "rating":
+		sortField = "rating"
+	case "created_at":
+		sortField = "created_at"
+	}
+	if params.SortOrder == "asc" {
+		sortDir = "ASC"
+	}
+
+	// 分页
+	page := params.Page
+	size := params.Size
+	if page <= 0 {
+		page = 1
+	}
+	if size <= 0 || size > 100 {
+		size = 20
+	}
+
+	err := query.Order(fmt.Sprintf("%s %s", sortField, sortDir)).
+		Offset((page - 1) * size).Limit(size).Find(&media).Error
+
+	return media, total, err
+}
+
+// SearchSeries 搜索合集
+func (r *SeriesRepo) SearchSeries(keyword string, page, size int) ([]model.Series, int64, error) {
+	var series []model.Series
+	var total int64
+
+	query := r.db.Model(&model.Series{}).Where("name LIKE ?", "%"+keyword+"%")
+	query.Count(&total)
+	err := query.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&series).Error
+	return series, total, err
+}
+
+func (r *MediaRepo) DeleteByID(id string) error {
+	return r.db.Unscoped().Delete(&model.Media{}, "id = ?", id).Error
 }
 
 func (r *MediaRepo) DeleteByLibraryID(libraryID string) error {
@@ -321,9 +427,23 @@ func (r *SeriesRepo) FindByID(id string) (*model.Series, error) {
 	return &series, err
 }
 
+// FindByIDOnly 仅获取合集基本信息（不预加载剧集列表）
+func (r *SeriesRepo) FindByIDOnly(id string) (*model.Series, error) {
+	var series model.Series
+	err := r.db.First(&series, "id = ?", id).Error
+	return &series, err
+}
+
 func (r *SeriesRepo) FindByFolderPath(folderPath string) (*model.Series, error) {
 	var series model.Series
 	err := r.db.Where("folder_path = ?", folderPath).First(&series).Error
+	return &series, err
+}
+
+// FindByTitleAndLibrary 按标题和媒体库查找合集（用于多季合并时查找已有合集）
+func (r *SeriesRepo) FindByTitleAndLibrary(title, libraryID string) (*model.Series, error) {
+	var series model.Series
+	err := r.db.Where("title = ? AND library_id = ?", title, libraryID).First(&series).Error
 	return &series, err
 }
 
@@ -337,7 +457,7 @@ func (r *SeriesRepo) List(page, size int, libraryID string) ([]model.Series, int
 	var series []model.Series
 	var total int64
 
-	query := r.db.Model(&model.Series{})
+	query := r.db.Model(&model.Series{}).Where("episode_count > 0")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -347,10 +467,10 @@ func (r *SeriesRepo) List(page, size int, libraryID string) ([]model.Series, int
 	return series, total, err
 }
 
-// CountByLibrary 统计指定媒体库中合集的数量（可选按媒体库过滤）
+// CountByLibrary 统计指定媒体库中合集的数量（排除空合集）
 func (r *SeriesRepo) CountByLibrary(libraryID string) (int64, error) {
 	var count int64
-	query := r.db.Model(&model.Series{})
+	query := r.db.Model(&model.Series{}).Where("episode_count > 0")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -358,10 +478,10 @@ func (r *SeriesRepo) CountByLibrary(libraryID string) (int64, error) {
 	return count, err
 }
 
-// ListAll 获取指定媒体库中的所有合集（不分页）
+// ListAll 获取指定媒体库中的所有合集（不分页，排除空合集）
 func (r *SeriesRepo) ListAll(libraryID string) ([]model.Series, error) {
 	var series []model.Series
-	query := r.db
+	query := r.db.Where("episode_count > 0")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -393,6 +513,12 @@ func (r *SeriesRepo) CleanOrphanedByLibraryIDs(validLibraryIDs []string) (int64,
 	return result.RowsAffected, result.Error
 }
 
+// CleanEmptySeries 清理空合集（episode_count 为 0 的合集记录）
+func (r *SeriesRepo) CleanEmptySeries() (int64, error) {
+	result := r.db.Unscoped().Where("episode_count = 0 OR episode_count IS NULL").Delete(&model.Series{})
+	return result.RowsAffected, result.Error
+}
+
 // GetSeasonNumbers 获取指定合集的所有季号
 func (r *SeriesRepo) GetSeasonNumbers(seriesID string) ([]int, error) {
 	var seasons []int
@@ -404,17 +530,17 @@ func (r *SeriesRepo) GetSeasonNumbers(seriesID string) ([]int, error) {
 	return seasons, err
 }
 
-// RecentUpdated 获取最近有新剧集添加的合集列表
+// RecentUpdated 获取最近有新剧集添加的合集列表（排除空合集）
 func (r *SeriesRepo) RecentUpdated(limit int) ([]model.Series, error) {
 	var series []model.Series
-	err := r.db.Order("updated_at DESC").Limit(limit).Find(&series).Error
+	err := r.db.Where("episode_count > 0").Order("updated_at DESC").Limit(limit).Find(&series).Error
 	return series, err
 }
 
-// RecentUpdatedByLibrary 获取指定媒体库中最近更新的合集
+// RecentUpdatedByLibrary 获取指定媒体库中最近更新的合集（排除空合集）
 func (r *SeriesRepo) RecentUpdatedByLibrary(libraryID string, limit int) ([]model.Series, error) {
 	var series []model.Series
-	err := r.db.Where("library_id = ?", libraryID).
+	err := r.db.Where("library_id = ? AND episode_count > 0", libraryID).
 		Order("updated_at DESC").Limit(limit).Find(&series).Error
 	return series, err
 }
@@ -459,6 +585,16 @@ func (r *WatchHistoryRepo) ListHistory(userID string, page, size int) ([]model.W
 		Limit(size).
 		Find(&histories).Error
 	return histories, total, err
+}
+
+// GetByUserAndMedia 获取指定用户对指定媒体的观看记录
+func (r *WatchHistoryRepo) GetByUserAndMedia(userID, mediaID string) (*model.WatchHistory, error) {
+	var history model.WatchHistory
+	err := r.db.Where("user_id = ? AND media_id = ?", userID, mediaID).First(&history).Error
+	if err != nil {
+		return nil, err
+	}
+	return &history, nil
 }
 
 func (r *WatchHistoryRepo) DeleteHistory(userID, mediaID string) error {
@@ -889,4 +1025,161 @@ func (r *SystemSettingRepo) SetMulti(kvs map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// ==================== PersonRepo ====================
+
+type PersonRepo struct {
+	db *gorm.DB
+}
+
+func (r *PersonRepo) Create(person *model.Person) error {
+	return r.db.Create(person).Error
+}
+
+func (r *PersonRepo) FindByID(id string) (*model.Person, error) {
+	var person model.Person
+	err := r.db.First(&person, "id = ?", id).Error
+	return &person, err
+}
+
+func (r *PersonRepo) FindByTMDbID(tmdbID int) (*model.Person, error) {
+	var person model.Person
+	err := r.db.Where("tmdb_id = ?", tmdbID).First(&person).Error
+	return &person, err
+}
+
+func (r *PersonRepo) FindByName(name string) (*model.Person, error) {
+	var person model.Person
+	err := r.db.Where("name = ?", name).First(&person).Error
+	return &person, err
+}
+
+func (r *PersonRepo) FindOrCreate(name string, tmdbID int) (*model.Person, error) {
+	// 先按 TMDb ID 查找
+	if tmdbID > 0 {
+		person, err := r.FindByTMDbID(tmdbID)
+		if err == nil {
+			return person, nil
+		}
+	}
+	// 再按名字查找
+	person, err := r.FindByName(name)
+	if err == nil {
+		return person, nil
+	}
+	// 创建新记录
+	newPerson := &model.Person{Name: name, TMDbID: tmdbID}
+	if err := r.Create(newPerson); err != nil {
+		return nil, err
+	}
+	return newPerson, nil
+}
+
+func (r *PersonRepo) Search(keyword string, limit int) ([]model.Person, error) {
+	var people []model.Person
+	err := r.db.Where("name LIKE ?", "%"+keyword+"%").Limit(limit).Find(&people).Error
+	return people, err
+}
+
+// ==================== MediaPersonRepo ====================
+
+type MediaPersonRepo struct {
+	db *gorm.DB
+}
+
+func (r *MediaPersonRepo) Create(mp *model.MediaPerson) error {
+	return r.db.Create(mp).Error
+}
+
+// ListByMediaID 获取媒体的所有演职人员
+func (r *MediaPersonRepo) ListByMediaID(mediaID string) ([]model.MediaPerson, error) {
+	var mps []model.MediaPerson
+	err := r.db.Preload("Person").Where("media_id = ?", mediaID).
+		Order("role ASC, sort_order ASC").Find(&mps).Error
+	return mps, err
+}
+
+// ListBySeriesID 获取剧集合集的所有演职人员
+func (r *MediaPersonRepo) ListBySeriesID(seriesID string) ([]model.MediaPerson, error) {
+	var mps []model.MediaPerson
+	err := r.db.Preload("Person").Where("series_id = ?", seriesID).
+		Order("role ASC, sort_order ASC").Find(&mps).Error
+	return mps, err
+}
+
+// DeleteByMediaID 删除媒体的所有人物关联
+func (r *MediaPersonRepo) DeleteByMediaID(mediaID string) error {
+	return r.db.Where("media_id = ?", mediaID).Delete(&model.MediaPerson{}).Error
+}
+
+// DeleteBySeriesID 删除合集的所有人物关联
+func (r *MediaPersonRepo) DeleteBySeriesID(seriesID string) error {
+	return r.db.Where("series_id = ?", seriesID).Delete(&model.MediaPerson{}).Error
+}
+
+// ListByPersonID 获取某人参演的所有媒体
+func (r *MediaPersonRepo) ListByPersonID(personID string) ([]model.MediaPerson, error) {
+	var mps []model.MediaPerson
+	err := r.db.Where("person_id = ?", personID).Find(&mps).Error
+	return mps, err
+}
+
+// ==================== PlaybackStatsRepo ====================
+
+type PlaybackStatsRepo struct {
+	db *gorm.DB
+}
+
+func (r *PlaybackStatsRepo) Record(stat *model.PlaybackStats) error {
+	return r.db.Create(stat).Error
+}
+
+// GetUserDailyStats 获取用户指定日期范围内的每日观看统计
+func (r *PlaybackStatsRepo) GetUserDailyStats(userID string, startDate, endDate string) ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Model(&model.PlaybackStats{}).
+		Select("date, SUM(watch_minutes) as total_minutes, COUNT(DISTINCT media_id) as media_count").
+		Where("user_id = ? AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Group("date").Order("date ASC").
+		Scan(&results).Error
+	return results, err
+}
+
+// GetUserTotalMinutes 获取用户总观看分钟数
+func (r *PlaybackStatsRepo) GetUserTotalMinutes(userID string) (float64, error) {
+	var total float64
+	err := r.db.Model(&model.PlaybackStats{}).Where("user_id = ?", userID).
+		Select("COALESCE(SUM(watch_minutes), 0)").Scan(&total).Error
+	return total, err
+}
+
+// GetUserTopGenres 获取用户最爱的类型
+func (r *PlaybackStatsRepo) GetUserTopGenres(userID string, limit int) ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Raw(`
+		SELECT m.genres, SUM(ps.watch_minutes) as total_minutes
+		FROM playback_stats ps
+		JOIN media m ON ps.media_id = m.id
+		WHERE ps.user_id = ? AND m.genres != ''
+		GROUP BY m.genres
+		ORDER BY total_minutes DESC
+		LIMIT ?
+	`, userID, limit).Scan(&results).Error
+	return results, err
+}
+
+// GetMostWatchedMedia 获取用户观看最多的媒体
+func (r *PlaybackStatsRepo) GetMostWatchedMedia(userID string, limit int) ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	err := r.db.Raw(`
+		SELECT ps.media_id, m.title, m.poster_path, SUM(ps.watch_minutes) as total_minutes
+		FROM playback_stats ps
+		JOIN media m ON ps.media_id = m.id
+		WHERE ps.user_id = ?
+		GROUP BY ps.media_id
+		ORDER BY total_minutes DESC
+		LIMIT ?
+	`, userID, limit).Scan(&results).Error
+	return results, err
 }

@@ -8,24 +8,30 @@ import (
 
 // Services 聚合所有服务
 type Services struct {
-	User       *UserService
-	Auth       *AuthService
-	Library    *LibraryService
-	Media      *MediaService
-	Series     *SeriesService
-	Stream     *StreamService
-	Transcode  *TranscodeService
-	Metadata   *MetadataService
-	Scanner    *ScannerService
-	Playlist   *PlaylistService
-	Recommend  *RecommendService
-	Cast       *CastService
-	Bookmark   *BookmarkService
-	Comment    *CommentService
-	Permission *PermissionService
-	Scheduler  *SchedulerService
-	Monitor    *MonitorService
-	WSHub      *WSHub
+	User        *UserService
+	Auth        *AuthService
+	Library     *LibraryService
+	Media       *MediaService
+	Series      *SeriesService
+	Stream      *StreamService
+	Transcode   *TranscodeService
+	Metadata    *MetadataService
+	Scanner     *ScannerService
+	Playlist    *PlaylistService
+	Recommend   *RecommendService
+	Cast        *CastService
+	Bookmark    *BookmarkService
+	Comment     *CommentService
+	Permission  *PermissionService
+	Scheduler   *SchedulerService
+	Monitor     *MonitorService
+	FileWatcher *FileWatcherService
+	NFO         *NFOService
+	Stats       *StatsService
+	Backup      *BackupService
+	Webhook     *WebhookService
+	VFS         *VFSManager
+	WSHub       *WSHub
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -57,24 +63,47 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	monitor.SetWSHub(wsHub)
 	monitor.Start()
 
+	// 创建文件监听服务
+	fileWatcher := NewFileWatcherService(cfg, logger, repos.Library, repos.Media, repos.Series, scanner, metadata)
+	fileWatcher.SetWSHub(wsHub)
+	if err := fileWatcher.Start(); err != nil {
+		logger.Errorf("文件监听服务启动失败: %v", err)
+	}
+
+	// 注入文件监听到媒体库服务
+	libService.SetFileWatcher(fileWatcher)
+
+	// 创建新服务
+	nfoService := NewNFOService(logger)
+	statsService := NewStatsService(repos.PlaybackStats, repos.Media, logger)
+	backupService := NewBackupService(repos.Media, repos.Series, repos.Library, repos.Person, repos.MediaPerson, cfg, logger)
+	webhookService := NewWebhookService(logger)
+	vfsManager := NewVFSManager(logger)
+
 	return &Services{
-		User:       NewUserService(repos.User, cfg, logger),
-		Auth:       NewAuthService(repos.User, cfg, logger),
-		Library:    libService,
-		Media:      NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger),
-		Series:     NewSeriesService(repos.Series, repos.Media, logger),
-		Stream:     NewStreamService(repos.Media, transcoder, cfg, logger),
-		Transcode:  transcoder,
-		Metadata:   metadata,
-		Scanner:    scanner,
-		Playlist:   NewPlaylistService(repos.Playlist, logger),
-		Recommend:  NewRecommendService(repos.Media, repos.WatchHistory, repos.Favorite, logger),
-		Cast:       NewCastService(repos.Media, cfg, logger),
-		Bookmark:   NewBookmarkService(repos.Bookmark, repos.Media, logger),
-		Comment:    NewCommentService(repos.Comment, repos.Media, logger),
-		Permission: NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, repos.AccessLog, logger),
-		Scheduler:  scheduler,
-		Monitor:    monitor,
-		WSHub:      wsHub,
+		User:        NewUserService(repos.User, cfg, logger),
+		Auth:        NewAuthService(repos.User, cfg, logger),
+		Library:     libService,
+		Media:       NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger),
+		Series:      NewSeriesService(repos.Series, repos.Media, logger),
+		Stream:      NewStreamService(repos.Media, transcoder, cfg, logger),
+		Transcode:   transcoder,
+		Metadata:    metadata,
+		Scanner:     scanner,
+		Playlist:    NewPlaylistService(repos.Playlist, logger),
+		Recommend:   NewRecommendService(repos.Media, repos.WatchHistory, repos.Favorite, logger),
+		Cast:        NewCastService(repos.Media, cfg, logger),
+		Bookmark:    NewBookmarkService(repos.Bookmark, repos.Media, logger),
+		Comment:     NewCommentService(repos.Comment, repos.Media, logger),
+		Permission:  NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, repos.AccessLog, logger),
+		Scheduler:   scheduler,
+		Monitor:     monitor,
+		FileWatcher: fileWatcher,
+		NFO:         nfoService,
+		Stats:       statsService,
+		Backup:      backupService,
+		Webhook:     webhookService,
+		VFS:         vfsManager,
+		WSHub:       wsHub,
 	}
 }

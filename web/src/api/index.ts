@@ -41,6 +41,9 @@ import type {
   ContentRating,
   AccessLog,
   TMDbSearchResult,
+  TMDbImageInfo,
+  BangumiSubject,
+  BangumiConfigStatus,
   SystemSettings,
 } from '@/types'
 
@@ -88,6 +91,9 @@ export const mediaApi = {
   detail: (id: string) =>
     api.get<{ data: Media }>(`/media/${id}`),
 
+  getPersons: (id: string) =>
+    api.get<ListResponse<import('@/types').MediaPerson>>(`/media/${id}/persons`),
+
   recent: (limit = 20) =>
     api.get<ListResponse<Media>>('/media/recent', { params: { limit } }),
 
@@ -105,6 +111,30 @@ export const mediaApi = {
 
   search: (q: string, page = 1, size = 20) =>
     api.get<PaginatedResponse<Media>>('/search', { params: { q, page, size } }),
+
+  searchAdvanced: (params: {
+    q?: string
+    type?: string
+    genre?: string
+    year_min?: number
+    year_max?: number
+    min_rating?: number
+    sort_by?: string
+    sort_order?: string
+    page?: number
+    size?: number
+  }) =>
+    api.get<PaginatedResponse<Media>>('/search/advanced', { params }),
+
+  searchMixed: (q: string, page = 1, size = 20) =>
+    api.get<{
+      media: Media[]
+      series: Series[]
+      media_total: number
+      series_total: number
+      page: number
+      size: number
+    }>('/search/mixed', { params: { q, page, size } }),
 
   scrape: (id: string) =>
     api.post(`/media/${id}/scrape`),
@@ -131,6 +161,12 @@ export const streamApi = {
 
   getPosterUrl: (mediaId: string) =>
     withToken(`/api/media/${mediaId}/poster`),
+
+  getSeriesPosterUrl: (seriesId: string) =>
+    withToken(`/api/series/${seriesId}/poster`),
+
+  getSeriesBackdropUrl: (seriesId: string) =>
+    withToken(`/api/series/${seriesId}/backdrop`),
 }
 
 // ==================== 字幕 ====================
@@ -161,6 +197,12 @@ export const userApi = {
 
   removeFavorite: (mediaId: string) =>
     api.delete(`/users/me/favorites/${mediaId}`),
+
+  checkFavorite: (mediaId: string) =>
+    api.get<{ data: boolean }>(`/users/me/favorites/${mediaId}/check`),
+
+  getProgress: (mediaId: string) =>
+    api.get<{ data: import('@/types').WatchHistory | null }>(`/users/me/progress/${mediaId}`),
 
   history: (page = 1, size = 20) =>
     api.get<PaginatedResponse<WatchHistory>>('/users/me/history', { params: { page, size } }),
@@ -227,6 +269,9 @@ export const adminApi = {
   transcodeStatus: () =>
     api.get<ListResponse<TranscodeJob>>('/admin/transcode/status'),
 
+  cancelTranscode: (taskId: string) =>
+    api.post(`/admin/transcode/${taskId}/cancel`),
+
   // TMDb 配置管理
   getTMDbConfig: () =>
     api.get<{ data: TMDbConfigStatus }>('/admin/settings/tmdb'),
@@ -291,18 +336,125 @@ export const adminApi = {
   matchMetadata: (mediaId: string, tmdbId: number) =>
     api.post(`/admin/media/${mediaId}/match`, { tmdb_id: tmdbId }),
 
+  unmatchMetadata: (mediaId: string) =>
+    api.post(`/admin/media/${mediaId}/unmatch`),
+
+  deleteMedia: (mediaId: string) =>
+    api.delete(`/admin/media/${mediaId}`),
+
+  updateMediaMetadata: (mediaId: string, data: {
+    title?: string
+    orig_title?: string
+    year?: number
+    overview?: string
+    rating?: number
+    genres?: string
+    country?: string
+    language?: string
+    tagline?: string
+    studio?: string
+  }) =>
+    api.put<{ message: string; data: import('@/types').Media }>(`/admin/media/${mediaId}/metadata`, data),
+
+  // 剧集合集管理
+  matchSeriesMetadata: (seriesId: string, tmdbId: number) =>
+    api.post(`/admin/series/${seriesId}/match`, { tmdb_id: tmdbId }),
+
+  unmatchSeriesMetadata: (seriesId: string) =>
+    api.post(`/admin/series/${seriesId}/unmatch`),
+
+  scrapeSeriesMetadata: (seriesId: string) =>
+    api.post(`/admin/series/${seriesId}/scrape`),
+
+  deleteSeries: (seriesId: string) =>
+    api.delete(`/admin/series/${seriesId}`),
+
+  updateSeriesMetadata: (seriesId: string, data: {
+    title?: string
+    orig_title?: string
+    year?: number
+    overview?: string
+    rating?: number
+    genres?: string
+    country?: string
+    language?: string
+    studio?: string
+  }) =>
+    api.put<{ message: string; data: import('@/types').Series }>(`/admin/series/${seriesId}/metadata`, data),
+
   // 系统全局设置
   getSystemSettings: () =>
     api.get<{ data: SystemSettings }>('/admin/settings/system'),
 
   updateSystemSettings: (data: Partial<SystemSettings>) =>
     api.put<{ data: SystemSettings }>('/admin/settings/system', data),
+
+  // 图片管理
+  searchTMDbImages: (tmdbId: number, type_: string = 'movie') =>
+    api.get<{ data: { posters: TMDbImageInfo[]; backdrops: TMDbImageInfo[] } }>('/admin/images/tmdb', {
+      params: { tmdb_id: tmdbId, type: type_ },
+    }),
+
+  uploadMediaImage: (mediaId: string, file: File, imageType: 'poster' | 'backdrop' = 'poster') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/admin/media/${mediaId}/image/upload?type=${imageType}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  uploadSeriesImage: (seriesId: string, file: File, imageType: 'poster' | 'backdrop' = 'poster') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/admin/series/${seriesId}/image/upload?type=${imageType}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  setMediaImageByURL: (mediaId: string, url: string, imageType: 'poster' | 'backdrop' = 'poster') =>
+    api.post(`/admin/media/${mediaId}/image/url`, { url, image_type: imageType }),
+
+  setSeriesImageByURL: (seriesId: string, url: string, imageType: 'poster' | 'backdrop' = 'poster') =>
+    api.post(`/admin/series/${seriesId}/image/url`, { url, image_type: imageType }),
+
+  setMediaImageFromTMDb: (mediaId: string, tmdbPath: string, imageType: 'poster' | 'backdrop' = 'poster') =>
+    api.post(`/admin/media/${mediaId}/image/tmdb`, { tmdb_path: tmdbPath, image_type: imageType }),
+
+  setSeriesImageFromTMDb: (seriesId: string, tmdbPath: string, imageType: 'poster' | 'backdrop' = 'poster') =>
+    api.post(`/admin/series/${seriesId}/image/tmdb`, { tmdb_path: tmdbPath, image_type: imageType }),
+
+  // Bangumi 数据源
+  searchBangumi: (q: string, type_: number = 2, year?: number) =>
+    api.get<ListResponse<BangumiSubject>>('/admin/metadata/bangumi/search', {
+      params: { q, type: type_, year },
+    }),
+
+  getBangumiSubject: (subjectId: number) =>
+    api.get<{ data: BangumiSubject }>(`/admin/metadata/bangumi/subject/${subjectId}`),
+
+  matchMediaBangumi: (mediaId: string, bangumiId: number) =>
+    api.post(`/admin/media/${mediaId}/match/bangumi`, { bangumi_id: bangumiId }),
+
+  matchSeriesBangumi: (seriesId: string, bangumiId: number) =>
+    api.post(`/admin/series/${seriesId}/match/bangumi`, { bangumi_id: bangumiId }),
+
+  getBangumiConfig: () =>
+    api.get<{ data: BangumiConfigStatus }>('/admin/settings/bangumi'),
+
+  updateBangumiConfig: (accessToken: string) =>
+    api.put<{ message: string; data: BangumiConfigStatus }>('/admin/settings/bangumi', { access_token: accessToken }),
+
+  clearBangumiConfig: () =>
+    api.delete<{ message: string; data: BangumiConfigStatus }>('/admin/settings/bangumi'),
 }
 
 // ==================== 智能推荐 ====================
 export const recommendApi = {
   getRecommendations: (limit = 20) =>
     api.get<ListResponse<RecommendedMedia>>('/recommend', { params: { limit } }),
+
+  getSimilarMedia: (mediaId: string, limit = 12) =>
+    api.get<ListResponse<RecommendedMedia>>(`/recommend/similar/${mediaId}`, { params: { limit } }),
 }
 
 // ==================== 投屏 ====================
@@ -357,4 +509,28 @@ export const commentApi = {
 
   delete: (id: string) =>
     api.delete(`/comments/${id}`),
+}
+
+// ==================== 播放统计 ====================
+export const statsApi = {
+  recordPlayback: (mediaId: string, watchMinutes: number) =>
+    api.post('/stats/playback', { media_id: mediaId, watch_minutes: watchMinutes }),
+
+  getMyStats: () =>
+    api.get<{ data: import('@/types').UserStatsOverview }>('/stats/me'),
+}
+
+// ==================== 数据备份 ====================
+export const backupApi = {
+  exportJSON: () =>
+    api.post<{ message: string; file: string }>('/admin/backup/json'),
+
+  exportZIP: () =>
+    api.post<{ message: string; file: string }>('/admin/backup/zip'),
+
+  importBackup: (filePath: string) =>
+    api.post('/admin/backup/import', { file_path: filePath }),
+
+  list: () =>
+    api.get<{ data: import('@/types').BackupFile[] }>('/admin/backup/list'),
 }

@@ -580,7 +580,7 @@ function ListSeriesItem({ series }: { series: Series }) {
       >
         {series.poster_path ? (
           <img
-            src={series.poster_path}
+            src={streamApi.getSeriesPosterUrl(series.id)}
             alt={series.title}
             className="h-full w-full object-cover"
             loading="lazy"
@@ -629,7 +629,7 @@ function SeriesCard({ series }: { series: Series }) {
       <div className="relative aspect-video overflow-hidden" style={{ background: 'var(--bg-surface)' }}>
         {series.poster_path ? (
           <img
-            src={series.poster_path}
+            src={streamApi.getSeriesPosterUrl(series.id)}
             alt={series.title}
             className="h-full w-full object-cover transition-all duration-500 group-hover:scale-105 group-hover:brightness-110"
           />

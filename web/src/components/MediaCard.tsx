@@ -53,7 +53,7 @@ export default function MediaCard({ media, series }: MediaCardProps) {
   const title = isSeries ? series!.title : media!.title
   const year = isSeries ? series!.year : media!.year
   const rating = isSeries ? series!.rating : media!.rating
-  const posterUrl = isSeries ? series!.poster_path : streamApi.getPosterUrl(media!.id)
+  const posterUrl = isSeries ? streamApi.getSeriesPosterUrl(series!.id) : streamApi.getPosterUrl(media!.id)
 
   return (
     <Link
@@ -69,7 +69,7 @@ export default function MediaCard({ media, series }: MediaCardProps) {
         <div
           className="pointer-events-none absolute inset-0 z-10 rounded-xl opacity-60 transition-opacity duration-300"
           style={{
-            background: `radial-gradient(circle 120px at ${mousePos.x}% ${mousePos.y}%, rgba(0, 240, 255, 0.1), transparent)`,
+            background: `radial-gradient(circle 120px at ${mousePos.x}% ${mousePos.y}%, var(--neon-blue-10), transparent)`,
           }}
         />
       )}
@@ -98,7 +98,7 @@ export default function MediaCard({ media, series }: MediaCardProps) {
                 className="flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 group-hover:scale-110"
                 style={{
                   background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                  boxShadow: '0 0 20px rgba(0, 240, 255, 0.4)',
+                  boxShadow: 'var(--neon-glow-shadow-lg)',
                 }}
               >
                 <Play size={18} className="ml-0.5 text-white" fill="white" />

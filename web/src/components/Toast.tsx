@@ -91,7 +91,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     success: 'rgba(0, 255, 136, 0.15)',
     error: 'rgba(239, 68, 68, 0.15)',
     warning: 'rgba(234, 179, 8, 0.15)',
-    info: 'rgba(0, 240, 255, 0.15)',
+    info: 'var(--neon-blue-15)',
   }
 
   return (

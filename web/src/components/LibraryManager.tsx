@@ -24,8 +24,8 @@ import clsx from 'clsx'
 
 // 类型配置映射
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof Film; color: string; bg: string }> = {
-  movie: { label: '电影', icon: Film, color: 'var(--neon-blue)', bg: 'rgba(0, 240, 255, 0.08)' },
-  tvshow: { label: '电视节目', icon: Tv, color: 'var(--neon-purple)', bg: 'rgba(138, 43, 226, 0.08)' },
+  movie: { label: '电影', icon: Film, color: 'var(--neon-blue)', bg: 'var(--neon-blue-8)' },
+  tvshow: { label: '电视节目', icon: Tv, color: 'var(--neon-purple)', bg: 'var(--neon-purple-8)' },
   mixed: { label: '混合影片', icon: Layers, color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' },
   other: { label: '其他视频', icon: Video, color: '#10B981', bg: 'rgba(16, 185, 129, 0.08)' },
 }
@@ -392,7 +392,7 @@ export default function LibraryManager({
                   <div className="px-5 pb-2">
                     <div
                       className="h-1 overflow-hidden rounded-full"
-                      style={{ background: 'rgba(0, 240, 255, 0.06)' }}
+                      style={{ background: 'var(--neon-blue-6)' }}
                     >
                       <div
                         className="h-full rounded-full transition-all duration-500"
@@ -426,8 +426,8 @@ export default function LibraryManager({
           <div
             className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl animate-float"
             style={{
-              background: 'rgba(0, 240, 255, 0.05)',
-              border: '1px solid rgba(0, 240, 255, 0.1)',
+              background: 'var(--neon-blue-5)',
+              border: '1px solid var(--neon-blue-10)',
             }}
           >
             <FolderPlus size={32} className="text-surface-600" />

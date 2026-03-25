@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { userApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { formatProgress, formatTime } from '@/utils/format'
 import type { WatchHistory } from '@/types'
 import { Clock, Play, Trash2, X } from 'lucide-react'
 
@@ -49,22 +50,6 @@ export default function HistoryPage() {
     } catch {
       toast.error('清空历史失败')
     }
-  }
-
-  const formatProgress = (position: number, duration: number) => {
-    if (!duration) return 0
-    return Math.round((position / duration) * 100)
-  }
-
-  const formatTime = (seconds: number) => {
-    if (!seconds) return '0:00'
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    const s = Math.floor(seconds % 60)
-    if (h > 0) {
-      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    }
-    return `${m}:${s.toString().padStart(2, '0')}`
   }
 
   const formatDate = (dateStr: string) => {
@@ -151,7 +136,7 @@ export default function HistoryPage() {
                     style={{
                       width: `${formatProgress(item.position, item.duration)}%`,
                       background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                      boxShadow: '0 0 6px rgba(0, 240, 255, 0.3)',
+                      boxShadow: '0 0 6px var(--neon-blue-30)',
                     }}
                   />
                 </div>
@@ -172,7 +157,7 @@ export default function HistoryPage() {
                   </span>
                   <span className="text-neon-blue/20">·</span>
                   <span>
-                    {item.completed ? '✅ 已看完' : `${formatProgress(item.position, item.duration)}%`}
+                    {item.completed ? '✓ 已看完' : `${formatProgress(item.position, item.duration)}%`}
                   </span>
                   <span className="text-neon-blue/20">·</span>
                   <span>{formatDate(item.updated_at)}</span>
@@ -198,8 +183,8 @@ export default function HistoryPage() {
           <div
             className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl animate-float"
             style={{
-              background: 'rgba(0, 240, 255, 0.05)',
-              border: '1px solid rgba(0, 240, 255, 0.08)',
+              background: 'var(--neon-blue-5)',
+              border: '1px solid var(--neon-blue-8)',
             }}
           >
             <Clock size={36} className="text-surface-600" />
