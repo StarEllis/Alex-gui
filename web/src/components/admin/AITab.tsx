@@ -5,10 +5,8 @@ import type { AIStatus, AIErrorLog, AICacheStats, AITestResult } from '@/types'
 import {
   Sparkles,
   Power,
-  Key,
   Eye,
   EyeOff,
-  Server,
   Cpu,
   Zap,
   Search,

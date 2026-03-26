@@ -181,7 +181,7 @@ export default function VideoPlayer({
           capLevelToPlayerSize: true,
           maxBufferLength: 30,
           maxMaxBufferLength: 60,
-          xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+          xhrSetup: (xhr: XMLHttpRequest, _url: string) => {
             // 为所有 HLS 请求（子 m3u8、.ts 分片）注入 JWT 认证头
             const token = useAuthStore.getState().token
             if (token) {

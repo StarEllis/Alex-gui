@@ -21,6 +21,11 @@ export const WS_EVENTS = {
   // 媒体库变更事件
   LIBRARY_DELETED: 'library_deleted',
   LIBRARY_UPDATED: 'library_updated',
+  // 文件管理事件
+  FILE_IMPORTED: 'file_imported',
+  FILE_DELETED: 'file_deleted',
+  BATCH_RENAME_COMPLETE: 'batch_rename_complete',
+  FILE_SCRAPE_PROGRESS: 'file_scrape_progress',
 } as const
 
 export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS]
