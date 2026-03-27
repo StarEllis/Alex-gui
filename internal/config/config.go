@@ -1,6 +1,7 @@
 package config
 
 import (
+	cryptoRand "crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -144,17 +145,26 @@ type AIConfig struct {
 	RequestIntervalMs int `mapstructure:"request_interval_ms"`
 }
 
+// RegistrationConfig 注册控制配置
+type RegistrationConfig struct {
+	// 是否允许公开注册，默认 false（仅管理员可创建用户）
+	Enabled bool `mapstructure:"enabled"`
+	// 邀请码（设置后注册时需提供正确的邀请码）
+	InviteCode string `mapstructure:"invite_code"`
+}
+
 // Config 应用主配置（聚合所有子模块）
 type Config struct {
 	mu sync.RWMutex `mapstructure:"-"`
 
 	// 子模块配置
-	Database DatabaseConfig `mapstructure:"database"`
-	Secrets  SecretsConfig  `mapstructure:"secrets"`
-	App      AppConfig      `mapstructure:"app"`
-	Logging  LoggingConfig  `mapstructure:"logging"`
-	Cache    CacheConfig    `mapstructure:"cache"`
-	AI       AIConfig       `mapstructure:"ai"`
+	Database     DatabaseConfig     `mapstructure:"database"`
+	Secrets      SecretsConfig      `mapstructure:"secrets"`
+	App          AppConfig          `mapstructure:"app"`
+	Logging      LoggingConfig      `mapstructure:"logging"`
+	Cache        CacheConfig        `mapstructure:"cache"`
+	AI           AIConfig           `mapstructure:"ai"`
+	Registration RegistrationConfig `mapstructure:"registration"`
 
 	// ==================== 兼容性字段（向后兼容旧的扁平配置） ====================
 	// 以下字段用于兼容旧版 config.yaml 中的扁平 key，
@@ -232,6 +242,11 @@ func Load() (*Config, error) {
 		cfg.Database.DBPath = filepath.Join(cfg.App.DataDir, filepath.Base(cfg.Database.DBPath))
 	}
 
+	// 7. 自动生成 JWT Secret（如果仍为默认值）
+	if cfg.Secrets.JWTSecret == "nowen-video-secret-change-me" {
+		cfg.Secrets.JWTSecret = generateRandomSecret(32)
+	}
+
 	return cfg, nil
 }
 
@@ -299,6 +314,10 @@ func setDefaults() {
 	viper.SetDefault("cache.ttl_hours", 0)
 	viper.SetDefault("cache.auto_cleanup", false)
 	viper.SetDefault("cache.cleanup_interval_min", 60)
+
+	// ---- 注册控制 ----
+	viper.SetDefault("registration.enabled", false)
+	viper.SetDefault("registration.invite_code", "")
 
 	// ---- 旧版兼容默认值（当使用扁平 key 时） ----
 	viper.SetDefault("port", 8080)
@@ -455,11 +474,13 @@ func (c *Config) migrateFromFlatConfig() {
 
 // ==================== 便捷访问方法（保持已有 API 兼容） ====================
 
-// IsDefaultJWTSecret 检查是否使用默认的 JWT Secret
+// IsDefaultJWTSecret 检查是否使用自动生成的 JWT Secret（未在配置文件中显式设置）
+// 注意：由于 Load() 中会自动替换默认值，此方法现在检查是否为用户显式配置
 func (c *Config) IsDefaultJWTSecret() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Secrets.JWTSecret == "nowen-video-secret-change-me"
+	// 如果 viper 中原始值仍为默认值，说明用户未显式配置
+	return viper.GetString("secrets.jwt_secret") == "nowen-video-secret-change-me"
 }
 
 // GetTMDbAPIKey 获取 TMDb API Key（线程安全）
@@ -508,6 +529,24 @@ func (c *Config) saveConfig() error {
 }
 
 // ==================== 数据库 DSN 构造 ====================
+
+// generateRandomSecret 生成随机密钥字符串
+func generateRandomSecret(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+	b := make([]byte, length)
+	// 使用 crypto/rand 生成安全随机数
+	if _, err := cryptoRand.Read(b); err != nil {
+		// 降级使用时间戳（极端情况）
+		for i := range b {
+			b[i] = charset[i%len(charset)]
+		}
+		return string(b)
+	}
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b)
+}
 
 // GetDBDSN 返回 SQLite 连接字符串（含优化参数）
 func (c *Config) GetDBDSN() string {

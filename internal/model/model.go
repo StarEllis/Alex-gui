@@ -454,5 +454,25 @@ func AutoMigrate(db *gorm.DB) error {
 		&PlaybackStats{},
 		&ScrapeTask{},
 		&ScrapeHistory{},
+		// V3: AI 场景识别与内容理解
+		&VideoChapter{},
+		&VideoHighlight{},
+		&AIAnalysisTask{},
+		// V3: AI 驱动的封面优化
+		&CoverCandidate{},
+		// V3: 家庭社交互动
+		&FamilyGroup{},
+		&FamilyMember{},
+		&MediaShare{},
+		&MediaLike{},
+		&MediaRecommendation{},
+		// V3: 实时直播扩展
+		&LiveSource{},
+		&LivePlaylist{},
+		&LiveRecording{},
+		// V3: 云端同步与多设备
+		&SyncDevice{},
+		&SyncRecord{},
+		&UserSyncConfig{},
 	)
 }

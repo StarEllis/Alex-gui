@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { ToastProvider } from '@/components/Toast'
+import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
 import LoginPage from '@/pages/LoginPage'
 import HomePage from '@/pages/HomePage'
@@ -15,8 +16,10 @@ import AdminPage from '@/pages/AdminPage'
 import SeriesDetailPage from '@/pages/SeriesDetailPage'
 import ProfilePage from '@/pages/ProfilePage'
 import StatsPage from '@/pages/StatsPage'
-import ScrapeManagerPage from '@/pages/ScrapeManagerPage'
 import FileManagerPage from '@/pages/FileManagerPage'
+import FamilyPage from '@/pages/FamilyPage'
+import LivePage from '@/pages/LivePage'
+import SyncPage from '@/pages/SyncPage'
 
 // 需要登录的路由守卫
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -30,6 +33,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ToastProvider>
+      <Toaster position="top-right" />
       <BrowserRouter>
         <Routes>
           {/* 公开路由 */}
@@ -63,10 +67,13 @@ export default function App() {
             <Route path="history" element={<HistoryPage />} />
             <Route path="playlists" element={<PlaylistsPage />} />
             <Route path="admin" element={<AdminPage />} />
-            <Route path="scrape" element={<ScrapeManagerPage />} />
+            <Route path="scrape" element={<Navigate to="/files?tab=scrape" replace />} />
             <Route path="files" element={<FileManagerPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="stats" element={<StatsPage />} />
+            <Route path="family" element={<FamilyPage />} />
+            <Route path="live" element={<LivePage />} />
+            <Route path="sync" element={<SyncPage />} />
           </Route>
 
           {/* 未匹配路由 */}

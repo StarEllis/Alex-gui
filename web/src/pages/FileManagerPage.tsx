@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { Media, Library, FileManagerStats, RenamePreview, RenameTemplate, FileOperationLog, ScannedFile, FileImportRequest } from '@/types'
 import { fileManagerApi, libraryApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import AIAssistant from '@/components/AIAssistant'
+import ScrapeManagerPage from '@/pages/ScrapeManagerPage'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import {
   FolderOpen,
+  Globe,
   Plus,
   Upload,
   Search,
@@ -82,9 +85,30 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+// Tab 类型
+type TabType = 'files' | 'scrape'
+
 export default function FileManagerPage() {
   const toast = useToast()
   const { on, off } = useWebSocket()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Tab 状态（支持从URL参数读取，如 /files?tab=scrape）
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const tab = searchParams.get('tab')
+    return tab === 'scrape' ? 'scrape' : 'files'
+  })
+
+  // 切换Tab时同步URL参数
+  const handleTabChange = useCallback((tab: TabType) => {
+    setActiveTab(tab)
+    if (tab === 'files') {
+      searchParams.delete('tab')
+    } else {
+      searchParams.set('tab', tab)
+    }
+    setSearchParams(searchParams, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // 数据状态
   const [files, setFiles] = useState<Media[]>([])
@@ -473,15 +497,53 @@ export default function FileManagerPage() {
             管理影视文件、智能刮削元数据、AI批量重命名
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={openLogs} className="btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
-            <History size={16} /> 操作日志
-          </button>
-          <button onClick={() => { fetchFiles(); fetchStats() }} className="btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
-            <RefreshCw size={16} /> 刷新
-          </button>
-        </div>
+        {activeTab === 'files' && (
+          <div className="flex items-center gap-2">
+            <button onClick={openLogs} className="btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
+              <History size={16} /> 操作日志
+            </button>
+            <button onClick={() => { fetchFiles(); fetchStats() }} className="btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
+              <RefreshCw size={16} /> 刷新
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Tab 切换栏 */}
+      <div className="flex items-center gap-1 p-1 rounded-xl glass-panel" style={{ width: 'fit-content' }}>
+        <button
+          onClick={() => handleTabChange('files')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+            activeTab === 'files'
+              ? 'bg-neon-blue/10 text-neon shadow-sm'
+              : 'text-surface-400 hover:text-surface-200 hover:bg-white/5'
+          )}
+        >
+          <FolderOpen size={16} />
+          文件列表
+        </button>
+        <button
+          onClick={() => handleTabChange('scrape')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+            activeTab === 'scrape'
+              ? 'bg-neon-blue/10 text-neon shadow-sm'
+              : 'text-surface-400 hover:text-surface-200 hover:bg-white/5'
+          )}
+        >
+          <Globe size={16} />
+          刮削任务
+        </button>
+      </div>
+
+      {/* ==================== 刮削任务 Tab ==================== */}
+      {activeTab === 'scrape' && (
+        <ScrapeManagerPage embedded />
+      )}
+
+      {/* ==================== 文件列表 Tab ==================== */}
+      {activeTab === 'files' && (<>
 
       {/* 统计卡片 */}
       {stats && (
@@ -1306,6 +1368,9 @@ export default function FileManagerPage() {
           </div>
         </div>
       )}
+
+      {/* files Tab 结束 */}
+      </>)}
 
       {/* AI 助手浮动组件 */}
       <AIAssistant

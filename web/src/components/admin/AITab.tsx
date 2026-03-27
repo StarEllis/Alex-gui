@@ -322,7 +322,7 @@ export default function AITab() {
             ) : (
               <WifiOff size={16} className="text-surface-500" />
             )}
-            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-xs font-medium text-theme-muted">
               服务状态
             </span>
           </div>
@@ -340,11 +340,11 @@ export default function AITab() {
         <div className="glass-panel rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <BarChart3 size={16} className="text-neon/60" />
-            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-xs font-medium text-theme-muted">
               本月调用
             </span>
           </div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-sm font-semibold text-theme-primary">
             {status?.monthly_calls || 0}
             {status?.monthly_budget ? (
               <span className="text-xs font-normal text-surface-500"> / {status.monthly_budget}</span>
@@ -358,11 +358,11 @@ export default function AITab() {
         <div className="glass-panel rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Cpu size={16} className="text-purple-400/60" />
-            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-xs font-medium text-theme-muted">
               Token 消耗
             </span>
           </div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-sm font-semibold text-theme-primary">
             {((status?.total_tokens || 0) / 1000).toFixed(1)}K
           </p>
         </div>
@@ -371,11 +371,11 @@ export default function AITab() {
         <div className="glass-panel rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <DatabaseIcon size={16} className="text-cyan-400/60" />
-            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-xs font-medium text-theme-muted">
               缓存条目
             </span>
           </div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-sm font-semibold text-theme-primary">
             {status?.cache_entries || 0}
           </p>
         </div>
@@ -384,8 +384,7 @@ export default function AITab() {
       {/* ==================== 配置管理 ==================== */}
       <section>
         <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide"
-          style={{ color: 'var(--text-primary)' }}
+          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
         >
           <Settings size={20} className="text-neon/60" />
           AI 服务配置
@@ -404,10 +403,10 @@ export default function AITab() {
                 <Power size={18} className={editEnabled ? 'text-neon' : 'text-surface-500'} />
               </div>
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-medium text-theme-primary">
                   启用 AI 功能
                 </p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-xs text-theme-muted">
                   全局开关，关闭后所有 AI 功能将停用
                 </p>
               </div>
@@ -425,7 +424,7 @@ export default function AITab() {
 
           {/* 提供商选择 */}
           <div>
-            <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <label className="mb-2 block text-sm font-medium text-theme-secondary">
               LLM 提供商
             </label>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -454,7 +453,7 @@ export default function AITab() {
 
           {/* API Base */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <label className="mb-1.5 block text-sm font-medium text-theme-secondary">
               API 地址
             </label>
             <input
@@ -468,7 +467,7 @@ export default function AITab() {
 
           {/* API Key */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <label className="mb-1.5 block text-sm font-medium text-theme-secondary">
               API 密钥
             </label>
             <div className="relative">
@@ -496,7 +495,7 @@ export default function AITab() {
 
           {/* 模型选择 */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <label className="mb-1.5 block text-sm font-medium text-theme-secondary">
               模型
             </label>
 
@@ -512,8 +511,7 @@ export default function AITab() {
               {/* 当输入值匹配预置模型时，显示匹配标记 */}
               {editModel && availableModels.includes(editModel) && (
                 <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] font-medium"
-                  style={{ color: 'var(--neon-blue)' }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] font-medium text-neon"
                 >
                   <Check size={12} />
                   预置模型
@@ -522,8 +520,7 @@ export default function AITab() {
               {/* 当输入值不匹配预置模型且有预置列表时，显示自定义标记 */}
               {editModel && availableModels.length > 0 && !availableModels.includes(editModel) && (
                 <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium"
-                  style={{ color: 'var(--text-muted)' }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-theme-muted"
                 >
                   自定义模型
                 </span>
@@ -558,7 +555,7 @@ export default function AITab() {
 
           {/* 功能开关 */}
           <div>
-            <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <label className="mb-2 block text-sm font-medium text-theme-secondary">
               功能开关
             </label>
             <div className="space-y-3">
@@ -598,10 +595,10 @@ export default function AITab() {
                     <div className="flex items-center gap-3">
                       <Icon size={16} className="text-neon/50" />
                       <div>
-                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        <p className="text-sm font-medium text-theme-primary">
                           {item.label}
                         </p>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <p className="text-xs text-theme-muted">
                           {item.desc}
                         </p>
                       </div>
@@ -625,8 +622,7 @@ export default function AITab() {
           <div>
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm font-medium transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
+              className="flex items-center gap-2 text-sm font-medium transition-colors text-theme-secondary"
             >
               {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               高级设置
@@ -636,7 +632,7 @@ export default function AITab() {
               <div className="mt-3 space-y-4 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)' }}>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <label className="mb-1 block text-xs font-medium text-theme-muted">
                       请求超时（秒）
                     </label>
                     <input
@@ -649,7 +645,7 @@ export default function AITab() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <label className="mb-1 block text-xs font-medium text-theme-muted">
                       月度预算上限（0=不限）
                     </label>
                     <input
@@ -661,7 +657,7 @@ export default function AITab() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <label className="mb-1 block text-xs font-medium text-theme-muted">
                       缓存时长（小时）
                     </label>
                     <input
@@ -673,7 +669,7 @@ export default function AITab() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <label className="mb-1 block text-xs font-medium text-theme-muted">
                       最大并发数
                     </label>
                     <input
@@ -686,7 +682,7 @@ export default function AITab() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    <label className="mb-1 block text-xs font-medium text-theme-muted">
                       请求间隔（毫秒）
                     </label>
                     <input
@@ -703,7 +699,7 @@ export default function AITab() {
           </div>
 
           {/* 保存按钮 */}
-          <div className="flex items-center gap-3 pt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
+          <div className="flex items-center gap-3 pt-2 border-t" style={{ borderColor: 'var(--border-default)' }}>
             <button
               onClick={handleSaveConfig}
               disabled={saving}
@@ -753,8 +749,7 @@ export default function AITab() {
       {/* ==================== 使用统计 ==================== */}
       <section>
         <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide"
-          style={{ color: 'var(--text-primary)' }}
+          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
         >
           <BarChart3 size={20} className="text-neon/60" />
           使用统计
@@ -764,7 +759,7 @@ export default function AITab() {
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div className="text-center">
               <p className="text-2xl font-bold text-neon">{status?.monthly_calls || 0}</p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-xs text-theme-muted">
                 本月请求次数
               </p>
               {status?.monthly_budget ? (
@@ -785,18 +780,18 @@ export default function AITab() {
               ) : null}
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              <p className="text-2xl font-bold text-theme-primary">
                 {((status?.total_prompt_tokens || 0) / 1000).toFixed(1)}K
               </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-xs text-theme-muted">
                 输入 Token
               </p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              <p className="text-2xl font-bold text-theme-primary">
                 {((status?.total_completion_tokens || 0) / 1000).toFixed(1)}K
               </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-xs text-theme-muted">
                 输出 Token
               </p>
             </div>
@@ -804,7 +799,7 @@ export default function AITab() {
               <p className="text-2xl font-bold text-purple-400">
                 ${(((status?.total_tokens || 0) / 1000000) * 0.15).toFixed(4)}
               </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-xs text-theme-muted">
                 费用估算 (gpt-4o-mini)
               </p>
             </div>
@@ -825,8 +820,7 @@ export default function AITab() {
       {/* ==================== 缓存管理 ==================== */}
       <section>
         <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide"
-          style={{ color: 'var(--text-primary)' }}
+          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
         >
           <DatabaseIcon size={20} className="text-neon/60" />
           缓存管理
@@ -836,10 +830,10 @@ export default function AITab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-medium text-theme-primary">
                   {cacheStats?.active_entries || 0} 条有效缓存
                 </p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-xs text-theme-muted">
                   共 {cacheStats?.total_entries || 0} 条 · {cacheStats?.expired_entries || 0} 条已过期 · TTL{' '}
                   {cacheStats?.ttl_hours || 0}h
                 </p>
@@ -869,8 +863,7 @@ export default function AITab() {
       {/* ==================== 功能测试 ==================== */}
       <section>
         <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide"
-          style={{ color: 'var(--text-primary)' }}
+          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
         >
           <Play size={20} className="text-neon/60" />
           功能测试
@@ -879,7 +872,7 @@ export default function AITab() {
         <div className="space-y-4">
           {/* 智能搜索测试 */}
           <div className="glass-panel rounded-xl p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-theme-primary">
               <Search size={16} className="text-neon/60" />
               智能搜索测试
             </h3>
@@ -945,7 +938,7 @@ export default function AITab() {
 
           {/* 推荐理由测试 */}
           <div className="glass-panel rounded-xl p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-theme-primary">
               <MessageSquare size={16} className="text-neon/60" />
               推荐理由测试
             </h3>
@@ -1004,7 +997,7 @@ export default function AITab() {
                   </span>
                 </div>
                 {recommendTestResult.reason && (
-                  <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                  <p className="text-sm text-theme-primary">
                     💡 {recommendTestResult.reason}
                   </p>
                 )}
@@ -1024,8 +1017,7 @@ export default function AITab() {
             setShowErrors(!showErrors)
             if (!showErrors) fetchErrorLogs()
           }}
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide transition-colors"
-          style={{ color: 'var(--text-primary)' }}
+          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide transition-colors text-theme-primary"
         >
           <AlertTriangle size={20} className="text-neon/60" />
           错误日志
@@ -1042,7 +1034,7 @@ export default function AITab() {
             {errorLogs.length === 0 ? (
               <div className="py-8 text-center">
                 <Check size={24} className="mx-auto mb-2 text-green-400" />
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-sm text-theme-muted">
                   暂无错误记录
                 </p>
               </div>
@@ -1077,10 +1069,10 @@ export default function AITab() {
         <div className="flex items-start gap-3">
           <Shield size={16} className="mt-0.5 text-neon/50 flex-shrink-0" />
           <div>
-            <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-xs font-medium text-theme-secondary">
               权限说明
             </p>
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <p className="mt-1 text-xs text-theme-muted">
               AI 配置仅管理员可修改。所有配置变更将实时生效，API 密钥以加密方式存储。
               AI 功能调用不会上传任何用户隐私数据，仅发送影片标题和类型等公开信息。
             </p>

@@ -84,7 +84,7 @@ export default function AccessLogsTab() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary">
           <FileText size={20} className="text-neon/60" />
           访问日志
         </h2>
@@ -93,7 +93,7 @@ export default function AccessLogsTab() {
 
       {/* 筛选栏 */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+        <div className="flex items-center gap-1.5 text-xs text-theme-tertiary">
           <Filter size={12} />
           筛选:
         </div>
@@ -143,12 +143,12 @@ export default function AccessLogsTab() {
 
               {/* 详情 */}
               <div className="min-w-0 flex-1">
-                <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm text-theme-primary">
                   <span className="font-medium text-neon/80">{log.username}</span>
                   {' '}
-                  <span style={{ color: 'var(--text-tertiary)' }}>{log.detail || log.resource}</span>
+                  <span className="text-theme-tertiary">{log.detail || log.resource}</span>
                 </p>
-                <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-theme-muted">
                   <span className="flex items-center gap-1">
                     <Clock size={10} />
                     {formatTime(log.created_at)}

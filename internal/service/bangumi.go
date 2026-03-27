@@ -328,7 +328,7 @@ func (s *BangumiService) SearchSubjects(query string, subjectType int, year int)
 	for _, subject := range searchResult.List {
 		if year > 0 && subject.AirDate != "" && len(subject.AirDate) >= 4 {
 			subYear, _ := strconv.Atoi(subject.AirDate[:4])
-			if subYear > 0 && abs(subYear-year) > 1 {
+			if subYear > 0 && absInt(subYear-year) > 1 {
 				continue
 			}
 		}

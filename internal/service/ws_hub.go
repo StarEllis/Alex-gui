@@ -210,16 +210,29 @@ func (h *WSHub) Run() {
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
+			// 收集发送失败的客户端，避免在读锁下执行写操作
+			var staleClients []*WSClient
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
-					// 发送缓冲满，断开该客户端
-					close(client.send)
-					delete(h.clients, client)
+					// 发送缓冲满，标记为待清理
+					staleClients = append(staleClients, client)
 				}
 			}
 			h.mu.RUnlock()
+
+			// 在写锁下清理失效客户端
+			if len(staleClients) > 0 {
+				h.mu.Lock()
+				for _, client := range staleClients {
+					if _, ok := h.clients[client]; ok {
+						close(client.send)
+						delete(h.clients, client)
+					}
+				}
+				h.mu.Unlock()
+			}
 		}
 	}
 }

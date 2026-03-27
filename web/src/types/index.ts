@@ -833,3 +833,658 @@ export interface ReclassifyResult {
   errors: string[]
   linked_series: number
 }
+
+// ==================== 字幕在线搜索 ====================
+export interface SubtitleSearchResult {
+  id: string
+  title: string
+  file_name: string
+  language: string
+  language_name: string
+  format: string
+  rating: number
+  download_count: number
+  source: string
+  download_url: string
+  match_type: 'hash' | 'title' | 'imdb'
+}
+
+export interface SubtitleDownloadResult {
+  file_path: string
+  file_name: string
+  language: string
+  format: string
+}
+
+// ==================== 智能通知系统 ====================
+export interface NotificationConfig {
+  enabled: boolean
+  webhooks: WebhookNotifyConfig[]
+  email: EmailConfig
+  telegram: TelegramConfig
+  events: NotificationEvents
+}
+
+export interface WebhookNotifyConfig {
+  id: string
+  name: string
+  url: string
+  secret?: string
+  enabled: boolean
+}
+
+export interface EmailConfig {
+  enabled: boolean
+  smtp_host: string
+  smtp_port: number
+  username: string
+  password: string
+  from_addr: string
+  from_name: string
+  recipients: string[]
+  use_tls: boolean
+}
+
+export interface TelegramConfig {
+  enabled: boolean
+  bot_token: string
+  chat_id: string
+}
+
+export interface NotificationEvents {
+  media_added: boolean
+  scan_complete: boolean
+  scrape_complete: boolean
+  transcode_complete: boolean
+  user_login: boolean
+  system_error: boolean
+}
+
+// ==================== 批量元数据编辑 ====================
+export interface BatchUpdateRequest {
+  media_ids: string[]
+  updates: Record<string, string>
+}
+
+export interface BatchUpdateResult {
+  total: number
+  success: number
+  failed: number
+  errors: string[]
+}
+
+// ==================== 媒体库导入/导出 ====================
+export interface ImportSource {
+  type: 'emby' | 'jellyfin' | 'nfo'
+  server_url: string
+  api_key: string
+  user_id?: string
+}
+
+export interface ImportResult {
+  total: number
+  imported: number
+  skipped: number
+  failed: number
+  errors: string[]
+}
+
+export interface ExportData {
+  version: string
+  export_at: string
+  source: string
+  libraries: { name: string; path: string; type: string }[]
+  media: ExportMedia[]
+  series: ExportSeries[]
+}
+
+export interface ExportMedia {
+  title: string
+  orig_title: string
+  year: number
+  overview: string
+  rating: number
+  genres: string
+  file_path: string
+  media_type: string
+  tmdb_id?: number
+  country?: string
+  language?: string
+  studio?: string
+}
+
+export interface ExportSeries {
+  title: string
+  orig_title: string
+  year: number
+  overview: string
+  rating: number
+  genres: string
+  folder_path: string
+  tmdb_id?: number
+}
+
+export interface EmbyLibrary {
+  Id: string
+  Name: string
+  CollectionType: string
+}
+
+// ==================== V3: AI 场景识别与内容理解 ====================
+export interface VideoChapter {
+  id: string
+  media_id: string
+  title: string
+  start_time: number
+  end_time: number
+  description: string
+  scene_type: string
+  confidence: number
+  source: 'ai' | 'manual'
+  thumbnail: string
+  created_at: string
+}
+
+export interface VideoHighlight {
+  id: string
+  media_id: string
+  title: string
+  start_time: number
+  end_time: number
+  score: number
+  tags: string
+  thumbnail: string
+  gif_path: string
+  source: 'ai' | 'manual'
+  created_at: string
+}
+
+export interface AIAnalysisTask {
+  id: string
+  media_id: string
+  task_type: 'scene_detect' | 'highlight' | 'cover_select' | 'chapter_gen'
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  progress: number
+  result: string
+  error: string
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+// ==================== V3: AI 封面优化 ====================
+export interface CoverCandidate {
+  id: string
+  media_id: string
+  frame_time: number
+  image_path: string
+  score: number
+  brightness: number
+  sharpness: number
+  composition: number
+  face_count: number
+  is_selected: boolean
+  created_at: string
+}
+
+// ==================== V3: 家庭社交互动 ====================
+export interface FamilyGroup {
+  id: string
+  name: string
+  owner_id: string
+  invite_code: string
+  avatar: string
+  max_members: number
+  members?: FamilyMember[]
+  created_at: string
+  updated_at: string
+}
+
+export interface FamilyMember {
+  id: string
+  group_id: string
+  user_id: string
+  nickname: string
+  role: 'owner' | 'admin' | 'member'
+  joined_at: string
+  user?: User
+}
+
+export interface MediaShare {
+  id: string
+  user_id: string
+  group_id: string
+  media_id: string
+  series_id: string
+  message: string
+  created_at: string
+  user?: User
+  media?: Media
+  series?: Series
+}
+
+export interface MediaLike {
+  id: string
+  user_id: string
+  media_id: string
+  created_at: string
+}
+
+export interface MediaRecommendation {
+  id: string
+  from_user_id: string
+  to_user_id: string
+  media_id: string
+  series_id: string
+  message: string
+  is_read: boolean
+  created_at: string
+  from_user?: User
+  media?: Media
+  series?: Series
+}
+
+// ==================== V3: 实时直播 ====================
+export interface LiveSource {
+  id: string
+  name: string
+  url: string
+  type: 'iptv' | 'custom' | 'rtmp'
+  category: string
+  logo: string
+  epg_url: string
+  quality: string
+  is_active: boolean
+  sort_order: number
+  last_check_at: string | null
+  check_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LivePlaylist {
+  id: string
+  name: string
+  url: string
+  file_path: string
+  source_count: number
+  auto_update: boolean
+  update_cron: string
+  last_update: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LiveRecording {
+  id: string
+  source_id: string
+  user_id: string
+  title: string
+  file_path: string
+  file_size: number
+  duration: number
+  status: 'recording' | 'completed' | 'failed'
+  started_at: string
+  stopped_at: string | null
+  source?: LiveSource
+  created_at: string
+}
+
+// ==================== V3: 云端同步 ====================
+export interface SyncDevice {
+  id: string
+  user_id: string
+  device_name: string
+  device_type: 'phone' | 'tablet' | 'tv' | 'desktop' | 'browser'
+  device_id: string
+  platform: string
+  app_version: string
+  last_sync_at: string | null
+  last_active_at: string | null
+  is_online: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SyncRecord {
+  id: string
+  user_id: string
+  device_id: string
+  data_type: 'progress' | 'favorites' | 'playlists' | 'settings' | 'history'
+  data_key: string
+  data_value: string
+  version: number
+  synced_at: string
+}
+
+export interface UserSyncConfig {
+  id: string
+  user_id: string
+  sync_progress: boolean
+  sync_favorites: boolean
+  sync_playlists: boolean
+  sync_history: boolean
+  sync_settings: boolean
+  auto_sync: boolean
+  sync_interval_min: number
+}
+
+// ==================== V2: 多用户配置文件 ====================
+export interface UserProfile {
+  id: string
+  user_id: string
+  name: string
+  avatar: string
+  type: 'standard' | 'kids' | 'restricted'
+  pin: string
+  is_default: boolean
+  kids_settings?: KidsProfileSettings
+  parental_control?: ParentalControlSettings
+  created_at: string
+  updated_at: string
+}
+
+export interface KidsProfileSettings {
+  max_content_rating: string
+  allowed_genres: string[]
+  blocked_genres: string[]
+  daily_time_limit_min: number
+  bedtime_start: string
+  bedtime_end: string
+  require_approval: boolean
+}
+
+export interface ParentalControlSettings {
+  enabled: boolean
+  monitor_watch_history: boolean
+  remote_management: boolean
+  content_filter_level: 'strict' | 'moderate' | 'relaxed'
+  blocked_media_ids: string[]
+  notification_email: string
+}
+
+export interface ProfileWatchLog {
+  id: string
+  profile_id: string
+  media_id: string
+  media_title: string
+  duration_min: number
+  started_at: string
+  ended_at: string
+}
+
+export interface ProfileDailyUsage {
+  id: string
+  profile_id: string
+  date: string
+  total_minutes: number
+  media_count: number
+}
+
+// ==================== V2: 离线下载 ====================
+export interface DownloadTask {
+  id: string
+  user_id: string
+  media_id: string
+  title: string
+  status: 'pending' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  file_size: number
+  downloaded_size: number
+  file_path: string
+  output_path: string
+  quality: string
+  speed: number
+  eta_seconds: number
+  error: string
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DownloadQueueInfo {
+  total: number
+  pending: number
+  downloading: number
+  completed: number
+  failed: number
+  total_size: number
+  downloaded_size: number
+}
+
+// ==================== V2: 插件系统 ====================
+export interface PluginInfo {
+  id: string
+  name: string
+  version: string
+  author: string
+  description: string
+  type: 'media_source' | 'theme' | 'player' | 'metadata' | 'notification'
+  entry_point: string
+  config_json: string
+  enabled: boolean
+  installed: boolean
+  homepage: string
+  license: string
+  min_version: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PluginManifest {
+  id: string
+  name: string
+  version: string
+  author: string
+  description: string
+  type: string
+  entry_point: string
+  homepage: string
+  license: string
+  min_version: string
+  config: PluginConfigDef[]
+  hooks: string[]
+  permissions: string[]
+}
+
+export interface PluginConfigDef {
+  key: string
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  default: unknown
+  required: boolean
+  options?: string[]
+  description: string
+}
+
+// ==================== V2: 音乐库 ====================
+export interface MusicTrack {
+  id: string
+  library_id: string
+  album_id: string
+  title: string
+  artist: string
+  album_artist: string
+  album: string
+  genre: string
+  year: number
+  track_num: number
+  disc_num: number
+  duration: number
+  file_path: string
+  file_size: number
+  format: string
+  bitrate: number
+  sample_rate: number
+  channels: number
+  cover_path: string
+  lyrics_path: string
+  play_count: number
+  loved: boolean
+  created_at: string
+}
+
+export interface MusicAlbum {
+  id: string
+  library_id: string
+  title: string
+  artist: string
+  year: number
+  genre: string
+  cover_path: string
+  track_count: number
+  total_duration: number
+  tracks?: MusicTrack[]
+}
+
+export interface MusicPlaylist {
+  id: string
+  user_id: string
+  name: string
+  cover_path: string
+  is_public: boolean
+  created_at: string
+  updated_at: string
+  items?: MusicPlaylistItem[]
+}
+
+export interface MusicPlaylistItem {
+  id: string
+  playlist_id: string
+  track_id: string
+  sort_order: number
+  track?: MusicTrack
+}
+
+// ==================== V2: 图片库 ====================
+export interface Photo {
+  id: string
+  library_id: string
+  album_id: string
+  file_name: string
+  file_path: string
+  file_size: number
+  format: string
+  width: number
+  height: number
+  thumb_path: string
+  camera_make: string
+  camera_model: string
+  lens_model: string
+  focal_length: string
+  aperture: string
+  shutter_speed: string
+  iso: number
+  taken_at: string | null
+  latitude: number
+  longitude: number
+  tags: string
+  face_ids: string
+  scene_type: string
+  color_tone: string
+  is_favorite: boolean
+  is_hidden: boolean
+  rating: number
+  created_at: string
+}
+
+export interface PhotoAlbum {
+  id: string
+  user_id: string
+  name: string
+  description: string
+  cover_photo_id: string
+  type: 'manual' | 'auto' | 'smart' | 'face'
+  photo_count: number
+  is_public: boolean
+  created_at: string
+  photos?: Photo[]
+}
+
+export interface FaceCluster {
+  id: string
+  name: string
+  sample_path: string
+  photo_count: number
+}
+
+// ==================== V2: 联邦架构 ====================
+export interface ServerNode {
+  id: string
+  name: string
+  url: string
+  api_key: string
+  status: 'online' | 'offline' | 'syncing' | 'error'
+  role: 'primary' | 'peer' | 'mirror'
+  version: string
+  media_count: number
+  storage_used: number
+  storage_total: number
+  cpu_usage: number
+  mem_usage: number
+  last_sync: string | null
+  sync_status: string
+  latency: number
+  is_local: boolean
+  created_at: string
+}
+
+export interface SharedMedia {
+  id: string
+  node_id: string
+  remote_id: string
+  title: string
+  orig_title: string
+  year: number
+  overview: string
+  poster_path: string
+  rating: number
+  genres: string
+  media_type: string
+  duration: number
+  resolution: string
+  stream_url: string
+}
+
+export interface FederationStats {
+  total_nodes: number
+  online_nodes: number
+  total_media: number
+  shared_media: number
+  total_storage: number
+  used_storage: number
+}
+
+export interface SyncTask {
+  id: string
+  node_id: string
+  type: 'full' | 'incremental' | 'metadata_only'
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  progress: number
+  total: number
+  synced: number
+  failed: number
+  error: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+// ==================== V2: ABR 自适应码率 ====================
+export interface ABRStatus {
+  enabled: boolean
+  gpu: GPUInfo
+  active_streams: number
+  max_streams: number
+  profiles: string[]
+}
+
+export interface GPUInfo {
+  available: boolean
+  type: string
+  name: string
+  encoders: string[]
+  max_streams: number
+  memory_mb: number
+  utilization: number
+}
+

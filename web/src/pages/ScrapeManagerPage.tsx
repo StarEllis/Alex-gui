@@ -63,7 +63,12 @@ const TRANSLATE_STATUS_LABELS: Record<string, { label: string; color: string }> 
   failed: { label: '翻译失败', color: 'text-red-400' },
 }
 
-export default function ScrapeManagerPage() {
+interface ScrapeManagerPageProps {
+  /** 是否作为嵌入组件使用（隐藏独立页面标题） */
+  embedded?: boolean
+}
+
+export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPageProps) {
   const toast = useToast()
   const { on, off } = useWebSocket()
 
@@ -358,8 +363,9 @@ export default function ScrapeManagerPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ==================== 页面标题 ==================== */}
+    <div className={clsx('space-y-6', embedded && 'pt-0')}>
+      {/* ==================== 页面标题（独立页面模式下显示） ==================== */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
@@ -388,6 +394,30 @@ export default function ScrapeManagerPage() {
           </button>
         </div>
       </div>
+      )}
+
+      {/* 嵌入模式下的精简操作栏 */}
+      {embedded && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button onClick={() => loadHistory()} className="btn-ghost gap-1.5 px-3 py-2 text-xs">
+              <Clock size={14} />
+              操作历史
+            </button>
+            <button onClick={handleExport} className="btn-ghost gap-1.5 px-3 py-2 text-xs">
+              <Download size={14} />
+              导出
+            </button>
+            <button onClick={() => { fetchTasks(); fetchStats() }} className="btn-ghost p-2 text-surface-400 hover:text-neon">
+              <RefreshCw size={16} />
+            </button>
+          </div>
+          <button onClick={() => setShowCreateForm(!showCreateForm)} className="btn-primary gap-1.5 px-3.5 py-2 text-xs">
+            <Plus size={14} />
+            新建任务
+          </button>
+        </div>
+      )}
 
       {/* ==================== 统计卡片 ==================== */}
       {stats && (

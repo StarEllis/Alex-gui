@@ -768,3 +768,378 @@ export const aiAssistantApi = {
   reclassifyFiles: (data: import('@/types').ReclassifyRequest) =>
     api.post<{ data: import('@/types').ReclassifyResult }>('/admin/assistant/reclassify', data),
 }
+
+// ==================== 字幕在线搜索 ====================
+export const subtitleSearchApi = {
+  // 搜索字幕
+  search: (mediaId: string, params: { language?: string; title?: string; year?: number; type?: string }) =>
+    api.get<{ data: import('@/types').SubtitleSearchResult[] }>(`/subtitle/${mediaId}/search`, { params }),
+
+  // 下载字幕
+  download: (mediaId: string, fileId: string) =>
+    api.post<{ message: string; data: import('@/types').SubtitleDownloadResult }>(`/subtitle/${mediaId}/download`, { file_id: fileId }),
+}
+
+// ==================== 智能通知系统 ====================
+export const notificationApi = {
+  // 获取通知配置
+  getConfig: () =>
+    api.get<{ data: import('@/types').NotificationConfig }>('/admin/notification/config'),
+
+  // 更新通知配置
+  updateConfig: (config: import('@/types').NotificationConfig) =>
+    api.put<{ message: string; data: import('@/types').NotificationConfig }>('/admin/notification/config', config),
+
+  // 测试通知
+  test: (channel: 'email' | 'telegram' | 'webhook') =>
+    api.post<{ message: string }>(`/admin/notification/test?channel=${channel}`),
+}
+
+// ==================== 批量元数据编辑 ====================
+export const batchMetadataApi = {
+  // 批量更新媒体元数据
+  batchUpdateMedia: (data: import('@/types').BatchUpdateRequest) =>
+    api.post<{ message: string; data: import('@/types').BatchUpdateResult }>('/admin/batch/metadata/media', data),
+
+  // 批量更新剧集合集元数据
+  batchUpdateSeries: (data: { series_ids: string[]; updates: Record<string, string> }) =>
+    api.post<{ message: string; data: import('@/types').BatchUpdateResult }>('/admin/batch/metadata/series', data),
+}
+
+// ==================== 媒体库导入/导出 ====================
+export const importExportApi = {
+  // 测试连接
+  testConnection: (source: import('@/types').ImportSource) =>
+    api.post<{ message: string }>('/admin/import/test', source),
+
+  // 获取外部服务器媒体库列表
+  fetchLibraries: (source: import('@/types').ImportSource) =>
+    api.post<{ data: import('@/types').EmbyLibrary[] }>('/admin/import/libraries', source),
+
+  // 从外部服务器导入
+  importFromExternal: (data: { source: import('@/types').ImportSource; library_id: string; target_library_id: string }) =>
+    api.post<{ message: string; data: import('@/types').ImportResult }>('/admin/import/external', data),
+
+  // 导出媒体库数据
+  exportLibrary: (libraryId?: string) =>
+    api.get<{ message: string; data: import('@/types').ExportData }>('/admin/export/library', { params: { library_id: libraryId } }),
+
+  // 从导出数据导入
+  importFromData: (data: { data: import('@/types').ExportData; target_library_id: string }) =>
+    api.post<{ message: string; data: import('@/types').ImportResult }>('/admin/import/data', data),
+}
+
+// ==================== V3: AI 场景识别与内容理解 ====================
+export const aiSceneApi = {
+  // 生成视频章节
+  generateChapters: (mediaId: string) =>
+    api.post<{ data: import('@/types').AIAnalysisTask; message: string }>(`/media/${mediaId}/ai/chapters`),
+
+  // 获取视频章节
+  getChapters: (mediaId: string) =>
+    api.get<{ data: import('@/types').VideoChapter[] }>(`/media/${mediaId}/chapters`),
+
+  // 提取精彩片段
+  extractHighlights: (mediaId: string) =>
+    api.post<{ data: import('@/types').AIAnalysisTask; message: string }>(`/media/${mediaId}/ai/highlights`),
+
+  // 获取精彩片段
+  getHighlights: (mediaId: string) =>
+    api.get<{ data: import('@/types').VideoHighlight[] }>(`/media/${mediaId}/highlights`),
+
+  // 生成封面候选
+  generateCoverCandidates: (mediaId: string) =>
+    api.post<{ data: import('@/types').AIAnalysisTask; message: string }>(`/media/${mediaId}/ai/covers`),
+
+  // 获取封面候选
+  getCoverCandidates: (mediaId: string) =>
+    api.get<{ data: import('@/types').CoverCandidate[] }>(`/media/${mediaId}/covers`),
+
+  // 选择封面
+  selectCover: (mediaId: string, candidateId: string) =>
+    api.post<{ message: string }>(`/media/${mediaId}/covers/${candidateId}/select`),
+
+  // 应用选中的封面
+  applyCover: (mediaId: string) =>
+    api.post<{ message: string }>(`/media/${mediaId}/covers/apply`),
+
+  // 获取AI分析任务列表
+  getAnalysisTasks: (mediaId: string) =>
+    api.get<{ data: import('@/types').AIAnalysisTask[] }>(`/media/${mediaId}/ai/tasks`),
+
+  // 获取单个分析任务
+  getAnalysisTask: (taskId: string) =>
+    api.get<{ data: import('@/types').AIAnalysisTask }>(`/ai/tasks/${taskId}`),
+}
+
+// ==================== V3: 家庭社交互动 ====================
+export const familySocialApi = {
+  // 创建家庭组
+  createGroup: (name: string) =>
+    api.post<{ data: import('@/types').FamilyGroup }>('/family/groups', { name }),
+
+  // 获取家庭组列表
+  listGroups: () =>
+    api.get<{ data: import('@/types').FamilyGroup[] }>('/family/groups'),
+
+  // 加入家庭组
+  joinGroup: (inviteCode: string) =>
+    api.post<{ data: import('@/types').FamilyGroup; message: string }>('/family/groups/join', { invite_code: inviteCode }),
+
+  // 获取家庭组详情
+  getGroup: (groupId: string) =>
+    api.get<{ data: import('@/types').FamilyGroup }>(`/family/groups/${groupId}`),
+
+  // 解散家庭组
+  deleteGroup: (groupId: string) =>
+    api.delete<{ message: string }>(`/family/groups/${groupId}`),
+
+  // 离开家庭组
+  leaveGroup: (groupId: string) =>
+    api.post<{ message: string }>(`/family/groups/${groupId}/leave`),
+
+  // 重新生成邀请码
+  regenerateInviteCode: (groupId: string) =>
+    api.post<{ invite_code: string }>(`/family/groups/${groupId}/invite-code`),
+
+  // 分享媒体到家庭组
+  shareMedia: (groupId: string, data: { media_id?: string; series_id?: string; message?: string }) =>
+    api.post<{ data: import('@/types').MediaShare }>(`/family/groups/${groupId}/share`, data),
+
+  // 获取家庭组分享列表
+  listGroupShares: (groupId: string, page = 1, size = 20) =>
+    api.get<{ data: import('@/types').MediaShare[]; total: number }>(`/family/groups/${groupId}/shares`, { params: { page, size } }),
+
+  // 点赞
+  likeMedia: (mediaId: string) =>
+    api.post<{ message: string }>(`/media/${mediaId}/like`),
+
+  // 取消点赞
+  unlikeMedia: (mediaId: string) =>
+    api.delete<{ message: string }>(`/media/${mediaId}/like`),
+
+  // 获取点赞状态
+  getLikeStatus: (mediaId: string) =>
+    api.get<{ is_liked: boolean; count: number }>(`/media/${mediaId}/like`),
+
+  // 推荐媒体
+  recommendMedia: (data: { to_user_id: string; media_id?: string; series_id?: string; message?: string }) =>
+    api.post<{ data: import('@/types').MediaRecommendation }>('/family/recommend', data),
+
+  // 获取推荐列表
+  listRecommendations: (page = 1, size = 20) =>
+    api.get<{ data: import('@/types').MediaRecommendation[]; total: number }>('/family/recommendations', { params: { page, size } }),
+
+  // 标记推荐已读
+  markRecommendationRead: (recId: string) =>
+    api.post<{ message: string }>(`/family/recommendations/${recId}/read`),
+
+  // 获取未读推荐数
+  getUnreadCount: () =>
+    api.get<{ count: number }>('/family/recommendations/unread'),
+}
+
+// ==================== V3: 实时直播 ====================
+export const liveApi = {
+  // 获取直播源列表
+  listSources: (category?: string, page = 1, size = 50) =>
+    api.get<{ data: import('@/types').LiveSource[]; total: number }>('/live/sources', { params: { category, page, size } }),
+
+  // 获取直播源详情
+  getSource: (id: string) =>
+    api.get<{ data: import('@/types').LiveSource }>(`/live/sources/${id}`),
+
+  // 获取直播分类
+  getCategories: () =>
+    api.get<{ data: string[] }>('/live/categories'),
+
+  // 添加直播源（管理员）
+  addSource: (data: { name: string; url: string; type?: string; category?: string; logo?: string; quality?: string }) =>
+    api.post<{ data: import('@/types').LiveSource }>('/admin/live/sources', data),
+
+  // 管理员获取直播源列表（包含禁用的）
+  listSourcesAdmin: (params?: { category?: string; keyword?: string; page?: number; size?: number }) =>
+    api.get<{ data: import('@/types').LiveSource[]; total: number }>('/admin/live/sources', { params }),
+
+  // 切换直播源启用/禁用（管理员）
+  toggleSourceActive: (id: string) =>
+    api.post<{ data: import('@/types').LiveSource }>(`/admin/live/sources/${id}/toggle`),
+
+  // 更新直播源（管理员）
+  updateSource: (id: string, data: Partial<import('@/types').LiveSource>) =>
+    api.put<{ data: import('@/types').LiveSource }>(`/admin/live/sources/${id}`, data),
+
+  // 删除直播源（管理员）
+  deleteSource: (id: string) =>
+    api.delete<{ message: string }>(`/admin/live/sources/${id}`),
+
+  // 检测直播源（管理员）
+  checkSource: (id: string) =>
+    api.post<{ status: string }>(`/admin/live/sources/${id}/check`),
+
+  // 批量检测（管理员）
+  batchCheck: () =>
+    api.post<{ data: Record<string, string> }>('/admin/live/sources/batch-check'),
+
+  // 导入M3U（管理员）
+  importM3U: (data: { name: string; url?: string; file_path?: string }) =>
+    api.post<{ data: import('@/types').LivePlaylist; count: number; message: string }>('/admin/live/playlists/import', data),
+
+  // 获取播放列表（管理员）
+  listPlaylists: () =>
+    api.get<{ data: import('@/types').LivePlaylist[] }>('/admin/live/playlists'),
+
+  // 删除播放列表（管理员）
+  deletePlaylist: (id: string) =>
+    api.delete<{ message: string }>(`/admin/live/playlists/${id}`),
+
+  // 开始录制
+  startRecording: (sourceId: string, title: string) =>
+    api.post<{ data: import('@/types').LiveRecording; message: string }>('/live/recordings', { source_id: sourceId, title }),
+
+  // 停止录制
+  stopRecording: (id: string) =>
+    api.post<{ message: string }>(`/live/recordings/${id}/stop`),
+
+  // 获取录制列表
+  listRecordings: (page = 1, size = 20) =>
+    api.get<{ data: import('@/types').LiveRecording[]; total: number }>('/live/recordings', { params: { page, size } }),
+
+  // 删除录制
+  deleteRecording: (id: string) =>
+    api.delete<{ message: string }>(`/live/recordings/${id}`),
+}
+
+// ==================== V3: 云端同步 ====================
+export const cloudSyncApi = {
+  // 注册设备
+  registerDevice: (data: { device_id: string; device_name: string; device_type: string; platform?: string; app_version?: string }) =>
+    api.post<{ data: import('@/types').SyncDevice }>('/sync/devices', data),
+
+  // 获取设备列表
+  listDevices: () =>
+    api.get<{ data: import('@/types').SyncDevice[] }>('/sync/devices'),
+
+  // 注销设备
+  unregisterDevice: (deviceId: string) =>
+    api.delete<{ message: string }>(`/sync/devices/${deviceId}`),
+
+  // 同步数据（上传）
+  syncData: (data: { device_id: string; data_type: string; data_key: string; data_value: string; version?: number }) =>
+    api.post<{ message: string }>('/sync/data', data),
+
+  // 拉取数据（下载）
+  pullData: (dataType: string, sinceVersion = 0) =>
+    api.get<{ data: import('@/types').SyncRecord[] }>('/sync/data', { params: { data_type: dataType, since: sinceVersion } }),
+
+  // 批量同步
+  batchSync: (deviceId: string, records: import('@/types').SyncRecord[]) =>
+    api.post<{ success: number; failed: number; message: string }>('/sync/batch', { device_id: deviceId, records }),
+
+  // 全量同步
+  fullSync: () =>
+    api.get<{ data: Record<string, unknown> }>('/sync/full'),
+
+  // 获取同步配置
+  getSyncConfig: () =>
+    api.get<{ data: import('@/types').UserSyncConfig }>('/sync/config'),
+
+  // 更新同步配置
+  updateSyncConfig: (config: Partial<import('@/types').UserSyncConfig>) =>
+    api.put<{ message: string }>('/sync/config', config),
+
+  // 导出数据
+  exportData: () =>
+    api.get('/sync/export', { responseType: 'blob' }),
+}
+
+// ==================== V2: 多用户配置文件 ====================
+export const userProfileApi = {
+  list: () => api.get<{ data: import('@/types').UserProfile[] }>('/admin/profiles'),
+  create: (profile: Partial<import('@/types').UserProfile>) => api.post<{ data: import('@/types').UserProfile }>('/admin/profiles', profile),
+  get: (id: string) => api.get<{ data: import('@/types').UserProfile }>(`/admin/profiles/${id}`),
+  update: (id: string, updates: Partial<import('@/types').UserProfile>) => api.put(`/admin/profiles/${id}`, updates),
+  delete: (id: string) => api.delete(`/admin/profiles/${id}`),
+  switch: (id: string, pin?: string) => api.post<{ data: import('@/types').UserProfile }>(`/admin/profiles/${id}/switch`, { pin }),
+  getWatchLogs: (id: string, days = 7) => api.get<{ data: import('@/types').ProfileWatchLog[] }>(`/admin/profiles/${id}/watch-logs`, { params: { days } }),
+  getDailyUsage: (id: string, days = 30) => api.get<{ data: import('@/types').ProfileDailyUsage[] }>(`/admin/profiles/${id}/usage`, { params: { days } }),
+  getStats: (id: string) => api.get<{ data: Record<string, unknown> }>(`/admin/profiles/${id}/stats`),
+}
+
+// ==================== V2: 离线下载 ====================
+export const offlineDownloadApi = {
+  create: (data: { media_id: string; title: string; file_size: number; file_path: string; quality: string }) =>
+    api.post<{ data: import('@/types').DownloadTask }>('/admin/downloads', data),
+  batchCreate: (items: { media_id: string; title: string; file_size: number; file_path: string; quality: string }[]) =>
+    api.post<{ data: import('@/types').DownloadTask[] }>('/admin/downloads/batch', { items }),
+  list: (status?: string) => api.get<{ data: import('@/types').DownloadTask[] }>('/admin/downloads', { params: { status } }),
+  getQueue: () => api.get<{ data: import('@/types').DownloadQueueInfo }>('/admin/downloads/queue'),
+  cancel: (id: string) => api.post(`/admin/downloads/${id}/cancel`),
+  pause: (id: string) => api.post(`/admin/downloads/${id}/pause`),
+  resume: (id: string) => api.post(`/admin/downloads/${id}/resume`),
+  delete: (id: string) => api.delete(`/admin/downloads/${id}`),
+}
+
+// ==================== V2: 插件系统 ====================
+export const pluginApi = {
+  list: () => api.get<{ data: import('@/types').PluginInfo[] }>('/admin/plugins'),
+  get: (id: string) => api.get<{ data: import('@/types').PluginInfo; manifest: import('@/types').PluginManifest }>(`/admin/plugins/${id}`),
+  enable: (id: string) => api.post(`/admin/plugins/${id}/enable`),
+  disable: (id: string) => api.post(`/admin/plugins/${id}/disable`),
+  uninstall: (id: string) => api.delete(`/admin/plugins/${id}`),
+  updateConfig: (id: string, config: Record<string, unknown>) => api.put(`/admin/plugins/${id}/config`, config),
+  scan: () => api.post<{ data: import('@/types').PluginManifest[] }>('/admin/plugins/scan'),
+}
+
+// ==================== V2: 音乐库 ====================
+export const musicApi = {
+  listTracks: (params: { library_id?: string; page?: number; size?: number; sort?: string }) =>
+    api.get<{ data: import('@/types').MusicTrack[]; total: number }>('/music/tracks', { params }),
+  listAlbums: (params: { library_id?: string; page?: number; size?: number }) =>
+    api.get<{ data: import('@/types').MusicAlbum[]; total: number }>('/music/albums', { params }),
+  getAlbum: (id: string) => api.get<{ data: import('@/types').MusicAlbum }>(`/music/albums/${id}`),
+  search: (q: string, limit = 20) => api.get<{ data: import('@/types').MusicTrack[] }>('/music/search', { params: { q, limit } }),
+  getLyrics: (id: string) => api.get<{ data: string }>(`/music/tracks/${id}/lyrics`),
+  toggleLove: (id: string) => api.post<{ loved: boolean }>(`/music/tracks/${id}/love`),
+  scan: (libraryId: string, path: string) => api.post<{ count: number }>('/admin/music/scan', { library_id: libraryId, path }),
+  listPlaylists: () => api.get<{ data: import('@/types').MusicPlaylist[] }>('/music/playlists'),
+  createPlaylist: (name: string) => api.post<{ data: import('@/types').MusicPlaylist }>('/music/playlists', { name }),
+  getPlaylist: (id: string) => api.get<{ data: import('@/types').MusicPlaylist }>(`/music/playlists/${id}`),
+  addToPlaylist: (id: string, trackIds: string[]) => api.post(`/music/playlists/${id}/tracks`, { track_ids: trackIds }),
+}
+
+// ==================== V2: 图片库 ====================
+export const photoApi = {
+  list: (params: { library_id?: string; page?: number; size?: number; sort?: string; album_id?: string; tag?: string; favorite?: string }) =>
+    api.get<{ data: import('@/types').Photo[]; total: number }>('/photos', { params }),
+  get: (id: string) => api.get<{ data: import('@/types').Photo }>(`/photos/${id}`),
+  listAlbums: () => api.get<{ data: import('@/types').PhotoAlbum[] }>('/photos/albums'),
+  createAlbum: (name: string, description?: string) => api.post<{ data: import('@/types').PhotoAlbum }>('/photos/albums', { name, description }),
+  addToAlbum: (albumId: string, photoIds: string[]) => api.post(`/photos/albums/${albumId}/photos`, { photo_ids: photoIds }),
+  toggleFavorite: (id: string) => api.post<{ is_favorite: boolean }>(`/photos/${id}/favorite`),
+  setRating: (id: string, rating: number) => api.post(`/photos/${id}/rating`, { rating }),
+  search: (q: string, limit = 50) => api.get<{ data: import('@/types').Photo[] }>('/photos/search', { params: { q, limit } }),
+  getStats: (libraryId?: string) => api.get<{ data: Record<string, unknown> }>('/photos/stats', { params: { library_id: libraryId } }),
+  scan: (libraryId: string, path: string) => api.post<{ count: number }>('/admin/photos/scan', { library_id: libraryId, path }),
+}
+
+// ==================== V2: 联邦架构 ====================
+export const federationApi = {
+  listNodes: () => api.get<{ data: import('@/types').ServerNode[] }>('/admin/federation/nodes'),
+  registerNode: (data: { name: string; url: string; api_key: string; role: string }) =>
+    api.post<{ data: import('@/types').ServerNode }>('/admin/federation/nodes', data),
+  removeNode: (id: string) => api.delete(`/admin/federation/nodes/${id}`),
+  syncNode: (id: string, type = 'full') => api.post<{ data: import('@/types').SyncTask }>(`/admin/federation/nodes/${id}/sync`, null, { params: { type } }),
+  getStats: () => api.get<{ data: import('@/types').FederationStats }>('/admin/federation/stats'),
+  getSyncTasks: (nodeId?: string) => api.get<{ data: import('@/types').SyncTask[] }>('/admin/federation/sync-tasks', { params: { node_id: nodeId } }),
+  searchShared: (q: string, page = 1, size = 20) =>
+    api.get<{ data: import('@/types').SharedMedia[]; total: number }>('/federation/search', { params: { q, page, size } }),
+  getSharedStream: (id: string) => api.get<{ stream_url: string }>(`/federation/stream/${id}`),
+}
+
+// ==================== V2: ABR 自适应码率 ====================
+export const abrApi = {
+  getStatus: () => api.get<{ data: import('@/types').ABRStatus }>('/admin/abr/status'),
+  getGPUInfo: () => api.get<{ data: import('@/types').GPUInfo }>('/admin/abr/gpu'),
+  cleanCache: (mediaId?: string) => api.delete('/admin/abr/cache', { params: { media_id: mediaId } }),
+}

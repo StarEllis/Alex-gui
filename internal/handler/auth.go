@@ -41,11 +41,16 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	token, err := h.authService.Register(&req)
 	if err != nil {
-		if err == service.ErrUserExists {
+		switch err {
+		case service.ErrUserExists:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
+		case service.ErrRegistrationDisabled:
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case service.ErrInvalidInviteCode:
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败"})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败"})
 		return
 	}
 

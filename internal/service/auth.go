@@ -31,8 +31,9 @@ type LoginRequest struct {
 
 // RegisterRequest 注册请求
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password" binding:"required,min=6,max=64"`
+	Username   string `json:"username" binding:"required,min=3,max=32"`
+	Password   string `json:"password" binding:"required,min=6,max=64"`
+	InviteCode string `json:"invite_code"` // 邀请码（可选，根据配置决定是否必填）
 }
 
 // TokenResponse 令牌响应
@@ -58,6 +59,23 @@ func (s *AuthService) Login(req *LoginRequest) (*TokenResponse, error) {
 
 // Register 用户注册
 func (s *AuthService) Register(req *RegisterRequest) (*TokenResponse, error) {
+	// 检查是否为第一个用户（第一个用户始终允许注册为管理员）
+	count, _ := s.userRepo.Count()
+	isFirstUser := count == 0
+
+	// 非第一个用户时，检查注册限制
+	if !isFirstUser {
+		if !s.cfg.Registration.Enabled {
+			return nil, ErrRegistrationDisabled
+		}
+		// 检查邀请码
+		if s.cfg.Registration.InviteCode != "" {
+			if req.InviteCode != s.cfg.Registration.InviteCode {
+				return nil, ErrInvalidInviteCode
+			}
+		}
+	}
+
 	// 检查用户名是否已存在
 	if _, err := s.userRepo.FindByUsername(req.Username); err == nil {
 		return nil, ErrUserExists
@@ -69,9 +87,8 @@ func (s *AuthService) Register(req *RegisterRequest) (*TokenResponse, error) {
 	}
 
 	// 判断是否为第一个用户（自动设为管理员）
-	count, _ := s.userRepo.Count()
 	role := "user"
-	if count == 0 {
+	if isFirstUser {
 		role = "admin"
 	}
 

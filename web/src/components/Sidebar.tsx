@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { Library } from '@/types'
+import LanguageSwitcher from './LanguageSwitcher'
 import {
   Home,
   Search,
@@ -24,8 +25,10 @@ import {
   Video,
   X,
   BarChart3,
-  Globe,
   FolderOpen as FolderOpenIcon,
+  Users,
+  Radio,
+  Cloud,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -187,6 +190,33 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         </NavLink>
 
         <NavLink
+          to="/family"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <Users size={18} />
+          {(!collapsed || isMobileOpen) && <span>家庭空间</span>}
+        </NavLink>
+
+        <NavLink
+          to="/live"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <Radio size={18} />
+          {(!collapsed || isMobileOpen) && <span>直播频道</span>}
+        </NavLink>
+
+        <NavLink
+          to="/sync"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <Cloud size={18} />
+          {(!collapsed || isMobileOpen) && <span>云端同步</span>}
+        </NavLink>
+
+        <NavLink
           to="/profile"
           className={({ isActive }) => clsx('nav-item', isActive && 'active')}
           onClick={onMobileClose}
@@ -243,15 +273,6 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             </NavLink>
 
             <NavLink
-              to="/scrape"
-              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-              onClick={onMobileClose}
-            >
-              <Globe size={18} />
-              {(!collapsed || isMobileOpen) && <span>刮削管理</span>}
-            </NavLink>
-
-            <NavLink
               to="/files"
               className={({ isActive }) => clsx('nav-item', isActive && 'active')}
               onClick={onMobileClose}
@@ -264,7 +285,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
       </nav>
 
       {/* 主题切换 + 用户信息 */}
-      <div className="border-t p-3" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="border-t p-3 border-[var(--border-default)]">
         {/* 主题切换按钮 */}
         <div className={clsx('mb-3', collapsed && !isMobileOpen && 'flex justify-center')}>
           <button
@@ -279,6 +300,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               background: theme === 'light' ? 'var(--nav-hover-bg)' : undefined,
               border: theme === 'light' ? '1px solid var(--border-default)' : '1px solid transparent',
             }}
+            /* 注意：此处保留 style 因为需要根据 theme 状态动态切换 */
             title={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
             aria-label={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
             role="switch"
@@ -327,6 +349,11 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           </button>
         </div>
 
+        {/* 语言切换 */}
+        {(!collapsed || isMobileOpen) && (
+          <LanguageSwitcher />
+        )}
+
         <div className="flex items-center gap-3">
           {/* 霓虹头像 */}
           <div className="relative flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
@@ -340,10 +367,10 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           </div>
           {(!collapsed || isMobileOpen) && (
             <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              <p className="truncate text-sm font-medium text-theme-primary">
                 {user?.username}
               </p>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              <p className="text-xs text-theme-tertiary">
                 {user?.role === 'admin' ? '管理员' : '用户'}
               </p>
             </div>

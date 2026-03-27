@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
@@ -62,6 +68,8 @@ func main() {
 
 	// 全局中间件
 	r.Use(middleware.CORS(cfg.App.CORSOrigins...))
+	r.Use(middleware.Security())
+	r.Use(middleware.RateLimit(120)) // 全局速率限制：每分钟120次请求
 
 	// JWT Secret 安全检查
 	if cfg.Secrets.JWTSecret == "" {
@@ -75,7 +83,7 @@ func main() {
 	auth := r.Group("/api/auth")
 	{
 		auth.POST("/login", handlers.Auth.Login)
-		auth.POST("/register", handlers.Auth.Register)
+		auth.POST("/register", middleware.RateLimit(10), handlers.Auth.Register) // 注册接口额外限制：每分钟10次
 	}
 
 	// 需要认证的auth路由
@@ -143,6 +151,10 @@ func main() {
 		api.GET("/subtitle/:id/extract/:index", handlers.Subtitle.ExtractTrack)
 		api.GET("/subtitle/external", handlers.Subtitle.ServeExternal)
 
+		// 字幕在线搜索与下载
+		api.GET("/subtitle/:id/search", handlers.SubtitleSearch.SearchSubtitles)
+		api.POST("/subtitle/:id/download", handlers.SubtitleSearch.DownloadSubtitle)
+
 		// 元数据刮削（管理员）
 		api.POST("/media/:id/scrape", middleware.AdminOnly(), handlers.Metadata.ScrapeMedia)
 
@@ -204,6 +216,84 @@ func main() {
 		// 播放统计
 		api.POST("/stats/playback", handlers.Stats.RecordPlayback)
 		api.GET("/stats/me", handlers.Stats.GetUserStats)
+
+		// ==================== V2: 音乐库 ====================
+		api.GET("/music/tracks", handlers.Music.ListTracks)
+		api.GET("/music/albums", handlers.Music.ListAlbums)
+		api.GET("/music/albums/:id", handlers.Music.GetAlbum)
+		api.GET("/music/search", handlers.Music.SearchMusic)
+		api.GET("/music/tracks/:id/lyrics", handlers.Music.GetLyrics)
+		api.POST("/music/tracks/:id/love", handlers.Music.ToggleLove)
+		api.GET("/music/playlists", handlers.Music.ListPlaylists)
+		api.POST("/music/playlists", handlers.Music.CreatePlaylist)
+		api.GET("/music/playlists/:id", handlers.Music.GetPlaylist)
+		api.POST("/music/playlists/:id/tracks", handlers.Music.AddToPlaylist)
+
+		// ==================== V2: 图片库 ====================
+		api.GET("/photos", handlers.Photo.ListPhotos)
+		api.GET("/photos/:id", handlers.Photo.GetPhoto)
+		api.GET("/photos/albums", handlers.Photo.ListAlbums)
+		api.POST("/photos/albums", handlers.Photo.CreateAlbum)
+		api.POST("/photos/albums/:id/photos", handlers.Photo.AddPhotosToAlbum)
+		api.POST("/photos/:id/favorite", handlers.Photo.ToggleFavorite)
+		api.POST("/photos/:id/rating", handlers.Photo.SetRating)
+		api.GET("/photos/search", handlers.Photo.SearchPhotos)
+		api.GET("/photos/stats", handlers.Photo.GetStats)
+
+		// ==================== V2: 联邦架构（共享媒体搜索） ====================
+		api.GET("/federation/search", handlers.Federation.SearchSharedMedia)
+		api.GET("/federation/stream/:id", handlers.Federation.GetSharedMediaStream)
+
+		// ==================== V3: AI 场景识别与内容理解 ====================
+		api.POST("/media/:id/ai/chapters", handlers.AIScene.GenerateChapters)
+		api.GET("/media/:id/chapters", handlers.AIScene.GetChapters)
+		api.POST("/media/:id/ai/highlights", handlers.AIScene.ExtractHighlights)
+		api.GET("/media/:id/highlights", handlers.AIScene.GetHighlights)
+		api.POST("/media/:id/ai/covers", handlers.AIScene.GenerateCoverCandidates)
+		api.GET("/media/:id/covers", handlers.AIScene.GetCoverCandidates)
+		api.POST("/media/:id/covers/:candidateId/select", handlers.AIScene.SelectCover)
+		api.POST("/media/:id/covers/apply", handlers.AIScene.ApplyCover)
+		api.GET("/media/:id/ai/tasks", handlers.AIScene.GetAnalysisTasks)
+		api.GET("/ai/tasks/:taskId", handlers.AIScene.GetAnalysisTask)
+
+		// ==================== V3: 家庭社交互动 ====================
+		api.POST("/family/groups", handlers.FamilySocial.CreateGroup)
+		api.GET("/family/groups", handlers.FamilySocial.ListGroups)
+		api.POST("/family/groups/join", handlers.FamilySocial.JoinGroup)
+		api.GET("/family/groups/:groupId", handlers.FamilySocial.GetGroup)
+		api.DELETE("/family/groups/:groupId", handlers.FamilySocial.DeleteGroup)
+		api.POST("/family/groups/:groupId/leave", handlers.FamilySocial.LeaveGroup)
+		api.POST("/family/groups/:groupId/invite-code", handlers.FamilySocial.RegenerateInviteCode)
+		api.POST("/family/groups/:groupId/share", handlers.FamilySocial.ShareMedia)
+		api.GET("/family/groups/:groupId/shares", handlers.FamilySocial.ListGroupShares)
+		api.POST("/media/:id/like", handlers.FamilySocial.LikeMedia)
+		api.DELETE("/media/:id/like", handlers.FamilySocial.UnlikeMedia)
+		api.GET("/media/:id/like", handlers.FamilySocial.GetLikeStatus)
+		api.POST("/family/recommend", handlers.FamilySocial.RecommendMedia)
+		api.GET("/family/recommendations", handlers.FamilySocial.ListRecommendations)
+		api.POST("/family/recommendations/:recId/read", handlers.FamilySocial.MarkRecommendationRead)
+		api.GET("/family/recommendations/unread", handlers.FamilySocial.GetUnreadCount)
+
+		// ==================== V3: 实时直播 ====================
+		api.GET("/live/sources", handlers.Live.ListSources)
+		api.GET("/live/sources/:id", handlers.Live.GetSource)
+		api.GET("/live/categories", handlers.Live.GetCategories)
+		api.POST("/live/recordings", handlers.Live.StartRecording)
+		api.POST("/live/recordings/:id/stop", handlers.Live.StopRecording)
+		api.GET("/live/recordings", handlers.Live.ListRecordings)
+		api.DELETE("/live/recordings/:id", handlers.Live.DeleteRecording)
+
+		// ==================== V3: 云端同步 ====================
+		api.POST("/sync/devices", handlers.CloudSync.RegisterDevice)
+		api.GET("/sync/devices", handlers.CloudSync.ListDevices)
+		api.DELETE("/sync/devices/:deviceId", handlers.CloudSync.UnregisterDevice)
+		api.POST("/sync/data", handlers.CloudSync.SyncData)
+		api.GET("/sync/data", handlers.CloudSync.PullData)
+		api.POST("/sync/batch", handlers.CloudSync.BatchSync)
+		api.GET("/sync/full", handlers.CloudSync.FullSync)
+		api.GET("/sync/config", handlers.CloudSync.GetSyncConfig)
+		api.PUT("/sync/config", handlers.CloudSync.UpdateSyncConfig)
+		api.GET("/sync/export", handlers.CloudSync.ExportData)
 	}
 
 	// 管理路由
@@ -347,6 +437,90 @@ func main() {
 		admin.GET("/assistant/history", handlers.AIAssistant.GetOperationHistory)
 		admin.GET("/assistant/misclassification", handlers.AIAssistant.AnalyzeMisclassification)
 		admin.POST("/assistant/reclassify", handlers.AIAssistant.ReclassifyFiles)
+
+		// 智能通知系统
+		admin.GET("/notification/config", handlers.Notification.GetConfig)
+		admin.PUT("/notification/config", handlers.Notification.UpdateConfig)
+		admin.POST("/notification/test", handlers.Notification.TestNotification)
+
+		// 批量元数据编辑
+		admin.POST("/batch/metadata/media", handlers.BatchMetadata.BatchUpdateMedia)
+		admin.POST("/batch/metadata/series", handlers.BatchMetadata.BatchUpdateSeries)
+
+		// 媒体库导入/导出
+		admin.POST("/import/test", handlers.BatchMetadata.TestImportConnection)
+		admin.POST("/import/libraries", handlers.BatchMetadata.FetchImportLibraries)
+		admin.POST("/import/external", handlers.BatchMetadata.ImportFromExternal)
+		admin.GET("/export/library", handlers.BatchMetadata.ExportLibrary)
+		admin.POST("/import/data", handlers.BatchMetadata.ImportFromExportData)
+
+		// ==================== V2: 多用户配置文件 ====================
+		admin.GET("/profiles", handlers.UserProfile.ListProfiles)
+		admin.POST("/profiles", handlers.UserProfile.CreateProfile)
+		admin.GET("/profiles/:id", handlers.UserProfile.GetProfile)
+		admin.PUT("/profiles/:id", handlers.UserProfile.UpdateProfile)
+		admin.DELETE("/profiles/:id", handlers.UserProfile.DeleteProfile)
+		admin.POST("/profiles/:id/switch", handlers.UserProfile.SwitchProfile)
+		admin.GET("/profiles/:id/watch-logs", handlers.UserProfile.GetWatchLogs)
+		admin.GET("/profiles/:id/usage", handlers.UserProfile.GetDailyUsage)
+		admin.GET("/profiles/:id/stats", handlers.UserProfile.GetProfileStats)
+
+		// ==================== V2: 离线下载 ====================
+		admin.POST("/downloads", handlers.OfflineDownload.CreateDownload)
+		admin.POST("/downloads/batch", handlers.OfflineDownload.BatchDownload)
+		admin.GET("/downloads", handlers.OfflineDownload.ListDownloads)
+		admin.GET("/downloads/queue", handlers.OfflineDownload.GetQueueInfo)
+		admin.POST("/downloads/:id/cancel", handlers.OfflineDownload.CancelDownload)
+		admin.POST("/downloads/:id/pause", handlers.OfflineDownload.PauseDownload)
+		admin.POST("/downloads/:id/resume", handlers.OfflineDownload.ResumeDownload)
+		admin.DELETE("/downloads/:id", handlers.OfflineDownload.DeleteDownload)
+
+		// ==================== V2: ABR 自适应码率 ====================
+		admin.GET("/abr/status", handlers.ABR.GetStatus)
+		admin.GET("/abr/gpu", handlers.ABR.GetGPUInfo)
+		admin.DELETE("/abr/cache", handlers.ABR.CleanCache)
+
+		// ==================== V2: 插件系统 ====================
+		admin.GET("/plugins", handlers.Plugin.ListPlugins)
+		admin.GET("/plugins/:id", handlers.Plugin.GetPlugin)
+		admin.POST("/plugins/:id/enable", handlers.Plugin.EnablePlugin)
+		admin.POST("/plugins/:id/disable", handlers.Plugin.DisablePlugin)
+		admin.DELETE("/plugins/:id", handlers.Plugin.UninstallPlugin)
+		admin.PUT("/plugins/:id/config", handlers.Plugin.UpdatePluginConfig)
+		admin.POST("/plugins/scan", handlers.Plugin.ScanPlugins)
+
+		// ==================== V2: 音乐库管理 ====================
+		admin.POST("/music/scan", handlers.Music.ScanLibrary)
+
+		// ==================== V2: 图片库管理 ====================
+		admin.POST("/photos/scan", handlers.Photo.ScanLibrary)
+
+		// ==================== V2: 多服务器联邦架构 ====================
+		admin.GET("/federation/nodes", handlers.Federation.ListNodes)
+		admin.POST("/federation/nodes", handlers.Federation.RegisterNode)
+		admin.DELETE("/federation/nodes/:id", handlers.Federation.RemoveNode)
+		admin.POST("/federation/nodes/:id/sync", handlers.Federation.SyncNode)
+		admin.GET("/federation/stats", handlers.Federation.GetStats)
+		admin.GET("/federation/sync-tasks", handlers.Federation.GetSyncTasks)
+
+		// ==================== V3: 直播管理（管理员） ====================
+		admin.GET("/live/sources", handlers.Live.ListSourcesAdmin)
+		admin.POST("/live/sources", handlers.Live.AddSource)
+		admin.PUT("/live/sources/:id", handlers.Live.UpdateSource)
+		admin.DELETE("/live/sources/:id", handlers.Live.DeleteSource)
+		admin.POST("/live/sources/:id/check", handlers.Live.CheckSource)
+		admin.POST("/live/sources/:id/toggle", handlers.Live.ToggleSourceActive)
+		admin.POST("/live/sources/batch-check", handlers.Live.BatchCheck)
+		admin.POST("/live/playlists/import", handlers.Live.ImportM3U)
+		admin.GET("/live/playlists", handlers.Live.ListPlaylists)
+		admin.DELETE("/live/playlists/:id", handlers.Live.DeletePlaylist)
+	}
+
+	// ==================== V2: 联邦 API（供其他节点调用） ====================
+	federation := r.Group("/api/federation")
+	{
+		federation.GET("/health", handlers.Federation.Health)
+		federation.GET("/media", handlers.Federation.MediaList)
 	}
 
 	// 静态文件（前端构建产物）
@@ -357,7 +531,33 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
 	sugar.Infof("nowen-video 启动于 %s", addr)
-	if err := r.Run(addr); err != nil {
-		sugar.Fatalf("服务器启动失败: %v", err)
+
+	// 使用 http.Server 实现优雅关闭
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: r,
 	}
+
+	// 在 goroutine 中启动服务器
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			sugar.Fatalf("服务器启动失败: %v", err)
+		}
+	}()
+
+	// 等待中断信号以优雅关闭服务器
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	sugar.Info("正在关闭服务器...")
+
+	// 设置 30 秒超时用于优雅关闭
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		sugar.Fatalf("服务器强制关闭: %v", err)
+	}
+
+	sugar.Info("服务器已优雅关闭")
 }

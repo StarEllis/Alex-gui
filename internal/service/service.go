@@ -1,6 +1,9 @@
 package service
 
 import (
+	"fmt"
+	"path/filepath"
+
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -8,37 +11,54 @@ import (
 
 // Services 聚合所有服务
 type Services struct {
-	User          *UserService
-	Auth          *AuthService
-	Library       *LibraryService
-	Media         *MediaService
-	Series        *SeriesService
-	Stream        *StreamService
-	Transcode     *TranscodeService
-	Metadata      *MetadataService
-	Scanner       *ScannerService
-	Playlist      *PlaylistService
-	Recommend     *RecommendService
-	Cast          *CastService
-	Bookmark      *BookmarkService
-	Comment       *CommentService
-	Permission    *PermissionService
-	Scheduler     *SchedulerService
-	Monitor       *MonitorService
-	FileWatcher   *FileWatcherService
-	NFO           *NFOService
-	Stats         *StatsService
-	Backup        *BackupService
-	Webhook       *WebhookService
-	VFS           *VFSManager
-	WSHub         *WSHub
-	AI            *AIService
-	ScrapeManager *ScrapeManagerService
-	FileManager   *FileManagerService
-	AIAssistant   *AIAssistantService
-	TheTVDB       *TheTVDBService
-	Fanart        *FanartService
-	ProviderChain *ProviderChain
+	User           *UserService
+	Auth           *AuthService
+	Library        *LibraryService
+	Media          *MediaService
+	Series         *SeriesService
+	Stream         *StreamService
+	Transcode      *TranscodeService
+	Metadata       *MetadataService
+	Scanner        *ScannerService
+	Playlist       *PlaylistService
+	Recommend      *RecommendService
+	Cast           *CastService
+	Bookmark       *BookmarkService
+	Comment        *CommentService
+	Permission     *PermissionService
+	Scheduler      *SchedulerService
+	Monitor        *MonitorService
+	FileWatcher    *FileWatcherService
+	NFO            *NFOService
+	Stats          *StatsService
+	Backup         *BackupService
+	Webhook        *WebhookService
+	VFS            *VFSManager
+	WSHub          *WSHub
+	AI             *AIService
+	ScrapeManager  *ScrapeManagerService
+	FileManager    *FileManagerService
+	AIAssistant    *AIAssistantService
+	TheTVDB        *TheTVDBService
+	Fanart         *FanartService
+	ProviderChain  *ProviderChain
+	Notification   *NotificationService
+	SubtitleSearch *SubtitleSearchService
+	BatchMetadata  *BatchMetadataService
+	ImportExport   *MediaImportExportService
+	// V2: 中期发展规划服务
+	UserProfile     *UserProfileService
+	OfflineDownload *OfflineDownloadService
+	ABR             *ABRService
+	Plugin          *PluginService
+	Music           *MusicService
+	Photo           *PhotoService
+	Federation      *FederationService
+	// V3: 新增服务
+	AIScene      *AISceneService
+	FamilySocial *FamilySocialService
+	Live         *LiveService
+	CloudSync    *CloudSyncService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -137,37 +157,119 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	)
 	aiAssistant.SetWSHub(wsHub)
 
+	// 创建智能通知服务
+	notificationService := NewNotificationService(logger)
+
+	// 创建字幕在线搜索服务
+	subtitleSearchService := NewSubtitleSearchService("", cfg.Cache.CacheDir, logger)
+
+	// 创建批量元数据编辑服务
+	batchMetadataService := NewBatchMetadataService(repos.DB(), logger)
+
+	// 创建媒体库导入/导出服务
+	importExportService := NewMediaImportExportService(repos.DB(), logger)
+
+	// V2: 创建多用户配置文件服务
+	userProfileService := NewUserProfileService(repos.DB(), logger)
+
+	// V2: 创建离线下载服务
+	offlineDownloadService := NewOfflineDownloadService(repos.DB(), filepath.Join(cfg.Cache.CacheDir, "downloads"), logger)
+	offlineDownloadService.SetWSHub(wsHub)
+
+	// V2: 创建ABR自适应码率服务
+	abrService := NewABRService(cfg, cfg.App.HWAccel, logger)
+	abrService.SetWSHub(wsHub)
+
+	// V2: 创建可扩展插件系统
+	pluginService := NewPluginService(repos.DB(), filepath.Join(cfg.Cache.CacheDir, "plugins"), logger)
+
+	// V2: 创建音乐库服务
+	musicService := NewMusicService(repos.DB(), logger)
+
+	// V2: 创建图片库服务
+	photoService := NewPhotoService(repos.DB(), filepath.Join(cfg.Cache.CacheDir, "thumbnails", "photos"), logger)
+
+	// V2: 创建多服务器联邦架构服务
+	federationService := NewFederationService(repos.DB(), fmt.Sprintf("node_local_%d", cfg.App.Port), logger)
+	federationService.SetWSHub(wsHub)
+
+	// V3: 创建AI场景识别服务
+	aiSceneService := NewAISceneService(
+		cfg, aiService,
+		repos.Media, repos.VideoChapter, repos.VideoHighlight,
+		repos.AIAnalysisTask, repos.CoverCandidate, logger,
+	)
+	aiSceneService.SetWSHub(wsHub)
+
+	// V3: 创建家庭社交服务
+	familySocialService := NewFamilySocialService(
+		repos.FamilyGroup, repos.FamilyMember,
+		repos.MediaShare, repos.MediaLike, repos.MediaRecommendation,
+		repos.Media, repos.Series, logger,
+	)
+	familySocialService.SetWSHub(wsHub)
+
+	// V3: 创建直播服务
+	liveService := NewLiveService(
+		cfg, repos.LiveSource, repos.LivePlaylist, repos.LiveRecording, logger,
+	)
+	liveService.SetWSHub(wsHub)
+
+	// V3: 创建云端同步服务
+	cloudSyncService := NewCloudSyncService(
+		repos.SyncDevice, repos.SyncRecord, repos.UserSyncConfig,
+		repos.WatchHistory, repos.Favorite, repos.Playlist, logger,
+	)
+	cloudSyncService.SetWSHub(wsHub)
+
 	return &Services{
-		User:          NewUserService(repos.User, cfg, logger),
-		Auth:          NewAuthService(repos.User, cfg, logger),
-		Library:       libService,
-		Media:         NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger),
-		Series:        NewSeriesService(repos.Series, repos.Media, logger),
-		Stream:        NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger),
-		Transcode:     transcoder,
-		Metadata:      metadata,
-		Scanner:       scanner,
-		Playlist:      NewPlaylistService(repos.Playlist, logger),
-		Recommend:     recommendService,
-		Cast:          NewCastService(repos.Media, cfg, logger),
-		Bookmark:      NewBookmarkService(repos.Bookmark, repos.Media, logger),
-		Comment:       NewCommentService(repos.Comment, repos.Media, logger),
-		Permission:    NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, repos.AccessLog, logger),
-		Scheduler:     scheduler,
-		Monitor:       monitor,
-		FileWatcher:   fileWatcher,
-		NFO:           nfoService,
-		Stats:         statsService,
-		Backup:        backupService,
-		Webhook:       webhookService,
-		VFS:           vfsManager,
-		WSHub:         wsHub,
-		AI:            aiService,
-		ScrapeManager: scrapeManager,
-		FileManager:   fileManager,
-		AIAssistant:   aiAssistant,
-		TheTVDB:       thetvdbService,
-		Fanart:        fanartService,
-		ProviderChain: providerChain,
+		User:           NewUserService(repos.User, cfg, logger),
+		Auth:           NewAuthService(repos.User, cfg, logger),
+		Library:        libService,
+		Media:          NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger),
+		Series:         NewSeriesService(repos.Series, repos.Media, logger),
+		Stream:         NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger),
+		Transcode:      transcoder,
+		Metadata:       metadata,
+		Scanner:        scanner,
+		Playlist:       NewPlaylistService(repos.Playlist, logger),
+		Recommend:      recommendService,
+		Cast:           NewCastService(repos.Media, cfg, logger),
+		Bookmark:       NewBookmarkService(repos.Bookmark, repos.Media, logger),
+		Comment:        NewCommentService(repos.Comment, repos.Media, logger),
+		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, repos.AccessLog, logger),
+		Scheduler:      scheduler,
+		Monitor:        monitor,
+		FileWatcher:    fileWatcher,
+		NFO:            nfoService,
+		Stats:          statsService,
+		Backup:         backupService,
+		Webhook:        webhookService,
+		VFS:            vfsManager,
+		WSHub:          wsHub,
+		AI:             aiService,
+		ScrapeManager:  scrapeManager,
+		FileManager:    fileManager,
+		AIAssistant:    aiAssistant,
+		TheTVDB:        thetvdbService,
+		Fanart:         fanartService,
+		ProviderChain:  providerChain,
+		Notification:   notificationService,
+		SubtitleSearch: subtitleSearchService,
+		BatchMetadata:  batchMetadataService,
+		ImportExport:   importExportService,
+		// V2
+		UserProfile:     userProfileService,
+		OfflineDownload: offlineDownloadService,
+		ABR:             abrService,
+		Plugin:          pluginService,
+		Music:           musicService,
+		Photo:           photoService,
+		Federation:      federationService,
+		// V3
+		AIScene:      aiSceneService,
+		FamilySocial: familySocialService,
+		Live:         liveService,
+		CloudSync:    cloudSyncService,
 	}
 }

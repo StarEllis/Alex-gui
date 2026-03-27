@@ -125,8 +125,8 @@
   --bg-skeleton-to: rgba(8, 145, 178, 0.12);
   --text-primary: #1e293b;
   --text-secondary: #475569;
-  --text-tertiary: #64748b;
-  --text-muted: #94a3b8;
+  --text-tertiary: #4b5563;
+  --text-muted: #6b7280;
   --text-on-neon: #ffffff;
   --border-default: rgba(0, 0, 0, 0.10);
   --border-hover: rgba(8, 145, 178, 0.30);
@@ -209,12 +209,28 @@
     scroll-behavior: smooth;
   }
 
-  /* 全局主题切换过渡 */
-  html,
-  html * {
-    transition-property: background-color, border-color, color, box-shadow;
-    transition-duration: 0.35s;
-    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 全局主题切换过渡 — 仅对关键容器元素生效，避免对所有元素添加 transition 导致性能问题 */
+  body,
+  .glass-panel,
+  .glass-panel-strong,
+  .glass-panel-subtle,
+  .nav-item,
+  .media-card,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-ghost,
+  .btn-icon,
+  .input,
+  .badge-neon,
+  .badge-accent,
+  .admin-tab,
+  .modal-panel,
+  .tooltip {
+    transition: background-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
   }
   /* 排除需要自己控制transition的元素 */
   html .no-theme-transition,
@@ -463,6 +479,77 @@
     color: var(--text-primary);
     background: var(--nav-hover-bg);
     border-color: var(--border-hover) !important;
+  }
+
+  /* === 次要按钮 === */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl;
+    @apply px-5 py-2.5 text-sm font-semibold;
+    color: var(--text-primary);
+    @apply transition-all duration-300;
+    background: var(--nav-hover-bg);
+    border: 1px solid var(--border-default);
+    backdrop-filter: blur(12px);
+    @apply focus:outline-none;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--nav-active-bg);
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  /* === 危险按钮 === */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl;
+    @apply px-5 py-2.5 text-sm font-semibold;
+    color: #fca5a5;
+    @apply transition-all duration-300;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    @apply focus:outline-none;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fecaca;
+    transform: translateY(-1px);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
+  }
+
+  .btn-danger:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  /* === 图标按钮 === */
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-2xl;
+    @apply h-12 w-12;
+    @apply transition-all duration-300;
+    background: var(--nav-hover-bg);
+    border: 1px solid var(--border-default);
+    backdrop-filter: blur(12px);
+    color: var(--text-secondary);
+    @apply focus:outline-none;
+  }
+
+  .btn-icon:hover {
+    background: var(--nav-active-bg);
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+    transform: scale(1.05);
+  }
+
+  .btn-icon:active {
+    transform: scale(0.98);
   }
 
   /* === 输入框 === */
@@ -766,5 +853,113 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+}
+
+/* ==================== 移动端响应式适配 ==================== */
+
+/* 小屏手机 (< 480px) */
+@media (max-width: 479px) {
+  .card-glass {
+    border-radius: 12px !important;
+  }
+
+  /* 媒体网格：单列或双列 */
+  .media-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* 播放器控制栏紧凑化 */
+  .player-controls {
+    padding: 8px 12px !important;
+  }
+
+  /* 底部安全区域（适配刘海屏/底部手势条） */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  /* 触摸友好的按钮最小尺寸 — 仅对交互按钮生效，排除文本链接 */
+  button:not(.inline-link),
+  a[role="button"],
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* 弹窗全屏化 */
+  .modal-responsive {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+}
+
+/* 平板 (480px - 768px) */
+@media (min-width: 480px) and (max-width: 768px) {
+  .media-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+  /* 增大可点击区域 */
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  /* 禁用hover效果（避免触摸后残留） */
+  .hover-only:hover {
+    background: transparent !important;
+  }
+
+  /* 滚动优化 */
+  .scroll-smooth {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+}
+
+/* 横屏模式 */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* 播放器全屏时隐藏非必要UI */
+  .landscape-hide {
+    display: none !important;
+  }
+}
+
+/* PWA 独立模式样式 */
+@media (display-mode: standalone) {
+  /* 顶部安全区域 */
+  .pwa-safe-top {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  /* 隐藏不需要的浏览器相关UI */
+  .browser-only {
+    display: none !important;
+  }
+}
+
+/* 暗色模式下的手势提示 */
+.gesture-overlay {
+  animation: gesture-fade 0.3s ease-out;
+}
+
+@keyframes gesture-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }

@@ -224,7 +224,7 @@ func (s *DoubanService) searchDouban(query string, year int) ([]DoubanSearchResu
 		yearInt, _ := strconv.Atoi(s.Year)
 
 		// 年份过滤
-		if year > 0 && yearInt > 0 && abs(yearInt-year) > 1 {
+		if year > 0 && yearInt > 0 && absInt(yearInt-year) > 1 {
 			continue
 		}
 
@@ -403,8 +403,8 @@ func (s *DoubanService) parseDoubanTitle(title string) (string, int) {
 	return cleanTitle, year
 }
 
-// abs 取绝对值
-func abs(n int) int {
+// absInt 取绝对值（int版本）
+func absInt(n int) int {
 	if n < 0 {
 		return -n
 	}

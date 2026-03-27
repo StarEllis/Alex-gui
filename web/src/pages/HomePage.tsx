@@ -85,7 +85,7 @@ export default function HomePage() {
       {/* 继续观看 */}
       {continueList.length > 0 && (
         <section className="animate-fade-in">
-          <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
             <Clock size={20} className="text-neon" />
             继续观看
           </h2>
@@ -97,7 +97,7 @@ export default function HomePage() {
                 className="glass-panel-subtle group flex gap-3 rounded-xl p-3 transition-all duration-300 hover:border-neon-blue/20 hover:shadow-card-hover"
               >
                 {/* 缩略图 */}
-                <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}>
+                <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg bg-theme-bg-surface">
                   {item.media.poster_path ? (
                     <img
                       src={streamApi.getPosterUrl(item.media_id)}
@@ -128,10 +128,10 @@ export default function HomePage() {
 
                 {/* 信息 */}
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon text-theme-primary">
                     {item.media.title}
                   </h3>
-                  <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  <p className="mt-1 text-xs text-theme-tertiary">
                     已观看 {formatProgress(item.position, item.duration)}%
                   </p>
                 </div>
@@ -144,7 +144,7 @@ export default function HomePage() {
       {/* 为你推荐 */}
       {recommendations.length > 0 && (
         <section className="animate-fade-in">
-          <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
             <Sparkles size={20} className="text-yellow-400" />
             为你推荐
           </h2>
@@ -159,7 +159,7 @@ export default function HomePage() {
                 className="media-card group block"
               >
                 {/* 海报区域 */}
-                <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
+                <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl bg-theme-bg-surface">
                 <img
                     src={item.media.series_id
                       ? streamApi.getSeriesPosterUrl(item.media.series_id)
@@ -199,10 +199,10 @@ export default function HomePage() {
                 </div>
                 {/* 信息区域 */}
                 <div className="p-3">
-                  <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon text-theme-primary">
                     {item.media.title}
                   </h3>
-                  <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-theme-secondary">
                     {item.media.year > 0 && <span>{item.media.year}</span>}
                     {item.media.rating > 0 && (
                       <>
@@ -214,6 +214,42 @@ export default function HomePage() {
                 </div>
               </Link>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* 骨架屏加载状态 */}
+      {loading && recentItems.length === 0 && (
+        <section className="animate-fade-in space-y-10">
+          {/* 继续观看骨架屏 */}
+          <div>
+            <div className="skeleton mb-5 h-7 w-32 rounded-lg" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="glass-panel-subtle flex gap-3 rounded-xl p-3">
+                  <div className="skeleton h-20 w-32 flex-shrink-0 rounded-lg" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="skeleton h-4 w-3/4 rounded" />
+                    <div className="skeleton h-3 w-1/2 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* 媒体网格骨架屏 */}
+          <div>
+            <div className="skeleton mb-5 h-7 w-28 rounded-lg" />
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="overflow-hidden rounded-xl" style={{ border: '1px solid var(--border-default)' }}>
+                  <div className="skeleton aspect-[2/3]" />
+                  <div className="space-y-2 p-3">
+                    <div className="skeleton h-4 w-3/4 rounded" />
+                    <div className="skeleton h-3 w-1/2 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -242,10 +278,10 @@ export default function HomePage() {
           >
             <Play size={36} className="text-surface-600" />
           </div>
-          <h3 className="font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          <h3 className="font-display text-lg font-semibold tracking-wide text-theme-secondary">
             暂无媒体内容
           </h3>
-          <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-2 text-sm text-theme-muted">
             前往管理页面添加媒体库并扫描文件
           </p>
         </div>
@@ -505,7 +541,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
 
   return (
     <section className="animate-fade-in">
-      <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+      <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold tracking-wide text-theme-primary">
         <span className="badge-accent text-xs">{genre}</span>
       </h2>
 
@@ -517,7 +553,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
             className="absolute -left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover:opacity-100"
             style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-card)' }}
           >
-            <ChevronLeft size={20} style={{ color: 'var(--text-primary)' }} />
+            <ChevronLeft size={20} className="text-theme-primary" />
           </button>
         )}
 
@@ -539,7 +575,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
                 to={linkTo}
                 className="media-card group w-[140px] flex-shrink-0 sm:w-[160px]"
               >
-                <div className="relative aspect-[2/3] overflow-hidden rounded-xl" style={{ background: 'var(--bg-surface)' }}>
+                <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-theme-bg-surface">
                   <img
                     src={item.type === 'series' && media.id
                       ? streamApi.getSeriesPosterUrl(media.id)
@@ -575,11 +611,11 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
                   )}
                 </div>
                 <div className="px-1 py-2">
-                  <h3 className="truncate text-xs font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="truncate text-xs font-medium transition-colors group-hover:text-neon text-theme-primary">
                     {media.title}
                   </h3>
                   {media.year > 0 && (
-                    <p className="mt-0.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{media.year}</p>
+                    <p className="mt-0.5 text-[10px] text-theme-tertiary">{media.year}</p>
                   )}
                 </div>
               </Link>
@@ -594,7 +630,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
             className="absolute -right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover:opacity-100"
             style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-card)' }}
           >
-            <ChevronRight size={20} style={{ color: 'var(--text-primary)' }} />
+            <ChevronRight size={20} className="text-theme-primary" />
           </button>
         )}
       </div>

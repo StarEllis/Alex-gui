@@ -81,7 +81,7 @@ export default function MediaCard({ media, series }: MediaCardProps) {
       )}
 
       {/* 海报区域 */}
-      <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
+      <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl bg-theme-bg-surface">
         <img
           src={posterUrl}
           alt={title}
@@ -140,10 +140,10 @@ export default function MediaCard({ media, series }: MediaCardProps) {
 
       {/* 信息区域 */}
       <div className="p-3">
-        <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
+        <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon text-theme-primary">
           {title}
         </h3>
-        <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <div className="mt-1 flex items-center gap-2 text-xs text-theme-secondary">
           {year > 0 && <span>{year}</span>}
           {rating > 0 && (
             <>

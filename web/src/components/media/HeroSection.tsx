@@ -215,13 +215,7 @@ export default function HeroSection({
                 {media.trailer_url && onShowTrailer && (
                   <button
                     onClick={onShowTrailer}
-                    className="inline-flex items-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
-                    style={{
-                      background: 'var(--nav-hover-bg)',
-                      border: '1px solid var(--border-default)',
-                      backdropFilter: 'blur(12px)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="btn-secondary inline-flex items-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-semibold"
                     aria-label="观看预告片"
                   >
                     <Clapperboard size={18} />
@@ -233,15 +227,9 @@ export default function HeroSection({
                 <button
                   onClick={onFavorite}
                   className={clsx(
-                    'flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105',
-                    isFavorited ? 'text-pink-400' : ''
+                    'btn-icon',
+                    isFavorited && 'text-pink-400 !bg-pink-500/[0.12] !border-pink-500/20'
                   )}
-                  style={{
-                    background: isFavorited ? 'rgba(236, 72, 153, 0.12)' : 'var(--nav-hover-bg)',
-                    border: `1px solid ${isFavorited ? 'rgba(236, 72, 153, 0.2)' : 'var(--border-default)'}`,
-                    backdropFilter: 'blur(12px)',
-                    color: isFavorited ? undefined : 'var(--text-secondary)',
-                  }}
                   title={isFavorited ? '取消收藏' : '收藏'}
                   aria-label={isFavorited ? '取消收藏' : '收藏'}
                   aria-pressed={isFavorited}
@@ -253,27 +241,24 @@ export default function HeroSection({
                 <div className="relative">
                   <button
                     onClick={() => { setShowPlaylistMenu(!showPlaylistMenu); setShowMoreMenu(false) }}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105"
-                    style={{
-                      background: 'var(--nav-hover-bg)',
-                      border: '1px solid var(--border-default)',
-                      backdropFilter: 'blur(12px)',
-                      color: 'var(--text-secondary)',
-                    }}
+                    className="btn-icon"
                     title="添加到播放列表"
                     aria-label="添加到播放列表"
                     aria-expanded={showPlaylistMenu}
+                    aria-haspopup="true"
                   >
                     <ListPlus size={20} />
                   </button>
 
                   {showPlaylistMenu && (
-                    <div className="absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl py-1 shadow-2xl"
+                    <div className="absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl py-1 shadow-2xl animate-scale-in"
                       style={{
                         background: 'var(--bg-elevated)',
                         border: '1px solid var(--glass-border)',
                         backdropFilter: 'blur(20px)',
                       }}
+                      role="menu"
+                      aria-label="播放列表"
                     >
                     <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>播放列表</div>
                       {playlists.length === 0 ? (
@@ -302,24 +287,22 @@ export default function HeroSection({
                 <div className="relative">
                   <button
                     onClick={() => { setShowMoreMenu(!showMoreMenu); setShowPlaylistMenu(false) }}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105"
-                    style={{
-                      background: 'var(--nav-hover-bg)',
-                      border: '1px solid var(--border-default)',
-                      backdropFilter: 'blur(12px)',
-                      color: 'var(--text-secondary)',
-                    }}
+                    className="btn-icon"
+                    aria-haspopup="true"
+                    aria-expanded={showMoreMenu}
                   >
                     <MoreHorizontal size={20} />
                   </button>
 
                   {showMoreMenu && (
-                    <div className="absolute left-0 top-full z-20 mt-2 min-w-[200px] rounded-xl py-1 shadow-2xl"
+                    <div className="absolute left-0 top-full z-20 mt-2 min-w-[200px] rounded-xl py-1 shadow-2xl animate-scale-in"
                       style={{
                         background: 'var(--bg-elevated)',
                         border: '1px solid var(--glass-border)',
                         backdropFilter: 'blur(20px)',
                       }}
+                      role="menu"
+                      aria-label="更多操作"
                     >
                       {/* 管理操作（仅管理员可见） */}
                       {isAdmin && (

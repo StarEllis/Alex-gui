@@ -26,6 +26,7 @@ import {
   Settings,
   Trash2,
   Sparkles,
+  Radio,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -36,6 +37,7 @@ import TasksTab from '@/components/admin/TasksTab'
 import BackupTab from '@/components/admin/BackupTab'
 import AccessLogsTab from '@/components/admin/AccessLogsTab'
 import AITab from '@/components/admin/AITab'
+import LiveSourcesTab from '@/components/admin/LiveSourcesTab'
 
 // ==================== 标签页定义 ====================
 const TABS = [
@@ -46,6 +48,7 @@ const TABS = [
   { id: 'monitor', label: '监控与日志', icon: Activity, shortLabel: '监控' },
   { id: 'logs', label: '访问日志', icon: Settings, shortLabel: '日志' },
   { id: 'backup', label: '数据备份', icon: Settings, shortLabel: '备份' },
+  { id: 'live', label: '直播源管理', icon: Radio, shortLabel: '直播源' },
   { id: 'ai', label: 'AI 配置', icon: Sparkles, shortLabel: 'AI' },
 ] as const
 
@@ -658,6 +661,11 @@ export default function AdminPage() {
         {/* ===== 数据备份标签页 ===== */}
         {activeTab === 'backup' && (
           <BackupTab />
+        )}
+
+        {/* ===== 直播源管理标签页 ===== */}
+        {activeTab === 'live' && (
+          <LiveSourcesTab />
         )}
 
         {/* ===== AI 配置标签页 ===== */}

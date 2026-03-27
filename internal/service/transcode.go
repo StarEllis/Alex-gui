@@ -348,7 +348,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 			MediaID: job.Media.ID,
 			Title:   job.Media.Title,
 			Quality: job.Quality,
-			Message: fmt.Sprintf("转码失败: %v", err),
+			Message: fmt.Sprintf("转码失败: %v", waitErr),
 		})
 		return
 	}

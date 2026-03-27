@@ -224,8 +224,8 @@
               └───────────┬─────────────────┘
                           │
               ┌───────────▼─────────────────┐
-              │     SQLite (WAL 模式)        │
-              │     21 张表，自动迁移         │
+│     SQLite (WAL 模式)        │
+│     30+ 张表，自动迁移        │
               └─────────────────────────────┘
 ```
 
@@ -258,8 +258,11 @@
 | 播放统计 | `/stats` | 个人观影统计数据 |
 | 个人资料 | `/profile` | 用户信息管理 |
 | 管理后台 | `/admin` | 系统状态、媒体库管理、用户管理、配置管理 |
-| 刮削管理 | `/scrape` | 刮削任务管理、批量操作、翻译 |
-| 文件管理 | `/files` | 影视文件浏览、导入、重命名 |
+| 文件管理 | `/files` | 影视文件浏览、导入、重命名（含刮削任务 Tab） |
+| 文件管理 - 刮削任务 | `/files?tab=scrape` | 刮削任务管理、批量操作、翻译（已整合至文件管理） |
+| 家庭空间 | `/family` | 家庭群组、媒体分享、互动推荐 |
+| 直播 | `/live` | IPTV 直播源管理与播放 |
+| 云同步 | `/sync` | 多设备数据同步与配置管理 |
 | 登录 | `/login` | 用户认证 |
 
 ---
@@ -917,11 +920,11 @@ hw_accel: auto
 
 ```
 nowen-video/
-├── cmd/server/main.go            # Go 入口（路由注册、依赖注入、364行）
+├── cmd/server/main.go            # Go 入口（路由注册、依赖注入、562行）
 ├── internal/
 │   ├── config/
 │   │   └── config.go             # 多层配置加载（默认值→文件→分片→环境变量）
-│   ├── handler/                  # HTTP 处理器层（24个文件）
+│   ├── handler/                  # HTTP 处理器层（28个文件）
 │   │   ├── handler.go            #   Handler 聚合与初始化
 │   │   ├── auth.go               #   登录 / 注册
 │   │   ├── media.go              #   媒体列表 / 详情 / 搜索 / 聚合视图
@@ -930,9 +933,13 @@ nowen-video/
 │   │   ├── stream.go             #   直接播放 / HLS流 / 海报
 │   │   ├── subtitle.go           #   字幕轨道 / 提取 / 外挂
 │   │   ├── metadata.go           #   元数据刮削
-│   │   ├── admin.go              #   系统管理（35KB，最大的handler）
+│   │   ├── admin.go              #   系统管理入口
+│   │   ├── admin_media.go        #   管理员媒体操作（元数据匹配/编辑/图片管理）
+│   │   ├── admin_metadata.go     #   管理员元数据搜索（TMDb/Bangumi）
+│   │   ├── admin_system.go       #   系统设置/监控/任务/权限管理
 │   │   ├── ai.go                 #   AI 智能搜索 / 配置管理
 │   │   ├── ai_assistant.go       #   AI 助手对话 / 操作执行
+│   │   ├── ai_scene.go           #   AI 场景识别 / 章节 / 精彩片段
 │   │   ├── recommend.go          #   智能推荐
 │   │   ├── cast.go               #   投屏控制
 │   │   ├── bookmark.go           #   视频书签
@@ -942,16 +949,31 @@ nowen-video/
 │   │   ├── user.go               #   用户信息 / 进度 / 收藏 / 历史
 │   │   ├── scrape_manager.go     #   刮削任务管理
 │   │   ├── file_manager.go       #   影视文件管理
+│   │   ├── notification.go       #   智能通知系统
+│   │   ├── cloud_sync.go         #   云端同步
+│   │   ├── family_social.go      #   家庭社交互动
+│   │   ├── live.go               #   实时直播
+│   │   ├── v2_handlers.go        #   V2 扩展处理器（音乐/图片/联邦/插件等）
 │   │   └── ws.go                 #   WebSocket 入口
 │   ├── middleware/
 │   │   ├── middleware.go          #   JWT认证 / CORS / 管理员权限
 │   │   └── security.go           #   安全头中间件
-│   ├── model/                    # GORM 数据模型（21张表，自动迁移）
-│   │   ├── model.go              #   核心模型定义
-│   │   └── scrape_task.go        #   刮削任务模型
+│   ├── model/                    # GORM 数据模型（30+张表，自动迁移）
+│   │   ├── model.go              #   核心模型定义（User/Library/Media/Series等）
+│   │   ├── scrape_task.go        #   刮削任务模型
+│   │   └── v3_models.go          #   V3 扩展模型（AI场景/家庭社交/直播/云同步）
 │   ├── repository/
-│   │   ├── repository.go         #   数据访问层（42KB）
-│   │   └── scrape_task.go        #   刮削任务数据访问
+│   │   ├── repository.go         #   数据访问层聚合
+│   │   ├── repo_admin.go         #   管理员数据访问
+│   │   ├── repo_media.go         #   媒体数据访问
+│   │   ├── repo_series.go        #   剧集数据访问
+│   │   ├── repo_person.go        #   演职人员数据访问
+│   │   ├── repo_social.go        #   社交互动数据访问
+│   │   ├── repo_stats.go         #   统计数据访问
+│   │   ├── repo_user.go          #   用户数据访问
+│   │   ├── repo_library.go       #   媒体库数据访问
+│   │   ├── scrape_task.go        #   刮削任务数据访问
+│   │   └── v3_repository.go      #   V3 扩展数据访问
 │   └── service/                  # 业务逻辑层（30+个文件）
 │       ├── service.go            #   服务聚合与依赖注入
 │       ├── auth.go               #   JWT 认证服务
@@ -991,13 +1013,27 @@ nowen-video/
 │       ├── thumbnail.go          #   缩略图生成
 │       ├── errors.go             #   错误定义
 │       ├── user.go               #   用户服务
+│       ├── user_profile.go       #   多用户配置文件服务
 │       ├── ws_hub.go             #   WebSocket Hub（连接管理 + 广播 + 心跳）
+│       ├── offline_download.go   #   离线下载服务
+│       ├── abr.go                #   自适应码率转码服务
+│       ├── plugin.go             #   插件系统服务
+│       ├── music.go              #   音乐库服务
+│       ├── photo.go              #   图片库服务
+│       ├── federation.go         #   多服务器联邦服务
+│       ├── ai_scene.go           #   AI 场景识别服务
+│       ├── family_social.go      #   家庭社交互动服务
+│       ├── live.go               #   实时直播服务
+│       ├── cloud_sync.go         #   云端同步服务
+│       ├── subtitle_search.go    #   字幕在线搜索服务
+│       ├── batch_metadata.go     #   批量元数据编辑服务
+│       ├── notification.go       #   智能通知服务
 │       ├── auth_test.go          #   认证服务测试
 │       ├── scanner_test.go       #   扫描器测试
 │       └── permission_test.go    #   权限服务测试
 ├── web/                          # React 前端
 │   ├── src/
-│   │   ├── App.tsx               #   路由配置（15个页面路由）
+│   │   ├── App.tsx               #   路由配置（18个页面路由）
 │   │   ├── api/
 │   │   │   ├── client.ts         #   Axios 客户端配置
 │   │   │   └── index.ts          #   API 封装（26KB）
@@ -1018,7 +1054,19 @@ nowen-video/
 │   │   │   ├── CreateLibraryModal.tsx  # 创建媒体库弹窗
 │   │   │   ├── EditMetadataModal.tsx   # 编辑元数据弹窗
 │   │   │   ├── FileBrowser.tsx   #     文件浏览器
-│   │   │   └── LibraryManager.tsx#     媒体库管理器
+│   │   │   ├── LibraryManager.tsx#     媒体库管理器
+│   │   │   ├── BatchMetadataEditor.tsx # 批量元数据编辑
+│   │   │   ├── ImportExportPanel.tsx   # 媒体库导入/导出
+│   │   │   ├── DownloadManager.tsx     # 离线下载管理
+│   │   │   ├── FederationManager.tsx   # 联邦架构管理
+│   │   │   ├── MusicPlayer.tsx   #     音乐播放器
+│   │   │   ├── PhotoGallery.tsx  #     图片画廊
+│   │   │   ├── PluginManager.tsx #     插件管理
+│   │   │   ├── SubtitleSearchPanel.tsx # 字幕搜索面板
+│   │   │   ├── NotificationSettings.tsx # 通知设置
+│   │   │   ├── UserProfileManager.tsx  # 用户配置文件管理
+│   │   │   ├── LanguageSwitcher.tsx    # 语言切换器
+│   │   │   └── Pagination.tsx    #     分页组件
 │   │   ├── components/media/     #   媒体详情子组件
 │   │   │   ├── HeroSection.tsx   #     英雄区（背景图+信息）
 │   │   │   ├── MediaInfoSection.tsx #  媒体信息区
@@ -1033,7 +1081,7 @@ nowen-video/
 │   │   │   └── AccessLogsTab.tsx #     访问日志
 │   │   ├── hooks/
 │   │   │   └── useWebSocket.ts   #   WebSocket Hook（自动重连+心跳）
-│   │   ├── pages/                #   15 个页面
+│   │   ├── pages/                #   18 个页面
 │   │   │   ├── HomePage.tsx      #     首页（继续观看+最近添加+推荐）
 │   │   │   ├── LibraryPage.tsx   #     媒体库浏览
 │   │   │   ├── MediaDetailPage.tsx #   媒体详情
@@ -1046,15 +1094,21 @@ nowen-video/
 │   │   │   ├── StatsPage.tsx     #     播放统计
 │   │   │   ├── ProfilePage.tsx   #     个人资料
 │   │   │   ├── AdminPage.tsx     #     管理后台
-│   │   │   ├── ScrapeManagerPage.tsx # 刮削管理
-│   │   │   ├── FileManagerPage.tsx #   文件管理（64KB）
+│   │   │   ├── ScrapeManagerPage.tsx # 刮削管理（已整合至文件管理 Tab）
+│   │   │   ├── FileManagerPage.tsx #   文件管理（66KB，含刮削任务 Tab）
+│   │   │   ├── FamilyPage.tsx    #     家庭空间
+│   │   │   ├── LivePage.tsx      #     直播页面
+│   │   │   ├── SyncPage.tsx      #     云同步页面
 │   │   │   └── LoginPage.tsx     #     登录/注册
 │   │   ├── stores/               #   Zustand 状态管理
 │   │   │   ├── auth.ts           #     认证状态
-│   │   │   ├── player.ts        #     播放器状态
-│   │   │   └── theme.ts         #     主题状态
+│   │   │   ├── player.ts         #     播放器状态
+│   │   │   └── theme.ts          #     主题状态
 │   │   ├── types/
-│   │   │   └── index.ts          #   TypeScript 类型定义（17KB）
+│   │   │   └── index.ts          #   TypeScript 类型定义（31KB）
+│   │   ├── i18n/                 #   国际化
+│   │   │   ├── index.ts          #     i18n 配置
+│   │   │   └── locales/          #     语言包（zh-CN / en-US / ja-JP）
 │   │   └── utils/
 │   │       └── format.ts         #   格式化工具函数
 │   ├── tailwind.config.js        #   暗色主题 Tailwind 配置
@@ -1250,33 +1304,71 @@ devices:
 
 ## 🗺️ 未来发展规划
 
-### 🎯 短期计划（v1.x）
+### 🎯 短期计划（v1.x 版本功能规划）
 
-- [ ] **移动端适配** — 响应式布局优化，PWA 离线支持增强
-- [ ] **多语言国际化** — i18n 支持（中/英/日）
-- [ ] **字幕在线搜索** — 集成 OpenSubtitles 等字幕源自动下载
-- [ ] **播放器增强** — 倍速播放、画中画、手势控制
-- [ ] **通知系统** — 新媒体入库通知（邮件/Webhook/Telegram）
-- [ ] **批量元数据编辑** — 多选媒体批量修改标签、分类
-- [ ] **导入/导出兼容** — 支持从 Emby/Jellyfin 导入媒体库数据
+- [x] **多语言国际化（i18n）支持** ✅ 已完成
+  - 已支持中文、英文、日文三种语言界面
+  - 实现语言切换功能（LanguageSwitcher 组件）
+
+- [x] **字幕在线搜索与自动下载** ✅ 已完成
+  - 已集成字幕在线搜索服务（SubtitleSearchService）
+  - 支持根据媒体内容搜索并下载匹配的字幕
+
+- [x] **智能通知系统** ✅ 已完成
+  - 已实现通知配置管理（NotificationService）
+  - 支持多渠道通知发送和测试
+
+- [x] **批量元数据编辑功能** ✅ 已完成
+  - 支持批量更新媒体/剧集元数据（BatchMetadataService）
+  - 前端 BatchMetadataEditor 组件支持多选操作
+
+- [x] **媒体库数据导入/导出兼容** ✅ 已完成
+  - 支持从外部媒体服务器导入数据（ImportExportPanel）
+  - 提供媒体库数据导出功能
+
+- [ ] **移动端适配优化**
+  - 实现响应式布局，确保在不同移动设备上的良好显示效果
+  - 增强 PWA（渐进式 Web 应用）支持，提供离线访问能力
+
+- [ ] **播放器功能增强**
+  - 支持视频倍速播放
+  - 支持画中画模式
+  - 增加手势控制功能，提升操作便捷性
+
+- [ ] **性能优化与代码重构**
+  - 拆分大型页面组件（FileManagerPage 66KB、SeriesDetailPage 46KB）
+  - 优化前端 API 层（api/index.ts 45KB），按模块拆分
+  - 添加前端单元测试和 E2E 测试
+  - 增加后端测试覆盖率（当前仅 3 个测试文件）
 
 ### 🚀 中期计划（v2.x）
 
-- [ ] **多用户配置文件** — 儿童模式、家长控制增强
-- [ ] **离线下载** — 支持将媒体下载到本地设备离线观看
-- [ ] **实时转码优化** — 自适应码率（ABR）、GPU 多路并行转码
-- [ ] **插件系统** — 支持第三方插件扩展功能
-- [ ] **音乐库支持** — 扩展为音视频一体化媒体中心
-- [ ] **图片库支持** — 照片浏览与相册管理
-- [ ] **多服务器联邦** — 多台 NAS 之间媒体共享
+- [x] **多用户配置文件** ✅ 已完成 — 儿童模式、家长控制增强
+- [x] **离线下载** ✅ 已完成 — 支持将媒体下载到本地设备离线观看
+- [x] **实时转码优化** ✅ 已完成 — 自适应码率（ABR）、GPU 多路并行转码
+- [x] **插件系统** ✅ 已完成 — 支持第三方插件扩展功能
+- [x] **音乐库支持** ✅ 已完成 — 扩展为音视频一体化媒体中心
+- [x] **图片库支持** ✅ 已完成 — 照片浏览与相册管理
+- [x] **多服务器联邦** ✅ 已完成 — 多台 NAS 之间媒体共享
 
 ### 🔮 长期愿景（v3.x）
 
-- [ ] **AI 场景识别** — 本地模型自动生成视频章节和精彩片段
-- [ ] **AI 封面生成** — 智能选择最佳帧作为海报
-- [ ] **社交功能** — 家庭成员之间的推荐和分享
-- [ ] **直播支持** — 支持 IPTV / 直播源接入
-- [ ] **云端同步** — 跨设备配置和进度云同步
+- [x] **AI 场景识别** ✅ 已完成 — 自动生成视频章节和精彩片段
+- [x] **AI 封面生成** ✅ 已完成 — 智能选择最佳帧作为海报
+- [x] **社交功能** ✅ 已完成 — 家庭成员之间的推荐和分享
+- [x] **直播支持** ✅ 已完成 — 支持 IPTV / 直播源接入
+- [x] **云端同步** ✅ 已完成 — 跨设备配置和进度云同步
+
+### 🌟 下一阶段规划（v4.x）
+
+- [ ] **移动端原生应用** — 基于 React Native 或 Flutter 开发 iOS/Android 客户端
+- [ ] **智能家居集成** — 支持 HomeAssistant / Apple HomeKit 联动
+- [ ] **AI 字幕翻译** — 利用 LLM 实现高质量字幕实时翻译
+- [ ] **AI 内容审核** — 自动识别不适宜内容并标记分级
+- [ ] **分布式转码** — 支持多节点协同转码，提升大规模媒体库处理能力
+- [ ] **WebDAV 支持** — 提供 WebDAV 协议访问，兼容更多客户端
+- [ ] **Webhook 事件系统** — 完善事件驱动架构，支持自定义自动化工作流
+- [ ] **数据库迁移到 PostgreSQL** — 可选支持 PostgreSQL，提升大规模部署性能
 
 ### 📌 版本里程碑
 
@@ -1287,7 +1379,10 @@ devices:
 | v0.3 | 多用户 + 权限 + WebSocket 实时通知 | ✅ 已完成 |
 | v0.4 | AI 智能功能 + Provider Chain | ✅ 已完成 |
 | v0.5 | 文件管理 + AI 助手 + 刮削管理 | ✅ 已完成 |
-| v1.0 | 生产就绪版本（稳定性 + 性能优化） | 🔄 进行中 |
+| v0.6 | V2 中期功能（多用户配置/离线下载/ABR/插件/音乐/图片/联邦） | ✅ 已完成 |
+| v0.7 | V3 长期功能（AI场景/家庭社交/直播/云同步） | ✅ 已完成 |
+| v0.8 | 入口整合优化（刮削管理整合至文件管理 Tab） | ✅ 已完成 |
+| v1.0 | 生产就绪版本（稳定性 + 性能优化 + 移动端适配） | 🔄 进行中 |
 
 ---
 

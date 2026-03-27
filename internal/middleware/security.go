@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,18 +29,34 @@ func Security() gin.HandlerFunc {
 	}
 }
 
-// RateLimit 速率限制中间件（简单令牌桶）
+// RateLimit 速率限制中间件（简单令牌桶，带自动清理）
 func RateLimit(maxRequestsPerMinute int) gin.HandlerFunc {
 	type visitor struct {
 		tokens    int
 		lastReset time.Time
 	}
 
+	var mu sync.Mutex
 	visitors := make(map[string]*visitor)
+
+	// 启动后台清理协程，每2分钟清理过期条目，防止内存泄漏
+	go func() {
+		for {
+			time.Sleep(2 * time.Minute)
+			mu.Lock()
+			for ip, v := range visitors {
+				if time.Since(v.lastReset) > 2*time.Minute {
+					delete(visitors, ip)
+				}
+			}
+			mu.Unlock()
+		}
+	}()
 
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 
+		mu.Lock()
 		v, exists := visitors[ip]
 		if !exists || time.Since(v.lastReset) > time.Minute {
 			visitors[ip] = &visitor{tokens: maxRequestsPerMinute, lastReset: time.Now()}
@@ -47,12 +64,14 @@ func RateLimit(maxRequestsPerMinute int) gin.HandlerFunc {
 		}
 
 		if v.tokens <= 0 {
+			mu.Unlock()
 			c.Header("Retry-After", "60")
 			c.AbortWithStatus(429)
 			return
 		}
 
 		v.tokens--
+		mu.Unlock()
 		c.Next()
 	}
 }

@@ -106,7 +106,7 @@ export default function Pagination({
       <button
         onClick={() => onPageChange(1)}
         disabled={page === 1}
-        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--nav-hover-bg)] hover:border-[var(--border-hover)] active:scale-95"
         style={{
           border: '1px solid var(--border-default)',
           color: 'var(--text-secondary)',
@@ -120,7 +120,7 @@ export default function Pagination({
       <button
         onClick={() => onPageChange(Math.max(1, page - 1))}
         disabled={page === 1}
-        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--nav-hover-bg)] hover:border-[var(--border-hover)] active:scale-95"
         style={{
           border: '1px solid var(--border-default)',
           color: 'var(--text-secondary)',
@@ -145,8 +145,10 @@ export default function Pagination({
             key={num}
             onClick={() => onPageChange(num)}
             className={clsx(
-              'flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-sm font-medium transition-all',
-              page === num && 'text-neon'
+              'flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-sm font-medium transition-all active:scale-95',
+              page === num
+                ? 'text-neon'
+                : 'hover:bg-[var(--nav-hover-bg)] hover:border-[var(--border-hover)]'
             )}
             style={
               page === num
@@ -171,7 +173,7 @@ export default function Pagination({
       <button
         onClick={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={page === totalPages}
-        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--nav-hover-bg)] hover:border-[var(--border-hover)] active:scale-95"
         style={{
           border: '1px solid var(--border-default)',
           color: 'var(--text-secondary)',
@@ -185,7 +187,7 @@ export default function Pagination({
       <button
         onClick={() => onPageChange(totalPages)}
         disabled={page === totalPages}
-        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--nav-hover-bg)] hover:border-[var(--border-hover)] active:scale-95"
         style={{
           border: '1px solid var(--border-default)',
           color: 'var(--text-secondary)',

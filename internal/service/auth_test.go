@@ -30,9 +30,9 @@ func setupAuthService(t *testing.T) *AuthService {
 	db := setupTestDB(t)
 	repos := repository.NewRepositories(db)
 	logger, _ := zap.NewDevelopment()
-	cfg := &config.Config{
-		JWTSecret: "test-secret-key-for-unit-tests",
-	}
+	cfg := &config.Config{}
+	cfg.Secrets.JWTSecret = "test-secret-key-for-unit-tests"
+	cfg.Registration.Enabled = true // 测试中允许注册
 	authService := NewAuthService(repos.User, cfg, logger.Sugar())
 	return authService
 }

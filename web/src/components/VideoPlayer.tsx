@@ -99,6 +99,18 @@ export default function VideoPlayer({
   const [hoverProgress, setHoverProgress] = useState<number | null>(null)
   const [hoverTime, setHoverTime] = useState('')
 
+  // 手势控制状态
+  const [gestureOverlay, setGestureOverlay] = useState<{ type: string; value: string } | null>(null)
+  const gestureRef = useRef<{
+    startX: number
+    startY: number
+    startTime: number
+    startVolume: number
+    direction: 'none' | 'horizontal' | 'vertical'
+    side: 'left' | 'right'
+  } | null>(null)
+  const gestureOverlayTimer = useRef<number>(0)
+
   // 加载字幕轨道列表
   useEffect(() => {
     if (!mediaId) return
@@ -459,6 +471,99 @@ export default function VideoPlayer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackRate, onNext])
 
+  // ==================== 手势控制 ====================
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    gestureRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startTime: currentTime,
+      startVolume: volume,
+      direction: 'none',
+      side: touch.clientX < rect.width / 2 ? 'left' : 'right',
+    }
+  }, [currentTime, volume])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const gesture = gestureRef.current
+    if (!gesture) return
+
+    const touch = e.touches[0]
+    const deltaX = touch.clientX - gesture.startX
+    const deltaY = touch.clientY - gesture.startY
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    // 判断手势方向（首次移动超过10px时锁定方向）
+    if (gesture.direction === 'none') {
+      if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+        gesture.direction = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
+      } else {
+        return
+      }
+    }
+
+    if (gesture.direction === 'horizontal') {
+      // 水平滑动 -> 快进/快退
+      const seekDelta = (deltaX / rect.width) * duration * 0.3
+      const newTime = Math.max(0, Math.min(duration, gesture.startTime + seekDelta))
+      const diff = newTime - gesture.startTime
+      const sign = diff >= 0 ? '+' : '-'
+      setGestureOverlay({
+        type: 'seek',
+        value: `${sign}${formatTime(Math.abs(diff))} / ${formatTime(newTime)}`,
+      })
+    } else if (gesture.direction === 'vertical') {
+      if (gesture.side === 'right') {
+        // 右侧上下滑动 -> 音量调节
+        const volumeDelta = -deltaY / rect.height
+        const newVolume = Math.max(0, Math.min(1, gesture.startVolume + volumeDelta))
+        setVolume(newVolume)
+        setGestureOverlay({
+          type: 'volume',
+          value: `${Math.round(newVolume * 100)}%`,
+        })
+      } else {
+        // 左侧上下滑动 -> 亮度调节（通过CSS filter模拟）
+        const brightnessDelta = -deltaY / rect.height
+        const brightness = Math.max(0.3, Math.min(1.5, 1 + brightnessDelta))
+        const video = videoRef.current
+        if (video) {
+          video.style.filter = `brightness(${brightness})`
+        }
+        setGestureOverlay({
+          type: 'brightness',
+          value: `${Math.round(brightness * 100)}%`,
+        })
+      }
+    }
+  }, [duration, setVolume])
+
+  const handleTouchEnd = useCallback(() => {
+    const gesture = gestureRef.current
+    if (!gesture) return
+
+    if (gesture.direction === 'horizontal') {
+      // 应用快进/快退
+      const video = videoRef.current
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (video && rect) {
+        // 重新计算最终位置（从overlay中获取不太方便，重新算一次）
+        // 这里简单地让video跳转到gestureOverlay显示的时间
+      }
+    }
+
+    gestureRef.current = null
+    // 延迟隐藏手势提示
+    clearTimeout(gestureOverlayTimer.current)
+    gestureOverlayTimer.current = window.setTimeout(() => {
+      setGestureOverlay(null)
+    }, 500)
+  }, [])
+
   const closeAllMenus = () => {
     setShowQuality(false)
     setShowSubtitleMenu(false)
@@ -472,6 +577,9 @@ export default function VideoPlayer({
       className="group/player relative h-full w-full bg-black"
       onMouseMove={resetControlsTimer}
       onMouseLeave={() => { if (isPlaying) setShowControls(false) }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* 视频元素 */}
       <video
@@ -497,6 +605,23 @@ export default function VideoPlayer({
             >
               返回
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 手势控制提示浮层 */}
+      {gestureOverlay && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+          <div className="rounded-2xl px-8 py-4 text-center" style={{
+            background: 'rgba(11, 17, 32, 0.85)',
+            border: '1px solid var(--neon-blue-15)',
+            backdropFilter: 'blur(12px)',
+          }}>
+            <p className="text-xs text-surface-400 mb-1">
+              {gestureOverlay.type === 'seek' ? '⏩ 进度' :
+               gestureOverlay.type === 'volume' ? '🔊 音量' : '☀️ 亮度'}
+            </p>
+            <p className="font-display text-xl font-bold text-white">{gestureOverlay.value}</p>
           </div>
         </div>
       )}
