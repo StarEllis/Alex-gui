@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { mediaApi, userApi, streamApi, playlistApi, recommendApi, adminApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
-import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, WatchHistory } from '@/types'
-import { HeroSection, MediaInfoSection, RecommendationCarousel, TrailerModal } from '@/components/media'
+import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, WatchHistory, TechSpecs, FileDetail, LibraryInfo, PlaybackStatsInfo } from '@/types'
+import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal } from '@/components/media'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 
@@ -27,6 +27,13 @@ export default function MediaDetailPage() {
   // 附加数据
   const [recommendations, setRecommendations] = useState<RecommendedMedia[]>([])
   const [persons, setPersons] = useState<MediaPerson[]>([])
+
+  // 增强详情数据
+  const [techSpecs, setTechSpecs] = useState<TechSpecs | null>(null)
+  const [fileInfo, setFileInfo] = useState<FileDetail | null>(null)
+  const [libraryInfo, setLibraryInfo] = useState<LibraryInfo | null>(null)
+  const [playbackStats, setPlaybackStats] = useState<PlaybackStatsInfo | null>(null)
+  const [enhancedLoading, setEnhancedLoading] = useState(false)
 
   // UI 状态
   const [scraping, setScraping] = useState(false)
@@ -80,6 +87,20 @@ export default function MediaDetailPage() {
         userApi.getProgress(mediaData.id)
           .then((res) => { if (!abortController.signal.aborted) setWatchProgress(res.data.data) })
           .catch(() => {})
+
+        // 增强详情（分块加载，不阻塞首屏）
+        setEnhancedLoading(true)
+        mediaApi.detailEnhanced(mediaData.id)
+          .then((res) => {
+            if (abortController.signal.aborted) return
+            const data = res.data.data
+            setTechSpecs(data.tech_specs)
+            setFileInfo(data.file_info)
+            setLibraryInfo(data.library)
+            setPlaybackStats(data.playback_stats)
+          })
+          .catch(() => {})
+          .finally(() => { if (!abortController.signal.aborted) setEnhancedLoading(false) })
       })
       .catch(() => {
         if (abortController.signal.aborted) return
@@ -301,12 +322,21 @@ export default function MediaDetailPage() {
 
       {/* 内容区 */}
       <div className="mx-auto max-w-7xl space-y-8 px-4 pt-6 sm:px-6 lg:px-8">
-        {/* 媒体信息（简介 + 类型 + 演职 + 文件 + 视频） */}
+        {/* 媒体信息（简介 + 类型 + 演职 + 文件） */}
         <MediaInfoSection
           media={media}
           playInfo={playInfo}
           persons={persons}
           isAdmin={user?.role === 'admin'}
+        />
+
+        {/* 技术规格（增强详情） */}
+        <MediaTechSpecs
+          techSpecs={techSpecs}
+          fileInfo={fileInfo}
+          library={libraryInfo}
+          playbackStats={playbackStats}
+          loading={enhancedLoading}
         />
 
         {/* 相关推荐 */}

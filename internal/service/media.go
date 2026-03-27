@@ -1,8 +1,16 @@
 package service
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -14,6 +22,9 @@ type MediaService struct {
 	seriesRepo  *repository.SeriesRepo
 	historyRepo *repository.WatchHistoryRepo
 	favRepo     *repository.FavoriteRepo
+	libRepo     *repository.LibraryRepo
+	statsRepo   *repository.PlaybackStatsRepo
+	cfg         *config.Config
 	logger      *zap.SugaredLogger
 }
 
@@ -22,6 +33,9 @@ func NewMediaService(
 	seriesRepo *repository.SeriesRepo,
 	historyRepo *repository.WatchHistoryRepo,
 	favRepo *repository.FavoriteRepo,
+	libRepo *repository.LibraryRepo,
+	statsRepo *repository.PlaybackStatsRepo,
+	cfg *config.Config,
 	logger *zap.SugaredLogger,
 ) *MediaService {
 	return &MediaService{
@@ -29,6 +43,9 @@ func NewMediaService(
 		seriesRepo:  seriesRepo,
 		historyRepo: historyRepo,
 		favRepo:     favRepo,
+		libRepo:     libRepo,
+		statsRepo:   statsRepo,
+		cfg:         cfg,
 		logger:      logger,
 	}
 }
@@ -415,4 +432,312 @@ func (s *MediaService) GetMediaByID(id string) (*model.Media, error) {
 // ClearHistory 清空观看历史
 func (s *MediaService) ClearHistory(userID string) error {
 	return s.historyRepo.ClearHistory(userID)
+}
+
+// ==================== 增强详情 ====================
+
+// StreamDetail 流详细信息
+type StreamDetail struct {
+	Index         int               `json:"index"`
+	CodecType     string            `json:"codec_type"`      // video, audio, subtitle
+	CodecName     string            `json:"codec_name"`      // h264, hevc, aac 等
+	CodecLongName string            `json:"codec_long_name"` // 编码器完整名称
+	Profile       string            `json:"profile,omitempty"`
+	Width         int               `json:"width,omitempty"`
+	Height        int               `json:"height,omitempty"`
+	FrameRate     string            `json:"frame_rate,omitempty"`     // 帧率（如 "23.976"）
+	BitRate       string            `json:"bit_rate,omitempty"`       // 码率
+	SampleRate    string            `json:"sample_rate,omitempty"`    // 音频采样率
+	Channels      int               `json:"channels,omitempty"`       // 音频声道数
+	ChannelLayout string            `json:"channel_layout,omitempty"` // 声道布局（如 "stereo", "5.1"）
+	Language      string            `json:"language,omitempty"`       // 语言
+	Title         string            `json:"title,omitempty"`          // 轨道标题
+	IsDefault     bool              `json:"is_default"`
+	IsForced      bool              `json:"is_forced"`
+	PixFmt        string            `json:"pix_fmt,omitempty"`        // 像素格式
+	ColorSpace    string            `json:"color_space,omitempty"`    // 色彩空间
+	ColorTransfer string            `json:"color_transfer,omitempty"` // 色彩传输特性
+	BitsPerSample int               `json:"bits_per_sample,omitempty"`
+	Duration      string            `json:"duration,omitempty"`
+	Tags          map[string]string `json:"tags,omitempty"`
+}
+
+// FormatDetail 容器格式详细信息
+type FormatDetail struct {
+	FormatName     string `json:"format_name"`      // 容器格式（如 "matroska,webm"）
+	FormatLongName string `json:"format_long_name"` // 容器格式完整名称
+	Duration       string `json:"duration"`         // 总时长（秒）
+	Size           string `json:"size"`             // 文件大小（字节）
+	BitRate        string `json:"bit_rate"`         // 总码率
+	StreamCount    int    `json:"stream_count"`     // 流数量
+}
+
+// FileDetail 文件系统详细信息
+type FileDetail struct {
+	FileName   string `json:"file_name"`   // 文件名
+	FileDir    string `json:"file_dir"`    // 所在目录
+	FileExt    string `json:"file_ext"`    // 扩展名
+	FileSize   int64  `json:"file_size"`   // 文件大小（字节）
+	CreatedAt  string `json:"created_at"`  // 文件创建时间
+	ModifiedAt string `json:"modified_at"` // 文件修改时间
+}
+
+// LibraryInfo 媒体库简要信息
+type LibraryInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// PlaybackStatsInfo 播放统计信息
+type PlaybackStatsInfo struct {
+	TotalPlayCount    int64   `json:"total_play_count"`    // 总播放次数（所有用户）
+	TotalWatchMinutes float64 `json:"total_watch_minutes"` // 总观看分钟数
+	UniqueViewers     int64   `json:"unique_viewers"`      // 独立观看人数
+	LastPlayedAt      string  `json:"last_played_at"`      // 最后播放时间
+}
+
+// MediaDetailEnhanced 增强的媒体详情
+type MediaDetailEnhanced struct {
+	Media         *model.Media       `json:"media"`
+	TechSpecs     *TechSpecs         `json:"tech_specs"`     // 技术规格
+	Library       *LibraryInfo       `json:"library"`        // 所属媒体库
+	PlaybackStats *PlaybackStatsInfo `json:"playback_stats"` // 播放统计
+	FileInfo      *FileDetail        `json:"file_info"`      // 文件信息
+}
+
+// TechSpecs 技术规格
+type TechSpecs struct {
+	Streams []StreamDetail `json:"streams"` // 所有流信息
+	Format  *FormatDetail  `json:"format"`  // 容器格式信息
+}
+
+// GetDetailEnhanced 获取增强的媒体详情（包含技术规格、媒体库信息、播放统计）
+func (s *MediaService) GetDetailEnhanced(id string) (*MediaDetailEnhanced, error) {
+	media, err := s.mediaRepo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// 加载关联的合集信息
+	if media.MediaType == "episode" && media.SeriesID != "" {
+		series, err := s.seriesRepo.FindByIDOnly(media.SeriesID)
+		if err == nil {
+			media.Series = series
+		}
+	}
+
+	result := &MediaDetailEnhanced{
+		Media: media,
+	}
+
+	// 1. 获取技术规格（FFprobe 详细信息）
+	result.TechSpecs = s.probeTechSpecs(media.FilePath)
+
+	// 2. 获取媒体库信息
+	if media.LibraryID != "" && s.libRepo != nil {
+		if lib, err := s.libRepo.FindByID(media.LibraryID); err == nil {
+			result.Library = &LibraryInfo{
+				ID:   lib.ID,
+				Name: lib.Name,
+				Type: lib.Type,
+				Path: lib.Path,
+			}
+		}
+	}
+
+	// 3. 获取播放统计
+	result.PlaybackStats = s.getMediaPlaybackStats(id)
+
+	// 4. 获取文件信息
+	result.FileInfo = s.getFileDetail(media.FilePath)
+
+	return result, nil
+}
+
+// probeTechSpecs 使用 FFprobe 获取详细技术规格
+func (s *MediaService) probeTechSpecs(filePath string) *TechSpecs {
+	ffprobePath := "ffprobe"
+	if s.cfg != nil && s.cfg.App.FFprobePath != "" {
+		ffprobePath = s.cfg.App.FFprobePath
+	}
+
+	cmd := exec.Command(ffprobePath,
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_format",
+		"-show_streams",
+		filePath,
+	)
+
+	output, err := cmd.Output()
+	if err != nil {
+		s.logger.Warnf("FFprobe 获取技术规格失败: %s, 错误: %v", filePath, err)
+		return nil
+	}
+
+	var probeResult struct {
+		Streams []struct {
+			Index         int               `json:"index"`
+			CodecType     string            `json:"codec_type"`
+			CodecName     string            `json:"codec_name"`
+			CodecLongName string            `json:"codec_long_name"`
+			Profile       string            `json:"profile"`
+			Width         int               `json:"width"`
+			Height        int               `json:"height"`
+			RFrameRate    string            `json:"r_frame_rate"`
+			AvgFrameRate  string            `json:"avg_frame_rate"`
+			BitRate       string            `json:"bit_rate"`
+			SampleRate    string            `json:"sample_rate"`
+			Channels      int               `json:"channels"`
+			ChannelLayout string            `json:"channel_layout"`
+			PixFmt        string            `json:"pix_fmt"`
+			ColorSpace    string            `json:"color_space"`
+			ColorTransfer string            `json:"color_transfer"`
+			BitsPerSample int               `json:"bits_per_raw_sample"`
+			Duration      string            `json:"duration"`
+			Tags          map[string]string `json:"tags"`
+			Disposition   struct {
+				Default int `json:"default"`
+				Forced  int `json:"forced"`
+			} `json:"disposition"`
+		} `json:"streams"`
+		Format struct {
+			Filename       string `json:"filename"`
+			NbStreams      int    `json:"nb_streams"`
+			FormatName     string `json:"format_name"`
+			FormatLongName string `json:"format_long_name"`
+			Duration       string `json:"duration"`
+			Size           string `json:"size"`
+			BitRate        string `json:"bit_rate"`
+		} `json:"format"`
+	}
+
+	if err := json.Unmarshal(output, &probeResult); err != nil {
+		s.logger.Warnf("解析 FFprobe 输出失败: %s, 错误: %v", filePath, err)
+		return nil
+	}
+
+	specs := &TechSpecs{
+		Format: &FormatDetail{
+			FormatName:     probeResult.Format.FormatName,
+			FormatLongName: probeResult.Format.FormatLongName,
+			Duration:       probeResult.Format.Duration,
+			Size:           probeResult.Format.Size,
+			BitRate:        probeResult.Format.BitRate,
+			StreamCount:    probeResult.Format.NbStreams,
+		},
+	}
+
+	for _, stream := range probeResult.Streams {
+		detail := StreamDetail{
+			Index:         stream.Index,
+			CodecType:     stream.CodecType,
+			CodecName:     stream.CodecName,
+			CodecLongName: stream.CodecLongName,
+			Profile:       stream.Profile,
+			Width:         stream.Width,
+			Height:        stream.Height,
+			BitRate:       stream.BitRate,
+			SampleRate:    stream.SampleRate,
+			Channels:      stream.Channels,
+			ChannelLayout: stream.ChannelLayout,
+			PixFmt:        stream.PixFmt,
+			ColorSpace:    stream.ColorSpace,
+			ColorTransfer: stream.ColorTransfer,
+			BitsPerSample: stream.BitsPerSample,
+			Duration:      stream.Duration,
+			IsDefault:     stream.Disposition.Default == 1,
+			IsForced:      stream.Disposition.Forced == 1,
+			Tags:          stream.Tags,
+		}
+
+		// 解析帧率
+		if stream.CodecType == "video" {
+			detail.FrameRate = parseFrameRate(stream.RFrameRate)
+			if detail.FrameRate == "" || detail.FrameRate == "0" {
+				detail.FrameRate = parseFrameRate(stream.AvgFrameRate)
+			}
+		}
+
+		// 提取语言和标题
+		if stream.Tags != nil {
+			detail.Language = stream.Tags["language"]
+			detail.Title = stream.Tags["title"]
+		}
+
+		specs.Streams = append(specs.Streams, detail)
+	}
+
+	return specs
+}
+
+// parseFrameRate 解析帧率字符串（如 "24000/1001" -> "23.976"）
+func parseFrameRate(fps string) string {
+	if fps == "" || fps == "0/0" {
+		return ""
+	}
+	parts := strings.Split(fps, "/")
+	if len(parts) == 2 {
+		num, err1 := strconv.ParseFloat(parts[0], 64)
+		den, err2 := strconv.ParseFloat(parts[1], 64)
+		if err1 == nil && err2 == nil && den > 0 {
+			rate := num / den
+			if rate > 0 && rate < 1000 {
+				return fmt.Sprintf("%.3f", rate)
+			}
+		}
+	}
+	return fps
+}
+
+// getMediaPlaybackStats 获取媒体的播放统计信息
+func (s *MediaService) getMediaPlaybackStats(mediaID string) *PlaybackStatsInfo {
+	stats := &PlaybackStatsInfo{}
+
+	if s.statsRepo == nil {
+		return stats
+	}
+
+	// 获取总播放次数和总观看分钟数
+	totalMinutes, totalCount, uniqueViewers, err := s.statsRepo.GetMediaStats(mediaID)
+	if err != nil {
+		s.logger.Debugf("获取媒体播放统计失败: %v", err)
+		return stats
+	}
+
+	stats.TotalPlayCount = totalCount
+	stats.TotalWatchMinutes = totalMinutes
+	stats.UniqueViewers = uniqueViewers
+
+	// 获取最后播放时间
+	if s.historyRepo != nil {
+		if lastHistory, err := s.historyRepo.GetLatestByMediaID(mediaID); err == nil && lastHistory != nil {
+			stats.LastPlayedAt = lastHistory.UpdatedAt.Format(time.RFC3339)
+		}
+	}
+
+	return stats
+}
+
+// getFileDetail 获取文件系统详细信息
+func (s *MediaService) getFileDetail(filePath string) *FileDetail {
+	detail := &FileDetail{
+		FileName: filepath.Base(filePath),
+		FileDir:  filepath.Dir(filePath),
+		FileExt:  strings.ToLower(filepath.Ext(filePath)),
+	}
+
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return detail
+	}
+
+	detail.FileSize = info.Size()
+	detail.ModifiedAt = info.ModTime().Format(time.RFC3339)
+	// 注意：Go 标准库不直接支持获取文件创建时间，使用修改时间作为近似值
+	detail.CreatedAt = info.ModTime().Format(time.RFC3339)
+
+	return detail
 }

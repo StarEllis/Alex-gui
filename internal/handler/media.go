@@ -55,6 +55,17 @@ func (h *MediaHandler) Detail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": media})
 }
 
+// DetailEnhanced 获取增强的媒体详情（包含技术规格、媒体库信息、播放统计）
+func (h *MediaHandler) DetailEnhanced(c *gin.Context) {
+	id := c.Param("id")
+	enhanced, err := h.mediaService.GetDetailEnhanced(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "媒体不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": enhanced})
+}
+
 // Recent 最近添加
 func (h *MediaHandler) Recent(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))

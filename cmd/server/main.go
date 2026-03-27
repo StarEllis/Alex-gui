@@ -120,6 +120,7 @@ func main() {
 		// 媒体内容
 		api.GET("/media", handlers.Media.List)
 		api.GET("/media/:id", handlers.Media.Detail)
+		api.GET("/media/:id/enhanced", handlers.Media.DetailEnhanced)
 		api.GET("/media/recent", handlers.Media.Recent)
 		api.GET("/media/recent/aggregated", handlers.Media.RecentAggregated)
 		api.GET("/media/recent/mixed", handlers.Media.RecentMixed)

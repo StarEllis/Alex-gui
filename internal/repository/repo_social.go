@@ -112,6 +112,16 @@ func (r *WatchHistoryRepo) GetHistoryByUserIDs(userIDs []string) ([]model.WatchH
 	return histories, err
 }
 
+// GetLatestByMediaID 获取指定媒体的最新观看记录（不限用户）
+func (r *WatchHistoryRepo) GetLatestByMediaID(mediaID string) (*model.WatchHistory, error) {
+	var history model.WatchHistory
+	err := r.db.Where("media_id = ?", mediaID).Order("updated_at DESC").First(&history).Error
+	if err != nil {
+		return nil, err
+	}
+	return &history, nil
+}
+
 // PopularMedia 热门媒体统计结果
 type PopularMedia struct {
 	MediaID    string

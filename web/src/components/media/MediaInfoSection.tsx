@@ -1,16 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { formatSize, formatDuration, formatDurationShort, formatDate } from '@/utils/format'
+import { formatSize, formatDuration, formatDate } from '@/utils/format'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
 import {
   FileText,
   Copy,
   ChevronDown,
   ChevronUp,
-  Monitor,
-  Music,
-  Subtitles,
-  Clapperboard,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useToast } from '@/components/Toast'
@@ -222,53 +218,6 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
           </div>
         </section>
       )}
-
-      {/* 视频信息 — 三栏卡片（视频/音频/字幕） */}
-      <section>
-        <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <Clapperboard size={16} className="text-neon/60" />
-          视频信息
-        </h3>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {/* 视频 */}
-          <div className="glass-panel-subtle rounded-xl p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: 'var(--neon-blue-8)' }}>
-                <Monitor size={14} className="text-neon" />
-              </div>
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>视频</span>
-            </div>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {[media.resolution, media.video_codec].filter(Boolean).join(' ')}
-              {media.duration > 0 && ` · ${formatDurationShort(media.duration)}`}
-            </p>
-          </div>
-          {/* 音频 */}
-          <div className="glass-panel-subtle rounded-xl p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: 'var(--neon-purple-8)' }}>
-                <Music size={14} className="text-purple-400" />
-              </div>
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>音频</span>
-            </div>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {media.audio_codec || '未知编码'}
-            </p>
-          </div>
-          {/* 字幕 */}
-          <div className="glass-panel-subtle rounded-xl p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: 'rgba(0, 255, 136, 0.08)' }}>
-                <Subtitles size={14} style={{ color: 'var(--neon-green)' }} />
-              </div>
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>字幕</span>
-            </div>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {media.subtitle_paths ? '有外挂字幕' : '无外挂字幕'}
-            </p>
-          </div>
-        </div>
-      </section>
     </>
   )
 }

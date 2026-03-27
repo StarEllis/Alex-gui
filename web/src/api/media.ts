@@ -7,6 +7,7 @@ import type {
   ListResponse,
   AggregatedRecentResponse,
   MixedItem,
+  MediaDetailEnhanced,
 } from '@/types'
 
 // ==================== 媒体 ====================
@@ -19,6 +20,9 @@ export const mediaApi = {
 
   detail: (id: string) =>
     api.get<{ data: Media }>(`/media/${id}`),
+
+  detailEnhanced: (id: string) =>
+    api.get<{ data: MediaDetailEnhanced }>(`/media/${id}/enhanced`),
 
   getPersons: (id: string) =>
     api.get<ListResponse<import('@/types').MediaPerson>>(`/media/${id}/persons`),

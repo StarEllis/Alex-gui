@@ -72,6 +72,26 @@ func (r *PlaybackStatsRepo) GetUserTopGenres(userID string, limit int) ([]map[st
 	return results, err
 }
 
+// GetMediaStats 获取指定媒体的播放统计（总播放次数、总观看分钟数、独立观看人数）
+func (r *PlaybackStatsRepo) GetMediaStats(mediaID string) (totalMinutes float64, totalCount int64, uniqueViewers int64, err error) {
+	err = r.db.Model(&model.PlaybackStats{}).
+		Where("media_id = ?", mediaID).
+		Select("COALESCE(SUM(watch_minutes), 0)").Scan(&totalMinutes).Error
+	if err != nil {
+		return
+	}
+	err = r.db.Model(&model.PlaybackStats{}).
+		Where("media_id = ?", mediaID).
+		Count(&totalCount).Error
+	if err != nil {
+		return
+	}
+	err = r.db.Model(&model.PlaybackStats{}).
+		Where("media_id = ?", mediaID).
+		Select("COUNT(DISTINCT user_id)").Scan(&uniqueViewers).Error
+	return
+}
+
 func (r *PlaybackStatsRepo) GetMostWatchedMedia(userID string, limit int) ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 	err := r.db.Raw(`

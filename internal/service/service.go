@@ -231,7 +231,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		User:           NewUserService(repos.User, cfg, logger),
 		Auth:           NewAuthService(repos.User, cfg, logger),
 		Library:        libService,
-		Media:          NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger),
+		Media:          NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.Library, repos.PlaybackStats, cfg, logger),
 		Series:         NewSeriesService(repos.Series, repos.Media, logger),
 		Stream:         NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger),
 		Transcode:      transcoder,

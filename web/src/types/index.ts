@@ -348,6 +348,77 @@ export interface MediaPlayInfo {
   duration: number
 }
 
+// ==================== 增强详情 ====================
+export interface StreamDetail {
+  index: number
+  codec_type: 'video' | 'audio' | 'subtitle'
+  codec_name: string
+  codec_long_name: string
+  profile?: string
+  width?: number
+  height?: number
+  frame_rate?: string
+  bit_rate?: string
+  sample_rate?: string
+  channels?: number
+  channel_layout?: string
+  language?: string
+  title?: string
+  is_default: boolean
+  is_forced: boolean
+  pix_fmt?: string
+  color_space?: string
+  color_transfer?: string
+  bits_per_sample?: number
+  duration?: string
+  tags?: Record<string, string>
+}
+
+export interface FormatDetail {
+  format_name: string
+  format_long_name: string
+  duration: string
+  size: string
+  bit_rate: string
+  stream_count: number
+}
+
+export interface FileDetail {
+  file_name: string
+  file_dir: string
+  file_ext: string
+  file_size: number
+  created_at: string
+  modified_at: string
+}
+
+export interface LibraryInfo {
+  id: string
+  name: string
+  type: string
+  path: string
+}
+
+export interface PlaybackStatsInfo {
+  total_play_count: number
+  total_watch_minutes: number
+  unique_viewers: number
+  last_played_at: string
+}
+
+export interface TechSpecs {
+  streams: StreamDetail[]
+  format: FormatDetail | null
+}
+
+export interface MediaDetailEnhanced {
+  media: Media
+  tech_specs: TechSpecs | null
+  library: LibraryInfo | null
+  playback_stats: PlaybackStatsInfo | null
+  file_info: FileDetail | null
+}
+
 // ==================== 视频书签 ====================
 export interface Bookmark {
   id: string
