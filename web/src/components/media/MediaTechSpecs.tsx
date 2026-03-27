@@ -6,7 +6,6 @@ import {
   Music,
   Subtitles,
   HardDrive,
-  Film,
   ChevronDown,
   ChevronUp,
   Cpu,
@@ -16,8 +15,6 @@ import {
   Clock,
   Play,
   FolderOpen,
-  Info,
-  Eye,
 } from 'lucide-react'
 
 interface MediaTechSpecsProps {
@@ -419,7 +416,7 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
                     <InfoItem label="采样率" value={formatSampleRate(stream.sample_rate)} />
                     <InfoItem label="码率" value={formatBitRate(stream.bit_rate)} />
                     <InfoItem label="语言" value={formatLanguage(stream.language)} />
-                    {stream.bits_per_sample > 0 && <InfoItem label="位深" value={`${stream.bits_per_sample}-bit`} />}
+                    {stream.bits_per_sample && stream.bits_per_sample > 0 && <InfoItem label="位深" value={`${stream.bits_per_sample}-bit`} />}
                   </div>
                 </div>
               ))}

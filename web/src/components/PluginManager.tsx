@@ -11,7 +11,7 @@ export default function PluginManager() {
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
-  const [selectedPlugin, setSelectedPlugin] = useState<{ info: PluginInfo; manifest: PluginManifest } | null>(null)
+  const [_selectedPlugin, setSelectedPlugin] = useState<{ info: PluginInfo; manifest: PluginManifest } | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const loadPlugins = async () => {

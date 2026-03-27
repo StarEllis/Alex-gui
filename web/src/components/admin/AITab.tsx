@@ -269,9 +269,9 @@ export default function AITab() {
   }
 
   const handleTestRecommend = async (title?: string, genres?: string) => {
-    const t = title || recommendTestTitle
+    const titleVal = title || recommendTestTitle
     const g = genres || recommendTestGenres
-    if (!t.trim()) return
+    if (!titleVal.trim()) return
     setTestingRecommend(true)
     setRecommendTestResult(null)
     if (title) {
@@ -279,7 +279,7 @@ export default function AITab() {
       setRecommendTestGenres(genres || '')
     }
     try {
-      const res = await aiApi.testRecommendReason(t, g)
+      const res = await aiApi.testRecommendReason(titleVal, g)
       setRecommendTestResult(res.data.data)
     } catch {
       toast.error(t('aiTab.recommendTestFailed'))

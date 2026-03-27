@@ -3,7 +3,7 @@ import { photoApi } from '@/api'
 import type { Photo, PhotoAlbum } from '@/types'
 import {
   Camera, Image, FolderOpen, Heart, Star, Search,
-  Grid3X3, Loader2, Plus, X, ZoomIn, ChevronLeft, ChevronRight,
+  Grid3X3, Loader2, X, ZoomIn, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 

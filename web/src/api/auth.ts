@@ -1,5 +1,4 @@
 import api from './client'
-import { useAuthStore } from '@/stores/auth'
 import type {
   LoginRequest,
   RegisterRequest,

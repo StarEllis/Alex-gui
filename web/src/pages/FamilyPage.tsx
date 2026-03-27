@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { familySocialApi } from '@/api'
 import type { FamilyGroup, MediaShare, MediaRecommendation } from '@/types'
-import { Users, Plus, Copy, UserPlus, Share2, Heart, MessageSquare, Bell, Trash2, LogOut } from 'lucide-react'
+import { Users, Plus, Copy, UserPlus, Share2, Heart, Bell, Trash2, LogOut } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import toast from 'react-hot-toast'
 import { useTranslation } from '@/i18n'
@@ -204,7 +204,7 @@ export default function FamilyPage() {
                     style={{
                       background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
                       color: 'var(--text-on-neon)',
-                      ringColor: 'var(--bg-primary)',
+                      boxShadow: '0 0 0 2px var(--bg-primary)',
                     }}
                     title={member.user?.username || member.nickname}
                   >
@@ -213,7 +213,7 @@ export default function FamilyPage() {
                 ))}
                 {(group.members?.length || 0) > 5 && (
                   <div className="flex h-7 w-7 items-center justify-center rounded-full text-xs ring-2"
-                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', ringColor: 'var(--bg-primary)' }}>
+                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', boxShadow: '0 0 0 2px var(--bg-primary)' }}>
                     +{(group.members?.length || 0) - 5}
                   </div>
                 )}

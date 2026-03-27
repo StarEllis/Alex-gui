@@ -29,7 +29,7 @@ type ModalType = 'add' | 'edit' | 'import' | null
 interface SourceForm {
   name: string
   url: string
-  type: string
+  type: 'iptv' | 'custom' | 'rtmp'
   category: string
   logo: string
   quality: string

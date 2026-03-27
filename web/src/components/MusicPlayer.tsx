@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { musicApi } from '@/api'
 import type { MusicTrack, MusicAlbum, MusicPlaylist } from '@/types'
 import {
   Music, Disc3, ListMusic, Heart, Search, Play, Pause,
-  SkipForward, SkipBack, Volume2, Loader2, Plus, Clock,
+  SkipForward, SkipBack, Volume2, Loader2,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -18,9 +18,7 @@ export default function MusicPlayer() {
   const [searchQuery, setSearchQuery] = useState('')
   const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
   const [lyrics, setLyrics] = useState('')
-  const audioRef = useRef<HTMLAudioElement>(null)
 
   useEffect(() => {
     loadData()

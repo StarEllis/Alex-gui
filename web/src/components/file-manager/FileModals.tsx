@@ -5,7 +5,7 @@ import { useToast } from '@/components/Toast'
 import {
   Plus, Upload, Search, Loader2, Check, X, Eye, Edit3,
   FileVideo, Sparkles, Wand2, ScanLine, CheckSquare, Square,
-  HardDrive, History, Languages, ChevronsUpDown,
+  HardDrive, History, Languages, ChevronsUpDown, Trash2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatFileSize, LANGUAGE_OPTIONS } from './constants'

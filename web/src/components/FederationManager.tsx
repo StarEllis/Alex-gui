@@ -3,7 +3,7 @@ import { federationApi } from '@/api'
 import type { ServerNode, FederationStats, SyncTask } from '@/types'
 import {
   Network, Plus, Trash2, RefreshCw, Server, Wifi, WifiOff,
-  HardDrive, Cpu, Loader2, Activity, Globe, Clock, X,
+  HardDrive, Loader2, Activity, Globe, Clock, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 
