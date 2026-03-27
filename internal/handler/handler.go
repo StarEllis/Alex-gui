@@ -33,6 +33,7 @@ type Handlers struct {
 	Notification   *NotificationHandler
 	SubtitleSearch *SubtitleSearchHandler
 	BatchMetadata  *BatchMetadataHandler
+	EmbyCompat     *EmbyCompatHandler
 	// V2: 中期发展规划处理器
 	UserProfile     *UserProfileHandler
 	OfflineDownload *OfflineDownloadHandler
@@ -85,6 +86,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Notification:   &NotificationHandler{notifyService: services.Notification, logger: logger},
 		SubtitleSearch: &SubtitleSearchHandler{subtitleSearch: services.SubtitleSearch, streamService: services.Stream, logger: logger},
 		BatchMetadata:  &BatchMetadataHandler{batchService: services.BatchMetadata, importExportSvc: services.ImportExport, logger: logger},
+		EmbyCompat:     &EmbyCompatHandler{embyService: services.EmbyCompat, logger: logger},
 		// V2
 		UserProfile:     &UserProfileHandler{profileService: services.UserProfile, logger: logger},
 		OfflineDownload: &OfflineDownloadHandler{downloadService: services.OfflineDownload, logger: logger},

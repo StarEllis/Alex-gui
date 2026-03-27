@@ -3,9 +3,10 @@ import { importExportApi } from '@/api'
 import type { ImportSource, ImportResult, EmbyLibrary, ExportData } from '@/types'
 import {
   Download, Upload, Server, TestTube, Loader2, CheckCircle,
-  AlertCircle, FileJson, X, ArrowRight,
+  AlertCircle, FileJson, X, ArrowRight, FolderOpen,
 } from 'lucide-react'
 import clsx from 'clsx'
+import EmbyImportPanel from './EmbyImportPanel'
 
 interface ImportExportPanelProps {
   libraries: { id: string; name: string }[]
@@ -32,6 +33,7 @@ export default function ImportExportPanel({ libraries, onClose }: ImportExportPa
   const [exportLibraryId, setExportLibraryId] = useState('')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showEmbyImport, setShowEmbyImport] = useState(false)
 
   const handleTestConnection = async () => {
     setTesting(true)
@@ -112,6 +114,7 @@ export default function ImportExportPanel({ libraries, onClose }: ImportExportPa
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-2xl rounded-2xl p-6" style={{
         background: 'var(--glass-bg)',
@@ -184,6 +187,22 @@ export default function ImportExportPanel({ libraries, onClose }: ImportExportPa
               </div>
             ) : (
               <>
+                {/* 从 EMBY 本地文件夹导入 */}
+                <div className="card-glass rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FolderOpen className="h-4 w-4 text-green-400" />
+                    <h4 className="text-sm font-medium text-white">从 EMBY 本地文件夹导入</h4>
+                  </div>
+                  <p className="text-xs text-surface-400 mb-3">
+                    自动识别 EMBY/Jellyfin 标准文件夹结构，解析 NFO 元数据、海报和字幕文件。
+                  </p>
+                  <button onClick={() => setShowEmbyImport(true)}
+                    className="btn-ghost w-full rounded-lg py-2.5 text-sm flex items-center justify-center gap-2">
+                    <FolderOpen className="h-4 w-4" />
+                    打开 EMBY 格式导入
+                  </button>
+                </div>
+
                 {/* 从外部服务器导入 */}
                 <div className="card-glass rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -305,5 +324,14 @@ export default function ImportExportPanel({ libraries, onClose }: ImportExportPa
         )}
       </div>
     </div>
+
+    {/* EMBY 格式导入面板 */}
+    {showEmbyImport && (
+      <EmbyImportPanel
+        libraries={libraries}
+        onClose={() => setShowEmbyImport(false)}
+      />
+    )}
+    </>
   )
 }

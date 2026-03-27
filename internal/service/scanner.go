@@ -1554,6 +1554,11 @@ func (s *ScannerService) broadcastScanEvent(eventType string, data *ScanProgress
 	}
 }
 
+// ProbeMediaInfo 公开的 FFprobe 媒体信息探测方法（供外部服务调用）
+func (s *ScannerService) ProbeMediaInfo(media *model.Media) {
+	s.probeMediaInfo(media)
+}
+
 // probeMediaInfo 使用FFprobe提取视频元数据
 func (s *ScannerService) probeMediaInfo(media *model.Media) {
 	cmd := exec.Command(s.cfg.App.FFprobePath,

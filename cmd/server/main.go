@@ -454,6 +454,12 @@ func main() {
 		admin.GET("/export/library", handlers.BatchMetadata.ExportLibrary)
 		admin.POST("/import/data", handlers.BatchMetadata.ImportFromExportData)
 
+		// ==================== EMBY 格式兼容导入 ====================
+		admin.GET("/emby/detect", handlers.EmbyCompat.DetectEmbyFormat)
+		admin.POST("/emby/import", handlers.EmbyCompat.ImportEmbyLibrary)
+		admin.GET("/emby/info", handlers.EmbyCompat.GetEmbyCompatInfo)
+		admin.GET("/emby/nfo/:mediaId", handlers.EmbyCompat.GenerateEmbyNFO)
+
 		// ==================== V2: 多用户配置文件 ====================
 		admin.GET("/profiles", handlers.UserProfile.ListProfiles)
 		admin.POST("/profiles", handlers.UserProfile.CreateProfile)

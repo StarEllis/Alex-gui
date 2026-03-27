@@ -46,6 +46,7 @@ type Services struct {
 	SubtitleSearch *SubtitleSearchService
 	BatchMetadata  *BatchMetadataService
 	ImportExport   *MediaImportExportService
+	EmbyCompat     *EmbyCompatService
 	// V2: 中期发展规划服务
 	UserProfile     *UserProfileService
 	OfflineDownload *OfflineDownloadService
@@ -169,6 +170,10 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 创建媒体库导入/导出服务
 	importExportService := NewMediaImportExportService(repos.DB(), logger)
 
+	// 创建 EMBY 兼容服务
+	embyCompatService := NewEmbyCompatService(repos.Media, repos.Series, nfoService, scanner, logger)
+	embyCompatService.SetWSHub(wsHub)
+
 	// V2: 创建多用户配置文件服务
 	userProfileService := NewUserProfileService(repos.DB(), logger)
 
@@ -258,6 +263,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		SubtitleSearch: subtitleSearchService,
 		BatchMetadata:  batchMetadataService,
 		ImportExport:   importExportService,
+		EmbyCompat:     embyCompatService,
 		// V2
 		UserProfile:     userProfileService,
 		OfflineDownload: offlineDownloadService,
