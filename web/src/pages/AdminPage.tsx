@@ -38,18 +38,19 @@ import BackupTab from '@/components/admin/BackupTab'
 import AccessLogsTab from '@/components/admin/AccessLogsTab'
 import AITab from '@/components/admin/AITab'
 import LiveSourcesTab from '@/components/admin/LiveSourcesTab'
+import { useTranslation } from '@/i18n'
 
 // ==================== 标签页定义 ====================
 const TABS = [
-  { id: 'dashboard', label: '仪表盘', icon: LayoutDashboard, shortLabel: '仪表盘' },
-  { id: 'library', label: '媒体库管理', icon: FolderOpen, shortLabel: '媒体库' },
-  { id: 'users', label: '用户管理', icon: Users, shortLabel: '用户' },
-  { id: 'tasks', label: '任务与转码', icon: ListTodo, shortLabel: '任务' },
-  { id: 'monitor', label: '监控与日志', icon: Activity, shortLabel: '监控' },
-  { id: 'logs', label: '访问日志', icon: Settings, shortLabel: '日志' },
-  { id: 'backup', label: '数据备份', icon: Settings, shortLabel: '备份' },
-  { id: 'live', label: '直播源管理', icon: Radio, shortLabel: '直播源' },
-  { id: 'ai', label: 'AI 配置', icon: Sparkles, shortLabel: 'AI' },
+  { id: 'dashboard', labelKey: 'admin.tabDashboard', icon: LayoutDashboard, shortLabelKey: 'admin.shortDashboard' },
+  { id: 'library', labelKey: 'admin.tabLibrary', icon: FolderOpen, shortLabelKey: 'admin.shortLibrary' },
+  { id: 'users', labelKey: 'admin.tabUsers', icon: Users, shortLabelKey: 'admin.shortUsers' },
+  { id: 'tasks', labelKey: 'admin.tabTasks', icon: ListTodo, shortLabelKey: 'admin.shortTasks' },
+  { id: 'monitor', labelKey: 'admin.tabMonitor', icon: Activity, shortLabelKey: 'admin.shortMonitor' },
+  { id: 'logs', labelKey: 'admin.tabLogs', icon: Settings, shortLabelKey: 'admin.shortLogs' },
+  { id: 'backup', labelKey: 'admin.tabBackup', icon: Settings, shortLabelKey: 'admin.shortBackup' },
+  { id: 'live', labelKey: 'admin.tabLive', icon: Radio, shortLabelKey: 'admin.shortLive' },
+  { id: 'ai', labelKey: 'admin.tabAI', icon: Sparkles, shortLabelKey: 'admin.shortAI' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -64,6 +65,7 @@ export default function AdminPage() {
 
   const [activeTab, setActiveTab] = useState<TabId>(getInitialTab)
   const [searchQuery, setSearchQuery] = useState('')
+  const { t } = useTranslation()
 
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -104,7 +106,7 @@ export default function AdminPage() {
 
   // 添加实时消息（保留最近20条）
   const addMessage = useCallback((msg: string) => {
-    const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const time = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     setRealtimeMessages((prev) => [`[${time}] ${msg}`, ...prev].slice(0, 20))
   }, [])
 
@@ -254,9 +256,9 @@ export default function AdminPage() {
       setTmdbKeyInput('')
       setTmdbEditing(false)
       setTmdbShowKey(false)
-      showTmdbMessage('success', 'TMDb API Key 已保存成功')
+      showTmdbMessage('success', t('admin.tmdbSaveSuccess'))
     } catch (err: any) {
-      const msg = err?.response?.data?.error || '保存失败，请稍后重试'
+      const msg = err?.response?.data?.error || t('admin.tmdbSaveFailed')
       showTmdbMessage('error', msg)
     } finally {
       setTmdbSaving(false)
@@ -264,15 +266,15 @@ export default function AdminPage() {
   }
 
   const handleClearTMDbKey = async () => {
-    if (!confirm('确定清除 TMDb API Key？清除后元数据刮削功能将不可用。')) return
+    if (!confirm(t('admin.tmdbClearConfirm'))) return
     try {
       const res = await adminApi.clearTMDbConfig()
       setTmdbConfig(res.data.data)
       setTmdbKeyInput('')
       setTmdbEditing(false)
-      showTmdbMessage('success', 'TMDb API Key 已清除')
+      showTmdbMessage('success', t('admin.tmdbClearSuccess'))
     } catch {
-      showTmdbMessage('error', '清除失败，请稍后重试')
+      showTmdbMessage('error', t('admin.tmdbClearFailed'))
     }
   }
 
@@ -280,21 +282,21 @@ export default function AdminPage() {
   // 快捷导航条目
   const quickNavItems = useMemo(() => {
     const items = [
-      { label: '系统状态', tab: 'dashboard' as TabId, icon: Server },
-      { label: '系统设置', tab: 'dashboard' as TabId, icon: Settings },
-      { label: '实时进度', tab: 'dashboard' as TabId, icon: Loader2 },
-      { label: '活动日志', tab: 'dashboard' as TabId, icon: Activity },
-      { label: '媒体库管理', tab: 'library' as TabId, icon: FolderOpen },
-      { label: 'TMDb 刮削配置', tab: 'library' as TabId, icon: Film },
-      { label: '用户管理', tab: 'users' as TabId, icon: Users },
-      { label: '转码任务', tab: 'tasks' as TabId, icon: Zap },
-      { label: '系统监控', tab: 'monitor' as TabId, icon: Activity },
-      { label: 'AI 配置', tab: 'ai' as TabId, icon: Sparkles },
+      { label: t('admin.quickNavSystemStatus'), tab: 'dashboard' as TabId, icon: Server },
+      { label: t('admin.quickNavSystemSettings'), tab: 'dashboard' as TabId, icon: Settings },
+      { label: t('admin.quickNavRealtimeProgress'), tab: 'dashboard' as TabId, icon: Loader2 },
+      { label: t('admin.quickNavActivityLog'), tab: 'dashboard' as TabId, icon: Activity },
+      { label: t('admin.quickNavLibrary'), tab: 'library' as TabId, icon: FolderOpen },
+      { label: t('admin.quickNavTMDb'), tab: 'library' as TabId, icon: Film },
+      { label: t('admin.quickNavUsers'), tab: 'users' as TabId, icon: Users },
+      { label: t('admin.quickNavTranscode'), tab: 'tasks' as TabId, icon: Zap },
+      { label: t('admin.quickNavMonitor'), tab: 'monitor' as TabId, icon: Activity },
+      { label: t('admin.quickNavAI'), tab: 'ai' as TabId, icon: Sparkles },
     ]
     if (!searchQuery.trim()) return []
     const q = searchQuery.toLowerCase()
     return items.filter((item) => item.label.toLowerCase().includes(q))
-  }, [searchQuery])
+  }, [searchQuery, t])
 
   // 实时进度是否有活动
   const hasActiveProgress = Object.keys(scanProgress).length > 0 || Object.keys(scrapeProgress).length > 0 || Object.keys(transcodeProgress).length > 0
@@ -305,7 +307,7 @@ export default function AdminPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-            系统管理
+            {t('admin.title')}
           </h1>
           <div className="flex items-center gap-3">
             {/* 搜索框 */}
@@ -316,7 +318,7 @@ export default function AdminPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="input pl-9 pr-3 py-1.5 text-sm w-48 lg:w-64"
-                placeholder="搜索设置项..."
+                placeholder={t('admin.searchPlaceholder')}
               />
               {/* 搜索结果下拉 */}
               {quickNavItems.length > 0 && (
@@ -354,12 +356,12 @@ export default function AdminPage() {
               {connected ? (
                 <span className="flex items-center gap-1.5 text-neon">
                   <Wifi size={14} />
-                  <span className="hidden sm:inline">实时连接</span>
+                  <span className="hidden sm:inline">{t('admin.connected')}</span>
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-surface-500">
                   <WifiOff size={14} />
-                  <span className="hidden sm:inline">未连接</span>
+                  <span className="hidden sm:inline">{t('admin.disconnected')}</span>
                 </span>
               )}
             </div>
@@ -386,8 +388,8 @@ export default function AdminPage() {
                 className={clsx('admin-tab whitespace-nowrap', isActive && 'active')}
               >
                 <Icon size={16} />
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.shortLabel}</span>
+                <span className="hidden sm:inline">{t(tab.labelKey)}</span>
+                <span className="sm:hidden">{t(tab.shortLabelKey)}</span>
                 {(hasIndicator || hasDashIndicator) && (
                   <span className="relative flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon opacity-75" />
@@ -433,15 +435,15 @@ export default function AdminPage() {
             <section>
               <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
                 <Film size={20} className="text-neon/60" />
-                元数据刮削配置
+                {t('admin.metadataConfig')}
               </h2>
               <div className="glass-panel rounded-xl p-5">
                 {/* 说明信息 */}
                 <div className="mb-5 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
                   <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                    通过配置{' '}
-                    <span className="font-medium text-neon">TMDb（The Movie Database）</span>{' '}
-                    API 密钥，系统将自动获取视频的海报、简介、评分、类型等元数据信息，让您的媒体库内容更加丰富完整。
+                    {t('admin.metadataConfigDesc').split('TMDb')[0]}
+                    <span className="font-medium text-neon">TMDb（The Movie Database）</span>
+                    {t('admin.metadataConfigDesc').split('TMDb（The Movie Database）')[1] || t('admin.metadataConfigDesc').split('TMDb (The Movie Database)')[1]}
                   </p>
                   <a
                     href="https://www.themoviedb.org/settings/api"
@@ -450,7 +452,7 @@ export default function AdminPage() {
                     className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-neon hover:text-neon-blue transition-colors"
                   >
                     <ExternalLink size={14} />
-                    前往 TMDb 官网免费申请 API Key
+                    {t('admin.applyTMDbKey')}
                   </a>
                 </div>
 
@@ -466,7 +468,7 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {tmdbConfig?.configured ? 'API Key 已配置' : 'API Key 未配置'}
+                      {tmdbConfig?.configured ? t('admin.tmdbConfigured') : t('admin.tmdbNotConfigured')}
                     </p>
                     {tmdbConfig?.configured && tmdbConfig.masked_key && (
                       <p className="mt-0.5 flex items-center gap-2 text-xs text-surface-400 font-mono">
@@ -474,7 +476,7 @@ export default function AdminPage() {
                         <button
                           onClick={() => setTmdbShowKey(!tmdbShowKey)}
                           className="text-surface-500 hover:text-surface-300 transition-colors"
-                          title={tmdbShowKey ? '隐藏密钥' : '显示掩码密钥'}
+                          title={tmdbShowKey ? t('admin.tmdbHideKey') : t('admin.tmdbShowKey')}
                         >
                           {tmdbShowKey ? <EyeOff size={12} /> : <Eye size={12} />}
                         </button>
@@ -500,28 +502,19 @@ export default function AdminPage() {
                   <div className="space-y-3">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                        输入 TMDb API Key
+                        {t('admin.tmdbInputLabel')}
                       </label>
                       <input
                         type="text"
                         value={tmdbKeyInput}
                         onChange={(e) => setTmdbKeyInput(e.target.value)}
                         className="input font-mono"
-                        placeholder="例如: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+                        placeholder={t('admin.tmdbInputPlaceholder')}
                         autoFocus
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveTMDbKey()}
                       />
                       <p className="mt-1.5 text-xs text-surface-500">
-                        TMDb API Key 通常是一个32位的十六进制字符串，请从{' '}
-                        <a
-                          href="https://www.themoviedb.org/settings/api"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-neon hover:underline"
-                        >
-                          TMDb 账户设置页
-                        </a>
-                        {' '}中获取。
+                        {t('admin.tmdbInputHint')}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -533,12 +526,12 @@ export default function AdminPage() {
                         {tmdbSaving ? (
                           <>
                             <Loader2 size={14} className="animate-spin" />
-                            保存中...
+                            {t('admin.saving')}
                           </>
                         ) : (
                           <>
                             <Check size={14} />
-                            保存
+                            {t('common.save')}
                           </>
                         )}
                       </button>
@@ -549,7 +542,7 @@ export default function AdminPage() {
                         }}
                         className="btn-ghost px-4 py-2 text-sm"
                       >
-                        取消
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -560,7 +553,7 @@ export default function AdminPage() {
                       className="btn-primary gap-1.5 px-4 py-2 text-sm"
                     >
                       <Key size={14} />
-                      {tmdbConfig?.configured ? '修改 API Key' : '配置 API Key'}
+                      {tmdbConfig?.configured ? t('admin.modifyApiKey') : t('admin.configApiKey')}
                     </button>
                     {tmdbConfig?.configured && (
                       <button
@@ -568,7 +561,7 @@ export default function AdminPage() {
                         className="btn-ghost gap-1.5 px-4 py-2 text-sm text-red-400 hover:text-red-300"
                       >
                         <Trash2 size={14} />
-                        清除密钥
+                        {t('admin.clearKey')}
                       </button>
                     )}
                   </div>
@@ -576,7 +569,7 @@ export default function AdminPage() {
 
                 {/* 功能说明 */}
                 <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--border-default)' }}>
-                  <p className="text-xs font-medium text-surface-400 mb-2">配置后可使用以下功能：</p>
+                  <p className="text-xs font-medium text-surface-400 mb-2">{t('admin.configFeatures')}</p>
                   <ul className="space-y-1.5 text-xs text-surface-500">
                     <li className="flex items-center gap-2">
                       <span className={clsx(
@@ -585,7 +578,7 @@ export default function AdminPage() {
                       )}
                       style={!tmdbConfig?.configured ? { background: 'var(--text-muted)' } : undefined}
                       />
-                      扫描媒体库时自动获取海报、简介、评分等信息
+                      {t('admin.feature1')}
                     </li>
                     <li className="flex items-center gap-2">
                       <span className={clsx(
@@ -594,7 +587,7 @@ export default function AdminPage() {
                       )}
                       style={!tmdbConfig?.configured ? { background: 'var(--text-muted)' } : undefined}
                       />
-                      在媒体详情页手动刮削指定视频的元数据
+                      {t('admin.feature2')}
                     </li>
                     <li className="flex items-center gap-2">
                       <span className={clsx(
@@ -603,7 +596,7 @@ export default function AdminPage() {
                       )}
                       style={!tmdbConfig?.configured ? { background: 'var(--text-muted)' } : undefined}
                       />
-                      自动匹配电影/剧集的中文类型标签
+                      {t('admin.feature3')}
                     </li>
                   </ul>
                 </div>
@@ -634,7 +627,7 @@ export default function AdminPage() {
             <section>
               <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
                 <Activity size={20} className="text-neon/60" />
-                最近活动
+                {t('admin.recentActivity')}
               </h2>
               {realtimeMessages.length > 0 ? (
                 <div className="glass-panel-subtle max-h-64 overflow-y-auto rounded-xl p-4 space-y-1.5">
@@ -646,7 +639,7 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <div className="glass-panel-subtle flex items-center justify-center rounded-xl py-12 text-center">
-                  <p className="text-sm text-surface-500">暂无活动记录</p>
+                  <p className="text-sm text-surface-500">{t('admin.noActivity')}</p>
                 </div>
               )}
             </section>

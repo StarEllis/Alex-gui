@@ -6,6 +6,7 @@ import { libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { Library } from '@/types'
 import LanguageSwitcher from './LanguageSwitcher'
+import { useTranslation } from '@/i18n'
 import {
   Home,
   Search,
@@ -42,6 +43,7 @@ interface SidebarProps {
 export default function Sidebar({ isMobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [libraries, setLibraries] = useState<Library[]>([])
   const [collapsed, setCollapsed] = useState(false)
@@ -141,7 +143,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Home size={18} />
-          {(!collapsed || isMobileOpen) && <span>首页</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.home')}</span>}
         </NavLink>
 
         <NavLink
@@ -150,7 +152,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Search size={18} />
-          {(!collapsed || isMobileOpen) && <span>搜索</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.search')}</span>}
         </NavLink>
 
         <NavLink
@@ -159,7 +161,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Heart size={18} />
-          {(!collapsed || isMobileOpen) && <span>我的收藏</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.favorites')}</span>}
         </NavLink>
 
         <NavLink
@@ -168,7 +170,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Clock size={18} />
-          {(!collapsed || isMobileOpen) && <span>观看历史</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.history')}</span>}
         </NavLink>
 
         <NavLink
@@ -177,7 +179,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <ListVideo size={18} />
-          {(!collapsed || isMobileOpen) && <span>播放列表</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.playlists')}</span>}
         </NavLink>
 
         <NavLink
@@ -186,7 +188,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <BarChart3 size={18} />
-          {(!collapsed || isMobileOpen) && <span>观影报告</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.stats')}</span>}
         </NavLink>
 
         <NavLink
@@ -195,7 +197,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Users size={18} />
-          {(!collapsed || isMobileOpen) && <span>家庭空间</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.family')}</span>}
         </NavLink>
 
         <NavLink
@@ -204,7 +206,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Radio size={18} />
-          {(!collapsed || isMobileOpen) && <span>直播频道</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.live')}</span>}
         </NavLink>
 
         <NavLink
@@ -213,7 +215,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Cloud size={18} />
-          {(!collapsed || isMobileOpen) && <span>云端同步</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.sync')}</span>}
         </NavLink>
 
         <NavLink
@@ -222,7 +224,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           onClick={onMobileClose}
         >
           <Settings size={18} />
-          {(!collapsed || isMobileOpen) && <span>个人设置</span>}
+          {(!collapsed || isMobileOpen) && <span>{t('nav.profile')}</span>}
         </NavLink>
 
         {/* 媒体库列表 */}
@@ -230,7 +232,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           <>
             {(!collapsed || isMobileOpen) && (
               <div className="px-3 pb-1 pt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neon/40">
-                媒体库
+                {t('nav.libraries')}
               </div>
             )}
             {collapsed && !isMobileOpen && (
@@ -256,7 +258,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
           <>
             {(!collapsed || isMobileOpen) && (
               <div className="px-3 pb-1 pt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neon/40">
-                管理
+                {t('nav.management')}
               </div>
             )}
             {collapsed && !isMobileOpen && (
@@ -269,7 +271,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               onClick={onMobileClose}
             >
               <Settings size={18} />
-              {(!collapsed || isMobileOpen) && <span>系统管理</span>}
+              {(!collapsed || isMobileOpen) && <span>{t('nav.admin')}</span>}
             </NavLink>
 
             <NavLink
@@ -278,7 +280,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               onClick={onMobileClose}
             >
               <FolderOpenIcon size={18} />
-              {(!collapsed || isMobileOpen) && <span>文件管理</span>}
+              {(!collapsed || isMobileOpen) && <span>{t('nav.files')}</span>}
             </NavLink>
           </>
         )}
@@ -301,8 +303,8 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               border: theme === 'light' ? '1px solid var(--border-default)' : '1px solid transparent',
             }}
             /* 注意：此处保留 style 因为需要根据 theme 状态动态切换 */
-            title={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
-            aria-label={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
+            title={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
+            aria-label={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
             role="switch"
             aria-checked={theme === 'dark'}
           >
@@ -331,7 +333,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             </div>
             {(!collapsed || isMobileOpen) && (
               <span className="transition-colors group-hover:text-[var(--text-primary)]">
-                {theme === 'dark' ? '夜间模式' : '日间模式'}
+                {theme === 'dark' ? t('nav.darkMode') : t('nav.lightMode')}
               </span>
             )}
             {/* 当前状态指示点 */}
@@ -371,7 +373,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
                 {user?.username}
               </p>
               <p className="text-xs text-theme-tertiary">
-                {user?.role === 'admin' ? '管理员' : '用户'}
+                {user?.role === 'admin' ? t('user.admin') : t('user.user')}
               </p>
             </div>
           )}
@@ -379,7 +381,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             <button
               onClick={handleLogout}
               className="rounded-lg p-1.5 text-surface-400 transition-all hover:text-red-400 hover:bg-red-400/5"
-              title="退出登录"
+              title={t('nav.logout')}
             >
               <LogOut size={16} />
             </button>

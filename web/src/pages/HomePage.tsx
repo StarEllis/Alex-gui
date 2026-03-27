@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { mediaApi, recommendApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import { formatProgress } from '@/utils/format'
 import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
@@ -18,6 +19,7 @@ export default function HomePage() {
   const location = useLocation()
   const { on, off } = useWebSocket()
   const toast = useToast()
+  const { t } = useTranslation()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 数据加载函数（可复用）
@@ -33,7 +35,7 @@ export default function HomePage() {
       setContinueList(continueRes.data.data || [])
       setRecommendations(recommendRes.data.data || [])
     } catch {
-      toast.error('加载数据失败，请刷新页面重试')
+      toast.error(t('home.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -87,7 +89,7 @@ export default function HomePage() {
         <section className="animate-fade-in">
           <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
             <Clock size={20} className="text-neon" />
-            继续观看
+            {t('home.continueWatching')}
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {continueList.map((item) => (
@@ -132,7 +134,7 @@ export default function HomePage() {
                     {item.media.title}
                   </h3>
                   <p className="mt-1 text-xs text-theme-tertiary">
-                    已观看 {formatProgress(item.position, item.duration)}%
+                    {t('home.watched', { percent: String(formatProgress(item.position, item.duration)) })}
                   </p>
                 </div>
               </Link>
@@ -146,7 +148,7 @@ export default function HomePage() {
         <section className="animate-fade-in">
           <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
             <Sparkles size={20} className="text-yellow-400" />
-            为你推荐
+            {t('home.recommended')}
           </h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {recommendations.map((item) => (
@@ -188,7 +190,7 @@ export default function HomePage() {
                         >
                           <Play size={18} className="ml-0.5 text-white" fill="white" />
                         </div>
-                        <span className="text-sm font-semibold text-white">播放</span>
+                        <span className="text-sm font-semibold text-white">{t('home.play')}</span>
                       </div>
                     </div>
                   </div>
@@ -257,7 +259,7 @@ export default function HomePage() {
       {/* 最近添加 — 混合模式（电影+合集） */}
       <MediaGrid
         mixedItems={recentItems}
-        title="最近添加"
+        title={t('home.recentlyAdded')}
         loading={loading}
       />
 
@@ -279,10 +281,10 @@ export default function HomePage() {
             <Play size={36} className="text-surface-600" />
           </div>
           <h3 className="font-display text-lg font-semibold tracking-wide text-theme-secondary">
-            暂无媒体内容
+            {t('home.noContent')}
           </h3>
           <p className="mt-2 text-sm text-theme-muted">
-            前往管理页面添加媒体库并扫描文件
+            {t('home.noContentHint')}
           </p>
         </div>
       )}
@@ -292,6 +294,7 @@ export default function HomePage() {
 
 // ===================== Hero Banner 轮播组件 =====================
 function HeroBanner({ items }: { items: RecommendedMedia[] }) {
+  const { t } = useTranslation()
   const [current, setCurrent] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set())
@@ -416,7 +419,7 @@ function HeroBanner({ items }: { items: RecommendedMedia[] }) {
                 }}
               >
                 <Play size={18} fill="currentColor" />
-                立即播放
+                {t('home.playNow')}
               </Link>
               <Link
                 to={`/media/${item.media.id}`}
@@ -427,7 +430,7 @@ function HeroBanner({ items }: { items: RecommendedMedia[] }) {
                   backdropFilter: 'blur(8px)',
                 }}
               >
-                查看详情
+                {t('home.viewDetail')}
               </Link>
             </div>
           </div>

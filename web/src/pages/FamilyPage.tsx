@@ -4,9 +4,11 @@ import type { FamilyGroup, MediaShare, MediaRecommendation } from '@/types'
 import { Users, Plus, Copy, UserPlus, Share2, Heart, MessageSquare, Bell, Trash2, LogOut } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import toast from 'react-hot-toast'
+import { useTranslation } from '@/i18n'
 
 export default function FamilyPage() {
   const { user } = useAuthStore()
+  const { t } = useTranslation()
   const [groups, setGroups] = useState<FamilyGroup[]>([])
   const [selectedGroup, setSelectedGroup] = useState<FamilyGroup | null>(null)
   const [shares, setShares] = useState<MediaShare[]>([])
@@ -64,12 +66,12 @@ export default function FamilyPage() {
     if (!newGroupName.trim()) return
     try {
       const res = await familySocialApi.createGroup(newGroupName)
-      toast.success('家庭组创建成功')
+      toast.success(t('family.createSuccess'))
       setGroups(prev => [...prev, res.data.data])
       setShowCreateDialog(false)
       setNewGroupName('')
     } catch (err: unknown) {
-      toast.error('创建失败: ' + ((err as { response?: { data?: { error?: string } } })?.response?.data?.error || '未知错误'))
+      toast.error(t('family.createFailed') + ': ' + ((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t('common.error')))
     }
   }
 
@@ -77,41 +79,41 @@ export default function FamilyPage() {
     if (!inviteCode.trim()) return
     try {
       await familySocialApi.joinGroup(inviteCode)
-      toast.success('已加入家庭组')
+      toast.success(t('family.joinSuccess'))
       fetchGroups()
       setShowJoinDialog(false)
       setInviteCode('')
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || '加入失败')
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t('family.joinFailed'))
     }
   }
 
   const handleCopyInviteCode = (code: string) => {
     navigator.clipboard.writeText(code)
-    toast.success('邀请码已复制')
+    toast.success(t('family.inviteCodeCopied'))
   }
 
   const handleDeleteGroup = async (groupId: string) => {
-    if (!confirm('确定要解散该家庭组吗？')) return
+    if (!confirm(t('family.deleteGroupConfirm'))) return
     try {
       await familySocialApi.deleteGroup(groupId)
-      toast.success('家庭组已解散')
+      toast.success(t('family.deleteGroupSuccess'))
       setGroups(prev => prev.filter(g => g.id !== groupId))
       if (selectedGroup?.id === groupId) setSelectedGroup(null)
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || '操作失败')
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t('common.error'))
     }
   }
 
   const handleLeaveGroup = async (groupId: string) => {
-    if (!confirm('确定要离开该家庭组吗？')) return
+    if (!confirm(t('family.leaveGroupConfirm'))) return
     try {
       await familySocialApi.leaveGroup(groupId)
-      toast.success('已离开家庭组')
+      toast.success(t('family.leaveGroupSuccess'))
       setGroups(prev => prev.filter(g => g.id !== groupId))
       if (selectedGroup?.id === groupId) setSelectedGroup(null)
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || '操作失败')
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t('common.error'))
     }
   }
 

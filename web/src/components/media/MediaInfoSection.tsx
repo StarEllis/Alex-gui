@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 
 interface MediaInfoSectionProps {
   media: Media
@@ -20,13 +21,14 @@ interface MediaInfoSectionProps {
 
 export default function MediaInfoSection({ media, playInfo: _playInfo, persons, isAdmin }: MediaInfoSectionProps) {
   const toast = useToast()
+  const { t } = useTranslation()
   const [overviewExpanded, setOverviewExpanded] = useState(false)
   const isLongOverview = (media.overview?.length || 0) > 200
 
   const copyFilePath = () => {
     if (media.file_path) {
       navigator.clipboard.writeText(media.file_path)
-        .then(() => toast.success('文件路径已复制'))
+        .then(() => toast.success(t('hero.filePathCopied')))
         .catch(() => {})
     }
   }
@@ -56,9 +58,9 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
               className="mt-2 flex items-center gap-1 text-xs font-medium text-neon transition-colors hover:text-neon-blue"
             >
               {overviewExpanded ? (
-                <><ChevronUp size={14} />收起</>
+                <><ChevronUp size={14} />{t('mediaInfo.collapse')}</>
               ) : (
-                <><ChevronDown size={14} />展开全部</>
+                <><ChevronDown size={14} />{t('mediaInfo.expandAll')}</>
               )}
             </button>
           )}
@@ -91,7 +93,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
           <div className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
             {directors.length > 0 && (
               <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>导演：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.director')}</span>
                 <span style={{ color: 'var(--text-primary)' }}>
                   {directors.map(d => d.person?.name || '').filter(Boolean).join(' / ')}
                 </span>
@@ -99,37 +101,37 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             )}
             {actors.length > 0 && (
               <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>演员：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.actors')}</span>
                 <span className="line-clamp-2" style={{ color: 'var(--text-primary)' }}>
                   {actors.slice(0, 8).map(a => {
                     const name = a.person?.name || ''
-                    return a.character ? `${name}（饰 ${a.character}）` : name
+                    return a.character ? `${name}${t('mediaInfo.asCharacter', { character: a.character })}` : name
                   }).filter(Boolean).join(' / ')}
                 </span>
               </div>
             )}
             {media.country && (
               <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>制片国家：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.country')}</span>
                 <span style={{ color: 'var(--text-primary)' }}>{media.country}</span>
               </div>
             )}
             {media.language && (
               <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>语言：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.language')}</span>
                 <span style={{ color: 'var(--text-primary)' }}>{media.language}</span>
               </div>
             )}
             {media.studio && (
               <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>出品公司：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.studio')}</span>
                 <span style={{ color: 'var(--text-primary)' }}>{media.studio}</span>
               </div>
             )}
             {/* 数据来源标识 */}
             {(media.tmdb_id > 0 || media.douban_id || media.bangumi_id > 0) && (
               <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>数据来源：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.dataSource')}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {media.tmdb_id > 0 && (
                     <a
@@ -176,12 +178,12 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
         <section>
           <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
             <FileText size={16} className="text-neon/60" />
-            文件信息
+            {t('mediaInfo.fileInfo')}
           </h3>
           <div className="glass-panel rounded-xl p-5">
             {media.file_path && (
               <div className="mb-4 flex items-start gap-3">
-                <span className="shrink-0 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>文件位置：</span>
+                <span className="shrink-0 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.filePath')}</span>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <code className="flex-1 truncate rounded-lg px-3 py-1.5 text-xs"
                     style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
@@ -192,7 +194,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
                     onClick={copyFilePath}
                     className="shrink-0 rounded-lg p-1.5 transition-colors hover:text-neon hover:bg-neon-blue/5"
                     style={{ color: 'var(--text-muted)' }}
-                    title="复制路径"
+                    title={t('hero.copyFilePath')}
                   >
                     <Copy size={14} />
                   </button>
@@ -201,16 +203,16 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             )}
             <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
               <div>
-                <span style={{ color: 'var(--text-muted)' }}>文件大小：</span>
+                <span style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.fileSize')}</span>
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatSize(media.file_size)}</span>
               </div>
               <div>
-                <span style={{ color: 'var(--text-muted)' }}>添加日期：</span>
+                <span style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.addedDate')}</span>
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDate(media.created_at)}</span>
               </div>
               {media.duration > 0 && (
                 <div>
-                  <span style={{ color: 'var(--text-muted)' }}>总时长：</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.totalDuration')}</span>
                   <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDuration(media.duration)}</span>
                 </div>
               )}

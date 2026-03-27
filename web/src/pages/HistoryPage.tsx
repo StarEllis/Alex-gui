@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { userApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import { formatProgress, formatTime } from '@/utils/format'
 import type { WatchHistory } from '@/types'
 import { Clock, Play, Trash2, X } from 'lucide-react'
@@ -13,6 +14,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true)
   const size = 20
   const toast = useToast()
+  const { t } = useTranslation()
 
   const fetchHistory = async (p: number) => {
     setLoading(true)
@@ -21,7 +23,7 @@ export default function HistoryPage() {
       setHistories(res.data.data || [])
       setTotal(res.data.total)
     } catch {
-      toast.error('加载观看历史失败')
+      toast.error(t('history.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -37,18 +39,18 @@ export default function HistoryPage() {
       setHistories((h) => h.filter((item) => item.media_id !== mediaId))
       setTotal((t) => t - 1)
     } catch {
-      toast.error('删除记录失败')
+      toast.error(t('history.deleteFailed'))
     }
   }
 
   const handleClear = async () => {
-    if (!confirm('确定清空所有观看历史？')) return
+    if (!confirm(t('history.clearConfirm'))) return
     try {
       await userApi.clearHistory()
       setHistories([])
       setTotal(0)
     } catch {
-      toast.error('清空历史失败')
+      toast.error(t('history.clearFailed'))
     }
   }
 
@@ -58,10 +60,10 @@ export default function HistoryPage() {
     const diffMs = now.getTime() - date.getTime()
     const diffHours = diffMs / (1000 * 60 * 60)
 
-    if (diffHours < 1) return '刚刚'
-    if (diffHours < 24) return `${Math.floor(diffHours)} 小时前`
+    if (diffHours < 1) return t('history.justNow')
+    if (diffHours < 24) return t('history.hoursAgo', { hours: String(Math.floor(diffHours)) })
     const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 7) return `${diffDays} 天前`
+    if (diffDays < 7) return t('history.daysAgo', { days: String(diffDays) })
     return date.toLocaleDateString('zh-CN')
   }
 
@@ -73,7 +75,7 @@ export default function HistoryPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
           <Clock size={24} className="text-neon" />
-          观看历史
+          {t('history.title')}
         </h1>
         {histories.length > 0 && (
           <button
@@ -81,7 +83,7 @@ export default function HistoryPage() {
             className="btn-ghost gap-1.5 text-sm text-red-400 hover:text-red-300"
           >
             <Trash2 size={14} />
-            清空历史
+            {t('history.clearAll')}
           </button>
         )}
       </div>
@@ -149,15 +151,15 @@ export default function HistoryPage() {
                   className="text-sm font-medium transition-colors hover:text-neon"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {item.media?.title || '未知媒体'}
+                  {item.media?.title || t('history.unknownMedia')}
                 </Link>
                 <div className="mt-1 flex items-center gap-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                   <span>
-                    观看至 {formatTime(item.position)} / {formatTime(item.duration)}
+                    {t('history.watchedTo', { position: formatTime(item.position), duration: formatTime(item.duration) })}
                   </span>
                   <span className="text-neon-blue/20">·</span>
                   <span>
-                    {item.completed ? '✓ 已看完' : `${formatProgress(item.position, item.duration)}%`}
+                    {item.completed ? t('history.completed') : `${formatProgress(item.position, item.duration)}%`}
                   </span>
                   <span className="text-neon-blue/20">·</span>
                   <span>{formatDate(item.updated_at)}</span>
@@ -168,7 +170,7 @@ export default function HistoryPage() {
               <button
                 onClick={() => handleDelete(item.media_id)}
                 className="self-center rounded-lg p-2 text-surface-500 opacity-0 transition-all hover:text-red-400 hover:bg-red-400/5 group-hover:opacity-100"
-                title="删除此记录"
+                title={t('history.deleteRecord')}
               >
                 <X size={16} />
               </button>
@@ -189,9 +191,9 @@ export default function HistoryPage() {
           >
             <Clock size={36} className="text-surface-600" />
           </div>
-          <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>暂无观看历史</p>
+          <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>{t('history.empty')}</p>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            开始播放视频后，观看记录将出现在这里
+            {t('history.emptyHint')}
           </p>
         </div>
       )}
@@ -204,7 +206,7 @@ export default function HistoryPage() {
             disabled={page === 1}
             className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
           >
-            上一页
+            {t('pagination.prev')}
           </button>
           <span className="font-display text-sm tracking-wide text-neon">
             {page} / {totalPages}
@@ -214,7 +216,7 @@ export default function HistoryPage() {
             disabled={page === totalPages}
             className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
           >
-            下一页
+            {t('pagination.next')}
           </button>
         </div>
       )}

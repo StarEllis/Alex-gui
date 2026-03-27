@@ -430,6 +430,37 @@ func (ps *PlaybackStats) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// AICacheEntry AI 缓存持久化条目（替代内存缓存，重启不丢失）
+type AICacheEntry struct {
+	CacheKey  string    `json:"cache_key" gorm:"primaryKey;type:text"`
+	Value     string    `json:"value" gorm:"type:text"`
+	ExpiresAt time.Time `json:"expires_at" gorm:"index"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GenreMapping 类型标签统一映射表（标准化不同数据源的标签）
+type GenreMapping struct {
+	ID           string `json:"id" gorm:"primaryKey;type:text"`
+	SourceGenre  string `json:"source_genre" gorm:"uniqueIndex:idx_source_genre;type:text;not null"` // 原始标签（如 "Sci-Fi"）
+	SourceType   string `json:"source_type" gorm:"uniqueIndex:idx_source_genre;type:text;not null"`  // 来源（tmdb/douban/bangumi/ai）
+	StandardName string `json:"standard_name" gorm:"index;type:text;not null"`                       // 标准化名称（如 "科幻"）
+}
+
+func (g *GenreMapping) BeforeCreate(tx *gorm.DB) error {
+	if g.ID == "" {
+		g.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// RecommendCache 推荐结果缓存（避免每次重建评分矩阵）
+type RecommendCache struct {
+	UserID    string    `json:"user_id" gorm:"primaryKey;type:text"`
+	Results   string    `json:"results" gorm:"type:text"` // JSON 序列化的推荐结果
+	ExpiresAt time.Time `json:"expires_at" gorm:"index"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
@@ -474,5 +505,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&SyncDevice{},
 		&SyncRecord{},
 		&UserSyncConfig{},
+		// V4: 性能优化与标签统一
+		&AICacheEntry{},
+		&GenreMapping{},
+		&RecommendCache{},
 	)
 }

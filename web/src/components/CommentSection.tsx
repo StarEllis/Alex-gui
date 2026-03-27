@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { commentApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import type { Comment } from '@/types'
 import { MessageSquare, Star, Send, Trash2 } from 'lucide-react'
 
@@ -11,6 +12,7 @@ interface CommentSectionProps {
 
 export default function CommentSection({ mediaId }: CommentSectionProps) {
   const user = useAuthStore((s) => s.user)
+  const { t } = useTranslation()
   const [comments, setComments] = useState<Comment[]>([])
   const [total, setTotal] = useState(0)
   const [avgRating, setAvgRating] = useState(0)
@@ -35,7 +37,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       setAvgRating(res.data.avg_rating)
       setRatingCount(res.data.rating_count)
     } catch {
-      toast.error('加载评论失败')
+      toast.error(t('comment.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -52,23 +54,24 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       setRating(0)
       loadComments()
     } catch {
-      toast.error('发表评论失败')
+      toast.error(t('comment.submitFailed'))
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除这条评论？')) return
+    if (!confirm(t('comment.deleteConfirm'))) return
     try {
       await commentApi.delete(id)
       loadComments()
     } catch {
-      toast.error('删除评论失败')
+      toast.error(t('comment.deleteFailed'))
     }
   }
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr)
-    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' })
+    const loc = t('common.confirm') !== 'Confirm' ? 'zh-CN' : 'en-US' // 简单判断当前语言
+    return d.toLocaleDateString(loc === 'zh-CN' ? 'zh-CN' : undefined, { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
   const totalPages = Math.ceil(total / 10)
@@ -77,12 +80,12 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
     <section className="space-y-4">
       <h3 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
         <MessageSquare size={20} className="text-neon" />
-        评论与评分
+        {t('comment.title')}
         {ratingCount > 0 && (
           <span className="ml-2 flex items-center gap-1 text-sm font-normal text-yellow-400">
             <Star size={14} fill="currentColor" />
             {avgRating.toFixed(1)}
-            <span className="text-surface-500">({ratingCount}人评价)</span>
+            <span className="text-surface-500">({t('comment.ratingCount', { count: ratingCount })})</span>
           </span>
         )}
       </h3>
@@ -91,7 +94,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       <div className="glass-panel rounded-xl p-4 space-y-3">
         {/* 评分 */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-surface-400">我的评分：</span>
+          <span className="text-sm text-surface-400">{t('media.rating')}：</span>
           <div className="flex gap-0.5">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => (
               <button
@@ -122,7 +125,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
             type="text"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="分享你的观影感受..."
+            placeholder={t('comment.placeholder')}
             className="flex-1 rounded-xl px-4 py-2.5 text-sm text-white placeholder-surface-500 outline-none"
             style={{ background: 'var(--bg-input)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)' }}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
@@ -147,7 +150,7 @@ style={{ background: 'linear-gradient(135deg, var(--neon-blue-90), var(--neon-bl
         </div>
       ) : comments.length === 0 ? (
         <div className="py-8 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-          还没有评论，来做第一个评论者吧
+          {t('comment.noComments')}
         </div>
       ) : (
         <div className="space-y-3">

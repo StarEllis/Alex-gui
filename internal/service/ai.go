@@ -63,9 +63,10 @@ type AIService struct {
 	logger    *zap.SugaredLogger
 	client    *http.Client
 
-	// 缓存（简单内存缓存）
-	cache   map[string]*aiCacheEntry
-	cacheMu sync.RWMutex
+	// 双层缓存：内存缓存（快速读取）+ 持久化缓存（重启不丢失）
+	cache     map[string]*aiCacheEntry
+	cacheMu   sync.RWMutex
+	cacheRepo *repository.AICacheRepo // 持久化缓存仓储
 
 	// 并发控制
 	semaphore chan struct{}
@@ -96,7 +97,7 @@ type aiCacheEntry struct {
 }
 
 // NewAIService 创建 AI 服务
-func NewAIService(cfg config.AIConfig, appCfg *config.Config, mediaRepo *repository.MediaRepo, logger *zap.SugaredLogger) *AIService {
+func NewAIService(cfg config.AIConfig, appCfg *config.Config, mediaRepo *repository.MediaRepo, cacheRepo *repository.AICacheRepo, logger *zap.SugaredLogger) *AIService {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 30
@@ -111,6 +112,7 @@ func NewAIService(cfg config.AIConfig, appCfg *config.Config, mediaRepo *reposit
 		cfg:       cfg,
 		appCfg:    appCfg,
 		mediaRepo: mediaRepo,
+		cacheRepo: cacheRepo,
 		logger:    logger,
 		client: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
@@ -239,44 +241,65 @@ func (s *AIService) ChatCompletion(systemPrompt, userPrompt string, temperature 
 
 // ==================== 缓存 ====================
 
-// GetCache 从缓存获取
+// GetCache 从缓存获取（双层：先查内存，再查持久化存储）
 func (s *AIService) GetCache(key string) (string, bool) {
+	// 第一层：内存缓存
 	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
-
 	entry, ok := s.cache[key]
-	if !ok {
-		return "", false
+	s.cacheMu.RUnlock()
+	if ok && time.Now().Before(entry.ExpiresAt) {
+		return entry.Value, true
 	}
-	if time.Now().After(entry.ExpiresAt) {
-		return "", false
+
+	// 第二层：持久化缓存
+	if s.cacheRepo != nil {
+		if val, found := s.cacheRepo.Get(key); found {
+			// 回填内存缓存
+			s.cacheMu.Lock()
+			s.cache[key] = &aiCacheEntry{
+				Value:     val,
+				ExpiresAt: time.Now().Add(time.Duration(s.cfg.CacheTTLHours) * time.Hour),
+			}
+			s.cacheMu.Unlock()
+			return val, true
+		}
 	}
-	return entry.Value, true
+
+	return "", false
 }
 
-// SetCache 写入缓存
+// SetCache 写入缓存（双层：同时写入内存和持久化存储）
 func (s *AIService) SetCache(key, value string) {
 	ttl := s.cfg.CacheTTLHours
 	if ttl <= 0 {
 		return // 不缓存
 	}
 
+	// 写入内存缓存
 	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
-
 	s.cache[key] = &aiCacheEntry{
 		Value:     value,
 		ExpiresAt: time.Now().Add(time.Duration(ttl) * time.Hour),
 	}
 
-	// 简单的缓存淘汰：超过 1000 条时清理过期的
-	if len(s.cache) > 1000 {
+	// 简单的内存缓存淘汰：超过 500 条时清理过期的
+	if len(s.cache) > 500 {
 		now := time.Now()
 		for k, v := range s.cache {
 			if now.After(v.ExpiresAt) {
 				delete(s.cache, k)
 			}
 		}
+	}
+	s.cacheMu.Unlock()
+
+	// 写入持久化缓存（异步，不阻塞主流程）
+	if s.cacheRepo != nil {
+		go func() {
+			if err := s.cacheRepo.Set(key, value, ttl); err != nil {
+				s.logger.Debugf("AI 缓存持久化失败: %v", err)
+			}
+		}()
 	}
 }
 
@@ -535,22 +558,26 @@ func (s *AIService) TestConnection() (map[string]interface{}, error) {
 
 // ==================== 缓存管理 ====================
 
-// ClearCache 清空所有 AI 缓存
+// ClearCache 清空所有 AI 缓存（包括内存和持久化）
 func (s *AIService) ClearCache() int {
 	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
-
 	count := len(s.cache)
 	s.cache = make(map[string]*aiCacheEntry)
+	s.cacheMu.Unlock()
+
+	// 清空持久化缓存
+	if s.cacheRepo != nil {
+		dbCount, _ := s.cacheRepo.ClearAll()
+		count += int(dbCount)
+	}
+
 	s.logger.Infof("AI 缓存已清空，共清理 %d 条", count)
 	return count
 }
 
-// GetCacheStats 获取缓存统计
+// GetCacheStats 获取缓存统计（包括持久化层）
 func (s *AIService) GetCacheStats() map[string]interface{} {
 	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
-
 	total := len(s.cache)
 	expired := 0
 	now := time.Now()
@@ -559,13 +586,24 @@ func (s *AIService) GetCacheStats() map[string]interface{} {
 			expired++
 		}
 	}
+	s.cacheMu.RUnlock()
 
-	return map[string]interface{}{
-		"total_entries":   total,
-		"active_entries":  total - expired,
-		"expired_entries": expired,
-		"ttl_hours":       s.cfg.CacheTTLHours,
+	stats := map[string]interface{}{
+		"memory_total":   total,
+		"memory_active":  total - expired,
+		"memory_expired": expired,
+		"ttl_hours":      s.cfg.CacheTTLHours,
 	}
+
+	// 持久化缓存统计
+	if s.cacheRepo != nil {
+		dbTotal, _ := s.cacheRepo.Count()
+		dbActive, _ := s.cacheRepo.CountActive()
+		stats["db_total"] = dbTotal
+		stats["db_active"] = dbActive
+	}
+
+	return stats
 }
 
 // ==================== 错误日志 ====================

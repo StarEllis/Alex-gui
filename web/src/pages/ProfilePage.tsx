@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import {
   User,
   Key,
@@ -16,6 +17,7 @@ export default function ProfilePage() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
+  const { t } = useTranslation()
 
   // 修改密码
   const [oldPassword, setOldPassword] = useState('')
@@ -26,11 +28,11 @@ export default function ProfilePage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newPassword.length < 6) {
-toast.error('新密码至少6位')
+toast.error(t('profile.passwordMinLength'))
       return
     }
     if (newPassword !== confirmPassword) {
-toast.error('两次输入的密码不一致')
+toast.error(t('profile.passwordMismatch'))
       return
     }
 
@@ -40,12 +42,12 @@ toast.error('两次输入的密码不一致')
 // 这里使用一个技巧：先用旧密码登录验证身份
       await authApi.login({ username: user!.username, password: oldPassword })
 // 验证成功后，提示用户密码修改已完成（前端无直接修改密码API，需后端支持）
-toast.success('密码验证成功。请联系管理员修改密码或等待后续版本支持')
+toast.success(t('profile.passwordVerifySuccess'))
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch {
-toast.error('旧密码验证失败')
+toast.error(t('profile.passwordVerifyFailed'))
     } finally {
       setChangingPwd(false)
     }
@@ -62,7 +64,7 @@ toast.error('旧密码验证失败')
       <section>
         <h1 className="mb-6 flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
           <User size={24} className="text-neon" />
-          个人设置
+          {t('profile.title')}
         </h1>
 
         <div className="glass-panel rounded-2xl p-6">
@@ -85,11 +87,11 @@ toast.error('旧密码验证失败')
               <div className="mt-1 flex items-center gap-3">
                 <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>
                   <Shield size={14} />
-                  {user?.role === 'admin' ? '管理员' : '普通用户'}
+                  {user?.role === 'admin' ? t('profile.roleAdmin') : t('profile.roleUser')}
                 </span>
                 {user?.created_at && (
                   <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    注册于 {new Date(user.created_at).toLocaleDateString('zh-CN')}
+                    {t('profile.registeredAt', { date: new Date(user.created_at).toLocaleDateString() })}
                   </span>
                 )}
               </div>
@@ -102,46 +104,46 @@ toast.error('旧密码验证失败')
       <section>
         <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
           <Key size={20} className="text-neon/60" />
-          修改密码
+          {t('profile.changePassword')}
         </h2>
         <form onSubmit={handleChangePassword} className="glass-panel rounded-2xl p-6 space-y-4">
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              当前密码
+              {t('profile.currentPassword')}
             </label>
             <input
               type="password"
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
               className="input w-full"
-              placeholder="请输入当前密码"
+              placeholder={t('profile.currentPasswordPlaceholder')}
               required
             />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              新密码
+              {t('profile.newPassword')}
             </label>
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="input w-full"
-              placeholder="至少6位"
+              placeholder={t('profile.newPasswordPlaceholder')}
               required
               minLength={6}
             />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              确认新密码
+              {t('profile.confirmPassword')}
             </label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="input w-full"
-              placeholder="再次输入新密码"
+              placeholder={t('profile.confirmPasswordPlaceholder')}
               required
               minLength={6}
             />
@@ -152,7 +154,7 @@ toast.error('旧密码验证失败')
             className="btn-primary gap-1.5 px-5 py-2.5 text-sm"
           >
             {changingPwd ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            验证并修改
+            {t('profile.verifyAndChange')}
           </button>
         </form>
       </section>
@@ -162,9 +164,9 @@ toast.error('旧密码验证失败')
         <div className="glass-panel rounded-2xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>退出登录</h3>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{t('profile.logout')}</h3>
               <p className="mt-0.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                退出当前账号，返回登录页面
+                {t('profile.logoutHint')}
               </p>
             </div>
             <button
@@ -173,7 +175,7 @@ toast.error('旧密码验证失败')
               style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}
             >
               <LogOut size={16} />
-              退出登录
+              {t('profile.logout')}
             </button>
           </div>
         </div>

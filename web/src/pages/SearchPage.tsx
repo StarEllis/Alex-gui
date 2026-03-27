@@ -17,24 +17,25 @@ import {
   Sparkles,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useTranslation } from '@/i18n'
 
 // 排序选项
 const SORT_OPTIONS = [
-{ value: 'relevance', label: '相关度' },
-{ value: 'rating_desc', label: '评分最高' },
-{ value: 'year_desc', label: '最新上映' },
-{ value: 'year_asc', label: '最早上映' },
-  { value: 'title_asc', label: '标题 A→Z' },
+{ value: 'relevance', labelKey: 'search.sortRelevance' },
+{ value: 'rating_desc', labelKey: 'search.sortRatingDesc' },
+{ value: 'year_desc', labelKey: 'search.sortYearDesc' },
+{ value: 'year_asc', labelKey: 'search.sortYearAsc' },
+  { value: 'title_asc', labelKey: 'search.sortTitleAsc' },
 ]
 
 // 年份范围快捷选项
 const YEAR_RANGES = [
-  { label: '全部', min: 0, max: 0 },
-  { label: '2024-2026', min: 2024, max: 2026 },
-  { label: '2020-2023', min: 2020, max: 2023 },
-  { label: '2010-2019', min: 2010, max: 2019 },
-  { label: '2000-2009', min: 2000, max: 2009 },
-  { label: '更早', min: 0, max: 1999 },
+  { labelKey: 'search.yearAll', min: 0, max: 0 },
+  { labelKey: '', min: 2024, max: 2026 },
+  { labelKey: '', min: 2020, max: 2023 },
+  { labelKey: '', min: 2010, max: 2019 },
+  { labelKey: '', min: 2000, max: 2009 },
+  { labelKey: 'search.yearEarlier', min: 0, max: 1999 },
 ]
 
 export default function SearchPage() {
@@ -46,6 +47,7 @@ export default function SearchPage() {
   const [searched, setSearched] = useState(false)
   const size = 30
   const toast = useToast()
+  const { t } = useTranslation()
 
   // 从 URL 参数读取分页状态
   const page = parseInt(searchParams.get('page') || '1', 10) || 1
@@ -119,7 +121,7 @@ export default function SearchPage() {
       setResults(res.data.data || [])
       setTotal(res.data.total)
     } catch {
-      toast.error('搜索失败，请稍后重试')
+      toast.error(t('search.searchFailed'))
     } finally {
       setLoading(false)
     }
@@ -217,7 +219,7 @@ export default function SearchPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="input pl-12 pr-24 py-3.5 text-base"
-placeholder="搜索电影、剧集..."
+placeholder={t('search.searchPlaceholder')}
           autoFocus
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -235,7 +237,7 @@ placeholder="搜索电影、剧集..."
               'rounded-lg p-1.5 transition-colors',
               showFilters || hasActiveFilters ? 'text-neon' : 'text-surface-500 hover:text-neon'
             )}
-            title="筛选与排序"
+            title={t('search.filterAndSort')}
           >
             <SlidersHorizontal size={16} />
           </button>
@@ -248,12 +250,12 @@ placeholder="搜索电影、剧集..."
 {/* 类型筛选 */}
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <Film size={12} /> 类型:
+              <Film size={12} /> {t('search.type')}:
             </span>
             {[
-              { value: '', label: '全部', icon: null },
-              { value: 'movie', label: '电影', icon: Film },
-              { value: 'episode', label: '剧集', icon: Tv },
+              { value: '', label: t('search.typeAll'), icon: null },
+              { value: 'movie', label: t('search.typeMovie'), icon: Film },
+              { value: 'episode', label: t('search.typeEpisode'), icon: Tv },
             ].map((opt) => (
               <button
                 key={opt.value}
@@ -274,11 +276,11 @@ placeholder="搜索电影、剧集..."
 {/* 年份筛选 */}
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <Calendar size={12} /> 年份:
+              <Calendar size={12} /> {t('search.year')}:
             </span>
             {YEAR_RANGES.map((yr) => (
               <button
-                key={yr.label}
+                key={yr.labelKey || `${yr.min}-${yr.max}`}
                 onClick={() => setYearRange({ min: yr.min, max: yr.max })}
                 className={clsx(
                   'rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
@@ -288,7 +290,7 @@ placeholder="搜索电影、剧集..."
                 )}
                 style={!(yearRange.min === yr.min && yearRange.max === yr.max) ? { border: '1px solid var(--border-default)' } : {}}
               >
-                {yr.label}
+                {yr.labelKey ? t(yr.labelKey) : `${yr.min}-${yr.max}`}
               </button>
             ))}
           </div>
@@ -296,7 +298,7 @@ placeholder="搜索电影、剧集..."
 {/* 评分筛选 */}
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <Star size={12} /> 最低评分:
+              <Star size={12} /> {t('search.minRating')}:
             </span>
             {[0, 6, 7, 8, 9].map((r) => (
               <button
@@ -310,7 +312,7 @@ placeholder="搜索电影、剧集..."
                 )}
                 style={minRating !== r ? { border: '1px solid var(--border-default)' } : {}}
               >
-                {r === 0 ? '不限' : `≥${r}分`}
+                {r === 0 ? t('search.ratingAll') : `≥${r}分`}
               </button>
             ))}
           </div>
@@ -318,7 +320,7 @@ placeholder="搜索电影、剧集..."
           {/* 排序 */}
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <ArrowUpDown size={12} /> 排序:
+              <ArrowUpDown size={12} /> {t('search.sort')}:
             </span>
             {SORT_OPTIONS.map((opt) => (
               <button
@@ -332,7 +334,7 @@ placeholder="搜索电影、剧集..."
                 )}
                 style={sortBy !== opt.value ? { border: '1px solid var(--border-default)' } : {}}
               >
-                {opt.label}
+                {t(opt.labelKey)}
               </button>
             ))}
           </div>
@@ -343,7 +345,7 @@ placeholder="搜索电影、剧集..."
               onClick={clearFilters}
               className="text-xs text-red-400 hover:text-red-300 transition-colors"
             >
-              ✕ 清除所有筛选
+              ✕ {t('search.clearFilters')}
             </button>
           )}
         </div>
@@ -353,12 +355,12 @@ placeholder="搜索电影、剧集..."
       {searched && (
         <div className="mb-4 flex items-center gap-3 text-sm text-surface-400">
           <span>
-            找到 <span className="font-semibold text-neon">{total}</span> 个结果
+            {t('search.found')} <span className="font-semibold text-neon">{total}</span> {t('search.results2')}
           </span>
           {aiParsed?.parsed && (
             <span className="flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400 border border-purple-500/20">
               <Sparkles size={10} />
-              AI 理解: "{aiParsed.query}"
+              {t('search.aiUnderstand')}: "{aiParsed.query}"
               {aiParsed.genre && ` · ${aiParsed.genre}`}
               {aiParsed.year_min && aiParsed.year_max ? ` · ${aiParsed.year_min}-${aiParsed.year_max}` : ''}
             </span>
@@ -366,12 +368,12 @@ placeholder="搜索电影、剧集..."
           {aiLoading && (
             <span className="flex items-center gap-1 text-[10px] text-purple-400">
               <Sparkles size={10} className="animate-pulse" />
-              AI 分析中...
+              {t('search.aiAnalyzing')}
             </span>
           )}
           {hasActiveFilters && (
             <span className="rounded-md bg-neon-blue/10 px-2 py-0.5 text-[10px] text-neon">
-              已筛选
+              {t('search.filtered')}
             </span>
           )}
         </div>
@@ -391,16 +393,16 @@ placeholder="搜索电影、剧集..."
           >
             <SearchIcon size={36} className="text-surface-600" />
           </div>
-          <p className="font-display text-base font-semibold tracking-wide text-surface-300">未找到匹配的内容</p>
+          <p className="font-display text-base font-semibold tracking-wide text-surface-300">{t('search.noMatch')}</p>
           <p className="mt-1 text-sm text-surface-600">
-            {hasActiveFilters ? '尝试调整筛选条件或使用其他关键词' : '试试其他关键词'}
+            {hasActiveFilters ? t('search.noMatchHintFiltered') : t('search.noMatchHint')}
           </p>
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
               className="mt-3 text-sm text-neon hover:text-neon/80 transition-colors"
             >
-              清除筛选条件
+              {t('search.clearFilterConditions')}
             </button>
           )}
         </div>

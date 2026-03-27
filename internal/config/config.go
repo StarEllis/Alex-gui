@@ -257,8 +257,8 @@ func setDefaults() {
 	viper.SetDefault("database.wal_mode", true)
 	viper.SetDefault("database.busy_timeout", 5000)
 	viper.SetDefault("database.cache_size", -20000)
-	viper.SetDefault("database.max_open_conns", 1)
-	viper.SetDefault("database.max_idle_conns", 1)
+	viper.SetDefault("database.max_open_conns", 4)
+	viper.SetDefault("database.max_idle_conns", 2)
 
 	// ---- 密钥 ----
 	viper.SetDefault("secrets.jwt_secret", "nowen-video-secret-change-me")

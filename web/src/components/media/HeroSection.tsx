@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import { formatDuration, formatDurationShort } from '@/utils/format'
 import type { Media, MediaPlayInfo, Playlist, WatchHistory } from '@/types'
 import {
@@ -63,6 +64,7 @@ export default function HeroSection({
   onDelete,
 }: HeroSectionProps) {
   const toast = useToast()
+  const { t } = useTranslation()
   const [imgLoaded, setImgLoaded] = useState(false)
   const [posterFailed, setPosterFailed] = useState(false)
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
@@ -71,7 +73,7 @@ export default function HeroSection({
   const copyFilePath = () => {
     if (media.file_path) {
       navigator.clipboard.writeText(media.file_path)
-        .then(() => toast.success('文件路径已复制'))
+        .then(() => toast.success(t('hero.filePathCopied')))
         .catch(() => {})
     }
   }
@@ -175,7 +177,7 @@ export default function HeroSection({
               {/* 标题 */}
               <h1 className="font-display text-3xl font-bold tracking-wide drop-shadow-lg sm:text-4xl" style={{ color: 'var(--text-primary)' }}>
                 {media.media_type === 'episode'
-                  ? (media.episode_title || `第 ${media.episode_num} 集`)
+                  ? (media.episode_title || t('hero.episodeNum', { num: String(media.episode_num) }))
                   : media.title
                 }
               </h1>
@@ -203,12 +205,12 @@ export default function HeroSection({
                     boxShadow: 'var(--shadow-neon), 0 4px 15px var(--neon-blue-15)',
                     color: 'var(--text-on-neon)',
                   }}
-                  aria-label={watchProgress && !watchProgress.completed && watchProgress.position > 0 ? `继续播放 ${media.title}` : `播放 ${media.title}`}
+                  aria-label={watchProgress && !watchProgress.completed && watchProgress.position > 0 ? t('hero.continuePlay', { title: media.title }) : t('hero.playTitle', { title: media.title })}
                 >
                   <Play size={22} fill="currentColor" />
                   {watchProgress && !watchProgress.completed && watchProgress.position > 0
-                    ? `继续播放 ${formatDurationShort(watchProgress.position)}`
-                    : '播放'}
+                    ? t('hero.continuePlayAt', { time: formatDurationShort(watchProgress.position) })
+                    : t('media.play')}
                 </Link>
 
                 {/* 预告片按钮 */}
@@ -216,10 +218,10 @@ export default function HeroSection({
                   <button
                     onClick={onShowTrailer}
                     className="btn-secondary inline-flex items-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-semibold"
-                    aria-label="观看预告片"
+                    aria-label={t('media.trailer')}
                   >
                     <Clapperboard size={18} />
-                    预告片
+                    {t('media.trailer')}
                   </button>
                 )}
 
@@ -230,8 +232,8 @@ export default function HeroSection({
                     'btn-icon',
                     isFavorited && 'text-pink-400 !bg-pink-500/[0.12] !border-pink-500/20'
                   )}
-                  title={isFavorited ? '取消收藏' : '收藏'}
-                  aria-label={isFavorited ? '取消收藏' : '收藏'}
+                  title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
+                  aria-label={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
                   aria-pressed={isFavorited}
                 >
                   {isFavorited ? <Heart size={20} fill="currentColor" /> : <Heart size={20} />}
@@ -242,8 +244,8 @@ export default function HeroSection({
                   <button
                     onClick={() => { setShowPlaylistMenu(!showPlaylistMenu); setShowMoreMenu(false) }}
                     className="btn-icon"
-                    title="添加到播放列表"
-                    aria-label="添加到播放列表"
+                    title={t('hero.addToPlaylist')}
+                    aria-label={t('hero.addToPlaylist')}
                     aria-expanded={showPlaylistMenu}
                     aria-haspopup="true"
                   >
@@ -258,11 +260,11 @@ export default function HeroSection({
                         backdropFilter: 'blur(20px)',
                       }}
                       role="menu"
-                      aria-label="播放列表"
+                      aria-label={t('hero.playlists')}
                     >
-                    <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>播放列表</div>
+                    <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{t('hero.playlists')}</div>
                       {playlists.length === 0 ? (
-                        <div className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>暂无播放列表</div>
+                        <div className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>{t('hero.noPlaylists')}</div>
                       ) : (
                         playlists.map((pl) => (
                           <button
@@ -302,19 +304,19 @@ export default function HeroSection({
                         backdropFilter: 'blur(20px)',
                       }}
                       role="menu"
-                      aria-label="更多操作"
+                      aria-label={t('hero.moreActions')}
                     >
                       {/* 管理操作（仅管理员可见） */}
                       {isAdmin && (
                         <>
-                          <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>影片管理</div>
+                          <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{t('hero.mediaManagement')}</div>
                           <button
                             onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }}
                             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
                             style={{ color: 'var(--text-secondary)' }}
                           >
                             <Link2 size={14} />
-                            手动匹配影片
+                            {t('hero.manualMatch')}
                           </button>
                           <button
                             onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }}
@@ -322,7 +324,7 @@ export default function HeroSection({
                             style={{ color: 'var(--text-secondary)' }}
                           >
                             <Unlink size={14} />
-                            解除匹配影片
+                            {t('hero.unmatch')}
                           </button>
                           <button
                             onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }}
@@ -331,7 +333,7 @@ export default function HeroSection({
                             style={{ color: 'var(--text-secondary)' }}
                           >
                             <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} />
-                            {scraping ? '刷新中...' : '刷新元数据'}
+                            {scraping ? t('hero.refreshing') : t('hero.refreshMetadata')}
                           </button>
                           <button
                             onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }}
@@ -339,14 +341,14 @@ export default function HeroSection({
                             style={{ color: 'var(--text-secondary)' }}
                           >
                             <Pencil size={14} />
-                            编辑元数据
+                            {t('hero.editMetadata')}
                           </button>
                           <button
                             onClick={() => { onDelete?.(); setShowMoreMenu(false) }}
                             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
                           >
                             <Trash2 size={14} />
-                            删除影片
+                            {t('hero.deleteMedia')}
                           </button>
                           <div className="my-1 mx-3 h-px" style={{ background: 'var(--border-default)' }} />
                         </>
@@ -358,15 +360,15 @@ export default function HeroSection({
                         style={{ color: 'var(--text-secondary)' }}
                       >
                         <Copy size={14} />
-                        复制文件路径
+                        {t('hero.copyFilePath')}
                       </button>
                       <button
-                        onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success('链接已复制')).catch(() => {}); setShowMoreMenu(false) }}
+                        onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success(t('hero.linkCopied'))).catch(() => {}); setShowMoreMenu(false) }}
                         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
                         style={{ color: 'var(--text-secondary)' }}
                       >
                         <Share2 size={14} />
-                        分享链接
+                        {t('hero.shareLink')}
                       </button>
                     </div>
                   )}
@@ -412,7 +414,7 @@ export default function HeroSection({
                         ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                         : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
                     )}>
-                      {playInfo.can_direct_play ? '直接播放' : '需转码'}
+                      {playInfo.can_direct_play ? t('hero.directPlay') : t('hero.needTranscode')}
                     </span>
                   )}
                 </div>

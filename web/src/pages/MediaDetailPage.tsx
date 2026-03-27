@@ -7,12 +7,14 @@ import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, Wat
 import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal } from '@/components/media'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
+import { useTranslation } from '@/i18n'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const toast = useToast()
+  const { t } = useTranslation()
 
   // 核心数据
   const [media, setMedia] = useState<Media | null>(null)
@@ -104,7 +106,7 @@ export default function MediaDetailPage() {
       })
       .catch(() => {
         if (abortController.signal.aborted) return
-        toast.error('加载媒体详情失败')
+        toast.error(t('mediaDetail.loadFailed'))
         navigate('/')
       })
       .finally(() => { if (!abortController.signal.aborted) setLoading(false) })
@@ -124,7 +126,7 @@ export default function MediaDetailPage() {
         setIsFavorited(true)
       }
     } catch {
-      toast.error('收藏操作失败')
+      toast.error(t('mediaDetail.favoriteFailed'))
     }
   }
 
@@ -135,9 +137,9 @@ export default function MediaDetailPage() {
       await mediaApi.scrape(id)
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
-      toast.success('元数据刮削成功')
+      toast.success(t('mediaDetail.scrapeSuccess'))
     } catch {
-      toast.error('元数据刮削失败，请检查TMDb API Key配置')
+      toast.error(t('mediaDetail.scrapeFailed'))
     } finally {
       setScraping(false)
     }
@@ -147,9 +149,9 @@ export default function MediaDetailPage() {
     if (!id) return
     try {
       await playlistApi.addItem(playlistId, id)
-      toast.success('已添加到播放列表')
+      toast.success(t('mediaDetail.addToPlaylistSuccess'))
     } catch {
-      toast.error('添加到播放列表失败')
+      toast.error(t('mediaDetail.addToPlaylistFailed'))
     }
   }
 
@@ -171,7 +173,7 @@ export default function MediaDetailPage() {
         const res = await adminApi.searchMetadata(matchQuery, mediaType, media?.year || undefined)
         setMatchResults(res.data.data || [])
         if ((res.data.data || []).length === 0) {
-          toast.info('TMDb 未找到匹配结果，请尝试其他关键词或切换到 Bangumi 数据源')
+          toast.info(t('mediaDetail.tmdbNoResult'))
         }
       } else {
         // Bangumi 搜索：2=动画, 6=三次元
@@ -179,11 +181,11 @@ export default function MediaDetailPage() {
         const res = await adminApi.searchBangumi(matchQuery, subjectType, media?.year || undefined)
         setMatchResults(res.data.data || [])
         if ((res.data.data || []).length === 0) {
-          toast.info('Bangumi 未找到匹配结果，可尝试切换类型（动画/三次元）或更换关键词')
+          toast.info(t('mediaDetail.bangumiNoResult'))
         }
       }
     } catch {
-      toast.error(matchSource === 'tmdb' ? '搜索失败，请检查 TMDb API Key 配置' : 'Bangumi 搜索失败')
+      toast.error(matchSource === 'tmdb' ? t('mediaDetail.tmdbSearchFailed') : t('mediaDetail.bangumiSearchFailed'))
     } finally {
       setMatchSearching(false)
     }
@@ -200,9 +202,9 @@ export default function MediaDetailPage() {
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
       setShowMatchModal(false)
-      toast.success(`影片匹配成功（来源：${matchSource === 'tmdb' ? 'TMDb' : 'Bangumi'}）`)
+      toast.success(t('mediaDetail.matchSuccess', { source: matchSource === 'tmdb' ? 'TMDb' : 'Bangumi' }))
     } catch {
-      toast.error('匹配失败')
+      toast.error(t('mediaDetail.matchFailed'))
     }
   }
 
@@ -213,9 +215,9 @@ export default function MediaDetailPage() {
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
       setShowUnmatchConfirm(false)
-      toast.success('已解除匹配')
+      toast.success(t('mediaDetail.unmatchSuccess'))
     } catch {
-      toast.error('解除匹配失败')
+      toast.error(t('mediaDetail.unmatchFailed'))
     }
   }
 
@@ -226,9 +228,9 @@ export default function MediaDetailPage() {
       await mediaApi.scrape(id)
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
-      toast.success('元数据刷新成功')
+      toast.success(t('mediaDetail.refreshSuccess'))
     } catch {
-      toast.error('元数据刷新失败，请检查 TMDb API Key 配置')
+      toast.error(t('mediaDetail.refreshFailed'))
     } finally {
       setScraping(false)
     }
@@ -258,9 +260,9 @@ export default function MediaDetailPage() {
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
       setShowEditModal(false)
-      toast.success('元数据已更新')
+      toast.success(t('mediaDetail.editSuccess'))
     } catch {
-      toast.error('更新元数据失败')
+      toast.error(t('mediaDetail.editFailed'))
     }
   }
 
@@ -268,10 +270,10 @@ export default function MediaDetailPage() {
     if (!id) return
     try {
       await adminApi.deleteMedia(id)
-      toast.success('影片已删除')
+      toast.success(t('mediaDetail.deleteSuccess'))
       navigate(-1)
     } catch {
-      toast.error('删除影片失败')
+      toast.error(t('mediaDetail.deleteFailed'))
     }
   }
 
@@ -358,7 +360,7 @@ export default function MediaDetailPage() {
       {showMatchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full max-w-2xl rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
-            <h3 className="mb-4 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>手动匹配影片</h3>
+            <h3 className="mb-4 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('mediaDetail.manualMatch')}</h3>
             {/* 数据源切换 */}
             <div className="mb-4 flex gap-2">
               <button
@@ -386,8 +388,8 @@ export default function MediaDetailPage() {
             </div>
             <p className="mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
               {matchSource === 'tmdb'
-                ? '搜索 TMDb 数据库，适合欧美电影/电视剧。'
-                : '搜索 Bangumi (bgm.tv) 数据库，适合日本动画/日剧。'
+                ? t('mediaDetail.tmdbDesc')
+                : t('mediaDetail.bangumiDesc')
               }
             </p>
             <div className="mb-4 flex gap-2">
@@ -395,7 +397,7 @@ export default function MediaDetailPage() {
                 value={matchQuery}
                 onChange={(e) => setMatchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleMatchSearch()}
-                placeholder="输入影片名称搜索..."
+                placeholder={t('mediaDetail.searchPlaceholder')}
                 className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
                 autoFocus
@@ -406,7 +408,7 @@ export default function MediaDetailPage() {
                 className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
                 style={{ background: matchSource === 'tmdb' ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))' : 'linear-gradient(135deg, #f09199, #e8788a)' }}
               >
-                {matchSearching ? '搜索中...' : '搜索'}
+                {matchSearching ? t('mediaDetail.searching') : t('mediaDetail.searchBtn')}
               </button>
             </div>
             <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
@@ -456,7 +458,7 @@ export default function MediaDetailPage() {
                           <span className="text-yellow-400">★ {displayRating.toFixed(1)}</span>
                         )}
                         {isBangumi && result.eps > 0 && (
-                          <span>{result.eps}话</span>
+                          <span>{result.eps}{t('mediaDetail.episodes')}</span>
                         )}
                       </div>
                       {displayOverview && (
@@ -468,7 +470,7 @@ export default function MediaDetailPage() {
               })}
               {matchResults.length === 0 && !matchSearching && (
                 <div className="py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                  输入关键词搜索{matchSource === 'tmdb' ? ' TMDb' : ' Bangumi'} 数据库
+                  {t('mediaDetail.searchHint', { source: matchSource === 'tmdb' ? ' TMDb' : ' Bangumi' })}
                 </div>
               )}
             </div>
@@ -478,20 +480,13 @@ export default function MediaDetailPage() {
                 className="rounded-xl px-5 py-2 text-sm font-medium transition-colors hover:opacity-80"
                 style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
               >
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 解除匹配确认弹窗 ==================== */}
+                {t('common.cancel')}
       {showUnmatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
-            <h3 className="mb-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>解除匹配影片</h3>
+            <h3 className="mb-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('mediaDetail.unmatchTitle')}</h3>
             <p className="mb-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              确定要解除此影片的元数据匹配吗？这将清除所有从 TMDb/豆瓣获取的信息（简介、海报、评分等），但保留文件扫描的原始信息。
+              {t('mediaDetail.unmatchDesc')}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -499,13 +494,13 @@ export default function MediaDetailPage() {
                 className="rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
                 style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleUnmatch}
                 className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-orange-500"
               >
-                确认解除
+                {t('mediaDetail.unmatchConfirm')}
               </button>
             </div>
           </div>
@@ -534,12 +529,12 @@ export default function MediaDetailPage() {
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
-            <h3 className="mb-2 text-lg font-bold text-red-400">删除影片</h3>
+            <h3 className="mb-2 text-lg font-bold text-red-400">{t('mediaDetail.deleteTitle')}</h3>
             <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              确定要删除此影片记录吗？
+              {t('mediaDetail.deleteDesc')}
             </p>
             <p className="mb-6 text-xs" style={{ color: 'var(--text-muted)' }}>
-              此操作仅从数据库中移除记录，不会删除磁盘上的视频文件。重新扫描媒体库后可恢复。
+              {t('mediaDetail.deleteHint')}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -547,13 +542,13 @@ export default function MediaDetailPage() {
                 className="rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
                 style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleDelete}
                 className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-red-500"
               >
-                确认删除
+                {t('mediaDetail.deleteConfirm')}
               </button>
             </div>
           </div>

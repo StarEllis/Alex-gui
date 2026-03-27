@@ -21,6 +21,7 @@ type AdminHandler struct {
 	libraryService    *service.LibraryService
 	metadataService   *service.MetadataService
 	settingRepo       *repository.SystemSettingRepo
+	libraryRepo       *repository.LibraryRepo
 	cfg               *config.Config
 	logger            *zap.SugaredLogger
 }

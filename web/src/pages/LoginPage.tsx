@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
+import { useTranslation } from '@/i18n'
 import { Zap } from 'lucide-react'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+  const { t } = useTranslation()
 
   const [isRegister, setIsRegister] = useState(false)
   const [username, setUsername] = useState('')
@@ -26,7 +28,7 @@ export default function LoginPage() {
       navigate('/')
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
-      setError(axiosErr.response?.data?.error || '操作失败，请重试')
+      setError(axiosErr.response?.data?.error || t('auth.operationFailed'))
     } finally {
       setLoading(false)
     }
@@ -76,7 +78,7 @@ export default function LoginPage() {
             <span className="text-neon text-neon-glow">N</span>OWEN
           </h1>
           <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            深空影音 · 未来枢纽
+            {t('auth.slogan')}
           </p>
         </div>
 
@@ -89,7 +91,7 @@ export default function LoginPage() {
           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-neon-blue/30 to-transparent" />
 
           <h2 className="mb-6 text-center font-display text-base font-semibold tracking-wider" style={{ color: 'var(--text-primary)' }}>
-            {isRegister ? '创建账号' : '欢迎回来'}
+            {isRegister ? t('auth.registerTitle') : t('auth.loginTitle')}
           </h2>
 
           {error && (
@@ -106,14 +108,14 @@ export default function LoginPage() {
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                用户名
+                {t('auth.username')}
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="input"
-                placeholder="请输入用户名"
+                placeholder={t('auth.usernamePlaceholder')}
                 required
                 minLength={3}
                 autoFocus
@@ -122,14 +124,14 @@ export default function LoginPage() {
 
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                密码
+                {t('auth.password')}
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input"
-                placeholder="请输入密码"
+                placeholder={t('auth.passwordPlaceholder')}
                 required
                 minLength={6}
               />
@@ -144,9 +146,9 @@ export default function LoginPage() {
             {loading ? (
               <span className="flex items-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                处理中...
+                {t('auth.processing')}
               </span>
-            ) : isRegister ? '注册' : '进入深空'}
+            ) : isRegister ? t('auth.register') : t('auth.enterDeepSpace')}
           </button>
 
           <div className="mt-4 text-center">
@@ -159,7 +161,7 @@ export default function LoginPage() {
               className="text-sm transition-colors hover:text-neon"
               style={{ color: 'var(--text-secondary)' }}
             >
-              {isRegister ? '已有账号？去登录' : '没有账号？创建一个'}
+              {isRegister ? t('auth.switchToLogin') : t('auth.switchToRegister')}
             </button>
           </div>
         </form>
@@ -167,7 +169,7 @@ export default function LoginPage() {
         {/* 默认账号提示 */}
         {!isRegister && (
           <p className="mt-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-            首次使用默认账号: admin / admin123
+            {t('auth.defaultAccount')}
           </p>
         )}
       </div>

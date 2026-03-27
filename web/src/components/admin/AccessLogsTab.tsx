@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { AccessLog } from '@/types'
 import { adminApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import {
   FileText,
   Loader2,
@@ -27,6 +28,7 @@ const ACTION_COLORS: Record<string, string> = {
 
 export default function AccessLogsTab() {
   const toast = useToast()
+  const { t } = useTranslation()
   const [logs, setLogs] = useState<AccessLog[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -47,7 +49,7 @@ export default function AccessLogsTab() {
       setLogs(res.data.data || [])
       setTotal(res.data.total)
     } catch {
-      toast.error('加载访问日志失败')
+      toast.error(t('accessLogs.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -69,11 +71,11 @@ export default function AccessLogsTab() {
     const now = new Date()
     const diffMs = now.getTime() - d.getTime()
     const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return '刚刚'
-    if (diffMin < 60) return `${diffMin}分钟前`
+    if (diffMin < 1) return t('history.justNow')
+    if (diffMin < 60) return t('accessLogs.minutesAgo', { minutes: String(diffMin) })
     const diffH = Math.floor(diffMin / 60)
-    if (diffH < 24) return `${diffH}小时前`
-    return d.toLocaleString('zh-CN', {
+    if (diffH < 24) return t('accessLogs.hoursAgo', { hours: String(diffH) })
+    return d.toLocaleString(undefined, {
       month: 'numeric',
       day: 'numeric',
       hour: '2-digit',
@@ -86,28 +88,28 @@ export default function AccessLogsTab() {
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary">
           <FileText size={20} className="text-neon/60" />
-          访问日志
+          {t('accessLogs.title')}
         </h2>
-        <span className="text-sm text-surface-400">共 {total} 条记录</span>
+        <span className="text-sm text-surface-400">{t('accessLogs.totalRecords', { count: String(total) })}</span>
       </div>
 
       {/* 筛选栏 */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 text-xs text-theme-tertiary">
           <Filter size={12} />
-          筛选:
+          {t('accessLogs.filter')}:
         </div>
         <select
           value={filterAction}
           onChange={(e) => setFilterAction(e.target.value)}
           className="input py-1.5 px-3 text-xs"
         >
-          <option value="">全部操作</option>
-          <option value="login">登录</option>
-          <option value="play">播放</option>
-          <option value="scrape">刮削</option>
-          <option value="scan">扫描</option>
-          <option value="delete">删除</option>
+          <option value="">{t('accessLogs.allActions')}</option>
+          <option value="login">{t('accessLogs.actionLogin')}</option>
+          <option value="play">{t('accessLogs.actionPlay')}</option>
+          <option value="scrape">{t('accessLogs.actionScrape')}</option>
+          <option value="scan">{t('accessLogs.actionScan')}</option>
+          <option value="delete">{t('accessLogs.actionDelete')}</option>
         </select>
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500" />
@@ -115,7 +117,7 @@ export default function AccessLogsTab() {
             type="text"
             value={filterUser}
             onChange={(e) => setFilterUser(e.target.value)}
-            placeholder="用户ID筛选"
+            placeholder={t('accessLogs.userIdFilter')}
             className="input py-1.5 pl-7 pr-3 text-xs w-40"
           />
         </div>
@@ -171,7 +173,7 @@ export default function AccessLogsTab() {
         <div className="glass-panel-subtle flex items-center justify-center rounded-xl py-16 text-center">
           <div>
             <FileText size={32} className="mx-auto mb-2 text-surface-600" />
-            <p className="text-sm text-surface-500">暂无访问日志</p>
+            <p className="text-sm text-surface-500">{t('accessLogs.noLogs')}</p>
           </div>
         </div>
       )}

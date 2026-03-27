@@ -109,7 +109,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	vfsManager := NewVFSManager(logger)
 
 	// 创建 AI 服务
-	aiService := NewAIService(cfg.AI, cfg, repos.Media, logger)
+	aiService := NewAIService(cfg.AI, cfg, repos.Media, repos.AICache, logger)
 
 	// 注入 AI 服务到元数据服务
 	metadata.SetAIService(aiService)
@@ -133,7 +133,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	metadata.SetProviderChain(providerChain)
 
 	// 创建推荐服务并注入 AI
-	recommendService := NewRecommendService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger)
+	recommendService := NewRecommendService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.RecommendCache, logger)
 	recommendService.SetAIService(aiService)
 
 	// 创建刮削管理服务

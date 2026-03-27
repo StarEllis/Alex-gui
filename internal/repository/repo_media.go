@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
@@ -53,9 +54,17 @@ func (r *MediaRepo) Search(keyword string, page, size int) ([]model.Media, int64
 	var media []model.Media
 	var total int64
 
-	query := r.db.Model(&model.Media{}).Where("title LIKE ?", "%"+keyword+"%")
+	// 改进搜索：支持多字段搜索（标题、原始标题、类型），并按相关性排序
+	query := r.db.Model(&model.Media{}).Where(
+		"title LIKE ? OR orig_title LIKE ? OR genres LIKE ?",
+		"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%",
+	)
 	query.Count(&total)
-	err := query.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&media).Error
+	// 优先显示标题精确匹配的结果，然后按评分降序
+	err := query.Order(
+		fmt.Sprintf("CASE WHEN title = '%s' THEN 0 WHEN title LIKE '%s%%' THEN 1 ELSE 2 END, rating DESC, created_at DESC",
+			keyword, keyword),
+	).Offset((page - 1) * size).Limit(size).Find(&media).Error
 	return media, total, err
 }
 
@@ -81,13 +90,24 @@ func (r *MediaRepo) SearchAdvanced(params SearchAdvancedParams) ([]model.Media, 
 	query := r.db.Model(&model.Media{})
 
 	if params.Keyword != "" {
-		query = query.Where("title LIKE ?", "%"+params.Keyword+"%")
+		// 改进：多字段搜索
+		query = query.Where(
+			"title LIKE ? OR orig_title LIKE ? OR tagline LIKE ?",
+			"%"+params.Keyword+"%", "%"+params.Keyword+"%", "%"+params.Keyword+"%",
+		)
 	}
 	if params.MediaType != "" {
 		query = query.Where("media_type = ?", params.MediaType)
 	}
 	if params.Genre != "" {
-		query = query.Where("genres LIKE ?", "%"+params.Genre+"%")
+		// 改进：支持多类型筛选（逗号分隔）
+		genres := strings.Split(params.Genre, ",")
+		for _, g := range genres {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				query = query.Where("genres LIKE ?", "%"+g+"%")
+			}
+		}
 	}
 	if params.YearMin > 0 {
 		query = query.Where("year >= ?", params.YearMin)
@@ -180,6 +200,16 @@ func (r *MediaRepo) ListByGenres(genres []string, excludeIDs []string, limit int
 	}
 	var media []model.Media
 	err := query.Order("rating DESC").Limit(limit).Find(&media).Error
+	return media, err
+}
+
+// ListHighRated 获取高评分媒体（用于冷启动推荐的多样化内容）
+func (r *MediaRepo) ListHighRated(limit int, minRating float64) ([]model.Media, error) {
+	var media []model.Media
+	err := r.db.Where("rating >= ?", minRating).
+		Order("rating DESC, created_at DESC").
+		Limit(limit).
+		Find(&media).Error
 	return media, err
 }
 

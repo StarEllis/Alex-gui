@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -367,14 +368,23 @@ func boolToStr(b bool) string {
 // ==================== 服务端文件浏览器 ====================
 
 // BrowseFS 浏览服务器文件系统目录
+// 安全限制：仅允许浏览已配置的媒体库路径及常见根路径，防止任意目录遍历
 func (h *AdminHandler) BrowseFS(c *gin.Context) {
 	dir := c.DefaultQuery("path", "/")
 	if dir == "" {
 		dir = "/"
 	}
 
-	// 安全检查：清理路径
+	// 安全检查：清理路径，防止路径遍历攻击
 	dir = filepath.Clean(dir)
+
+	// 安全限制：检查请求路径是否在允许的范围内
+	// 允许的路径：根路径（/）、常见挂载点、已配置的媒体库路径的父目录
+	allowed := h.isAllowedBrowsePath(dir)
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权浏览该目录，仅允许浏览媒体库相关路径"})
+		return
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -394,13 +404,18 @@ func (h *AdminHandler) BrowseFS(c *gin.Context) {
 		if !entry.IsDir() {
 			continue
 		}
-		// 跳过隐藏目录
-		if entry.Name()[0] == '.' {
+		// 跳过隐藏目录和系统目录
+		name := entry.Name()
+		if name[0] == '.' {
+			continue
+		}
+		// 跳过敏感系统目录
+		if h.isSensitiveDir(name) {
 			continue
 		}
 		items = append(items, FsEntry{
-			Name:  entry.Name(),
-			Path:  filepath.Join(dir, entry.Name()),
+			Name:  name,
+			Path:  filepath.Join(dir, name),
 			IsDir: true,
 		})
 	}
@@ -418,4 +433,67 @@ func (h *AdminHandler) BrowseFS(c *gin.Context) {
 			"items":   items,
 		},
 	})
+}
+
+// isAllowedBrowsePath 检查路径是否在允许浏览的范围内
+func (h *AdminHandler) isAllowedBrowsePath(dir string) bool {
+	// 根路径始终允许（用于导航）
+	if dir == "/" || dir == "\\" || dir == "." {
+		return true
+	}
+
+	// Windows 盘符根路径允许（如 C:\, D:\）
+	if len(dir) <= 3 && filepath.VolumeName(dir) != "" {
+		return true
+	}
+
+	// 常见的安全挂载点/根路径允许
+	safeRoots := []string{
+		"/mnt", "/media", "/home", "/srv", "/data", "/nas", "/share", "/volume",
+		"/opt", "/var/lib", "/storage",
+	}
+	for _, root := range safeRoots {
+		if strings.HasPrefix(dir, root) {
+			return true
+		}
+	}
+
+	// 已配置的媒体库路径及其父目录允许
+	libraries, err := h.libraryRepo.List()
+	if err == nil {
+		for _, lib := range libraries {
+			libPath := filepath.Clean(lib.Path)
+			// 允许媒体库路径本身及其子目录
+			if strings.HasPrefix(dir, libPath) {
+				return true
+			}
+			// 允许媒体库路径的父目录链（用于导航到媒体库）
+			if strings.HasPrefix(libPath, dir) {
+				return true
+			}
+		}
+	}
+
+	// 应用数据目录允许
+	if h.cfg != nil {
+		dataDir := filepath.Clean(h.cfg.App.DataDir)
+		if strings.HasPrefix(dir, dataDir) || strings.HasPrefix(dataDir, dir) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSensitiveDir 检查是否为敏感系统目录
+func (h *AdminHandler) isSensitiveDir(name string) bool {
+	sensitive := map[string]bool{
+		"proc": true, "sys": true, "dev": true, "run": true,
+		"boot": true, "sbin": true, "bin": true, "lib": true,
+		"lib64": true, "lost+found": true, "snap": true,
+		"System Volume Information": true, "$Recycle.Bin": true,
+		"Windows": true, "Program Files": true, "Program Files (x86)": true,
+		"ProgramData": true,
+	}
+	return sensitive[name]
 }

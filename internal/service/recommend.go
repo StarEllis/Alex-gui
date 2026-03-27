@@ -1,9 +1,11 @@
 package service
 
 import (
+	"encoding/json"
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -24,16 +26,21 @@ const (
 	cbWeight = 0.4
 	// maxHistoryForContentRec 基于内容推荐时分析的最大历史记录数
 	maxHistoryForContentRec = 50
+	// timeDecayLambda 时间衰减因子 λ（半衰期约 30 天）
+	timeDecayLambda = 0.023
+	// recommendCacheTTLMinutes 推荐结果缓存有效期（分钟）
+	recommendCacheTTLMinutes = 60
 )
 
 // RecommendService 智能推荐服务（基于协同过滤）
 type RecommendService struct {
-	mediaRepo   *repository.MediaRepo
-	seriesRepo  *repository.SeriesRepo
-	historyRepo *repository.WatchHistoryRepo
-	favRepo     *repository.FavoriteRepo
-	logger      *zap.SugaredLogger
-	ai          *AIService // AI 推荐理由生成
+	mediaRepo      *repository.MediaRepo
+	seriesRepo     *repository.SeriesRepo
+	historyRepo    *repository.WatchHistoryRepo
+	favRepo        *repository.FavoriteRepo
+	recommendCache *repository.RecommendCacheRepo
+	logger         *zap.SugaredLogger
+	ai             *AIService // AI 推荐理由生成
 }
 
 func NewRecommendService(
@@ -41,14 +48,16 @@ func NewRecommendService(
 	seriesRepo *repository.SeriesRepo,
 	historyRepo *repository.WatchHistoryRepo,
 	favRepo *repository.FavoriteRepo,
+	recommendCache *repository.RecommendCacheRepo,
 	logger *zap.SugaredLogger,
 ) *RecommendService {
 	return &RecommendService{
-		mediaRepo:   mediaRepo,
-		seriesRepo:  seriesRepo,
-		historyRepo: historyRepo,
-		favRepo:     favRepo,
-		logger:      logger,
+		mediaRepo:      mediaRepo,
+		seriesRepo:     seriesRepo,
+		historyRepo:    historyRepo,
+		favRepo:        favRepo,
+		recommendCache: recommendCache,
+		logger:         logger,
 	}
 }
 
@@ -65,10 +74,24 @@ type RecommendedMedia struct {
 }
 
 // GetRecommendations 获取个性化推荐列表
-// 采用混合推荐策略：协同过滤 + 基于内容的推荐
+// 采用混合推荐策略：协同过滤 + 基于内容的推荐，并支持结果缓存
 func (s *RecommendService) GetRecommendations(userID string, limit int) ([]RecommendedMedia, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
+	}
+
+	// 检查推荐缓存
+	if s.recommendCache != nil {
+		if cached, ok := s.recommendCache.Get(userID); ok {
+			var results []RecommendedMedia
+			if err := json.Unmarshal([]byte(cached), &results); err == nil {
+				if len(results) > limit {
+					results = results[:limit]
+				}
+				s.logger.Debugf("使用推荐缓存: user=%s, count=%d", userID, len(results))
+				return results, nil
+			}
+		}
 	}
 
 	// 1. 获取当前用户的观看历史
@@ -133,6 +156,14 @@ func (s *RecommendService) GetRecommendations(userID string, limit int) ([]Recom
 		results = results[:limit]
 	}
 
+	// 缓存推荐结果
+	if s.recommendCache != nil && len(results) > 0 {
+		if cacheBytes, err := json.Marshal(results); err == nil {
+			go s.recommendCache.Set(userID, string(cacheBytes), recommendCacheTTLMinutes)
+		}
+	}
+
+	// AI 推荐理由增强
 	// AI 推荐理由增强（为前 N 个结果生成个性化理由）
 	if s.ai != nil && s.ai.IsRecommendReasonEnabled() && len(results) > 0 {
 		// 提取用户偏好类型
@@ -158,10 +189,12 @@ func (s *RecommendService) GetRecommendations(userID string, limit int) ([]Recom
 	return results, nil
 }
 
-// buildRatingMatrix 构建用户-物品评分矩阵
+// buildRatingMatrix 构建用户-物品评分矩阵（包含时间衰减）
 // 评分规则：观看完成=5分, 观看>50%=4分, 观看>20%=3分, 有记录=2分, 收藏=+1分
+// 时间衰减：score *= exp(-λ * days_since_watch)
 func (s *RecommendService) buildRatingMatrix(allHistory []model.WatchHistory) map[string]map[string]float64 {
 	ratings := make(map[string]map[string]float64)
+	now := time.Now()
 
 	for _, h := range allHistory {
 		if ratings[h.UserID] == nil {
@@ -183,6 +216,14 @@ func (s *RecommendService) buildRatingMatrix(allHistory []model.WatchHistory) ma
 		} else {
 			score = 2.0
 		}
+
+		// 时间衰减：越新的观看记录权重越高
+		daysSince := now.Sub(h.UpdatedAt).Hours() / 24
+		if daysSince < 0 {
+			daysSince = 0
+		}
+		decayFactor := math.Exp(-timeDecayLambda * daysSince)
+		score *= decayFactor
 
 		// 取最高分（同一用户可能多次观看）
 		if existing, ok := ratings[h.UserID][h.MediaID]; !ok || score > existing {
@@ -521,50 +562,73 @@ func (s *RecommendService) mergeRecommendations(
 }
 
 // getPopularRecommendations 热门推荐（无观看历史时使用）
+// 冷启动优化：混合热门内容和多样化类型的高分内容
 func (s *RecommendService) getPopularRecommendations(limit int) ([]RecommendedMedia, error) {
 	// 获取被最多用户观看/收藏的媒体
-	popularMedia, err := s.historyRepo.GetMostWatched(limit)
+	popularMedia, err := s.historyRepo.GetMostWatched(limit / 2)
 	if err != nil {
-		// 降级为最新媒体
-		media, err := s.mediaRepo.Recent(limit)
-		if err != nil {
-			return nil, err
-		}
-		var results []RecommendedMedia
-		for _, m := range media {
-			results = append(results, RecommendedMedia{
-				Media:  m,
-				Score:  0,
-				Reason: "最新上架",
-			})
-		}
-		return results, nil
+		popularMedia = nil
 	}
 
-	// 批量查询媒体详情（避免 N+1 查询）
-	mediaIDs := make([]string, 0, len(popularMedia))
-	for _, pm := range popularMedia {
-		mediaIDs = append(mediaIDs, pm.MediaID)
-	}
-
-	mediaList, err := s.mediaRepo.FindByIDs(mediaIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	mediaMap := make(map[string]model.Media, len(mediaList))
-	for _, m := range mediaList {
-		mediaMap[m.ID] = m
-	}
+	// 冷启动优化：同时获取高分媒体（提供多样性）
+	highRatedMedia, _ := s.mediaRepo.ListHighRated(limit/2, 7.0)
 
 	var results []RecommendedMedia
-	for _, pm := range popularMedia {
-		if media, ok := mediaMap[pm.MediaID]; ok {
-			results = append(results, RecommendedMedia{
-				Media:  media,
-				Score:  float64(pm.WatchCount),
-				Reason: "热门推荐",
-			})
+	seenIDs := make(map[string]bool)
+
+	// 添加热门内容
+	if len(popularMedia) > 0 {
+		mediaIDs := make([]string, 0, len(popularMedia))
+		for _, pm := range popularMedia {
+			mediaIDs = append(mediaIDs, pm.MediaID)
+		}
+		mediaList, err := s.mediaRepo.FindByIDs(mediaIDs)
+		if err == nil {
+			mediaMap := make(map[string]model.Media, len(mediaList))
+			for _, m := range mediaList {
+				mediaMap[m.ID] = m
+			}
+			for _, pm := range popularMedia {
+				if media, ok := mediaMap[pm.MediaID]; ok && !seenIDs[media.ID] {
+					seenIDs[media.ID] = true
+					results = append(results, RecommendedMedia{
+						Media:  media,
+						Score:  float64(pm.WatchCount),
+						Reason: "热门推荐",
+					})
+				}
+			}
+		}
+	}
+
+	// 添加高分多样化内容（冷启动探索）
+	for _, media := range highRatedMedia {
+		if seenIDs[media.ID] {
+			continue
+		}
+		seenIDs[media.ID] = true
+		results = append(results, RecommendedMedia{
+			Media:  media,
+			Score:  media.Rating,
+			Reason: "高分佳作",
+		})
+		if len(results) >= limit {
+			break
+		}
+	}
+
+	// 如果还不够，用最新媒体补充
+	if len(results) < limit {
+		recentMedia, _ := s.mediaRepo.Recent(limit - len(results))
+		for _, m := range recentMedia {
+			if !seenIDs[m.ID] {
+				seenIDs[m.ID] = true
+				results = append(results, RecommendedMedia{
+					Media:  m,
+					Score:  0,
+					Reason: "最新上架",
+				})
+			}
 		}
 	}
 

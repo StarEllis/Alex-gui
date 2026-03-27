@@ -3,12 +3,26 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
 )
+
+// SyncOperation 同步操作日志条目（用于离线队列和重放）
+type SyncOperation struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	DeviceID  string    `json:"device_id"`
+	Action    string    `json:"action"` // create / update / delete
+	DataType  string    `json:"data_type"`
+	DataKey   string    `json:"data_key"`
+	DataValue string    `json:"data_value"`
+	Timestamp time.Time `json:"timestamp"`
+	Applied   bool      `json:"applied"`
+}
 
 // CloudSyncService 云端同步服务
 type CloudSyncService struct {
@@ -20,6 +34,10 @@ type CloudSyncService struct {
 	playlistRepo *repository.PlaylistRepo
 	logger       *zap.SugaredLogger
 	wsHub        *WSHub
+
+	// 操作日志队列（用于离线操作排队和重放）
+	opQueue   []SyncOperation
+	opQueueMu sync.Mutex
 }
 
 // NewCloudSyncService 创建云端同步服务
@@ -276,7 +294,8 @@ type SyncConflict struct {
 	RemoteTime  time.Time `json:"remote_time"`
 }
 
-// ResolveConflict 解决同步冲突（使用最后写入胜出策略）
+// ResolveConflict 解决同步冲突（支持多种策略）
+// strategy: "local" / "remote" / "merge" / "latest"
 func (s *CloudSyncService) ResolveConflict(userID, dataType, dataKey string, useLocal bool, value string) error {
 	record := &model.SyncRecord{
 		UserID:    userID,
@@ -287,6 +306,131 @@ func (s *CloudSyncService) ResolveConflict(userID, dataType, dataKey string, use
 		SyncedAt:  time.Now(),
 	}
 	return s.syncRepo.Upsert(record)
+}
+
+// ResolveConflictWithMerge 智能合并冲突（适用于播放列表等集合类型数据）
+func (s *CloudSyncService) ResolveConflictWithMerge(userID, dataType, dataKey, localValue, remoteValue string) error {
+	var mergedValue string
+
+	switch dataType {
+	case "playlist", "favorites":
+		// 集合类型数据：使用 union merge（合并去重）
+		var localItems, remoteItems []string
+		json.Unmarshal([]byte(localValue), &localItems)
+		json.Unmarshal([]byte(remoteValue), &remoteItems)
+
+		seen := make(map[string]bool)
+		var merged []string
+		for _, item := range localItems {
+			if !seen[item] {
+				seen[item] = true
+				merged = append(merged, item)
+			}
+		}
+		for _, item := range remoteItems {
+			if !seen[item] {
+				seen[item] = true
+				merged = append(merged, item)
+			}
+		}
+
+		mergedBytes, _ := json.Marshal(merged)
+		mergedValue = string(mergedBytes)
+
+	case "progress":
+		// 观看进度：取进度更大的那个
+		var localProgress, remoteProgress struct {
+			Position  float64 `json:"position"`
+			Completed bool    `json:"completed"`
+		}
+		json.Unmarshal([]byte(localValue), &localProgress)
+		json.Unmarshal([]byte(remoteValue), &remoteProgress)
+
+		if remoteProgress.Completed || remoteProgress.Position > localProgress.Position {
+			mergedValue = remoteValue
+		} else {
+			mergedValue = localValue
+		}
+
+	default:
+		// 默认：最后写入胜出（Last Write Wins）
+		mergedValue = remoteValue
+	}
+
+	record := &model.SyncRecord{
+		UserID:    userID,
+		DataType:  dataType,
+		DataKey:   dataKey,
+		DataValue: mergedValue,
+		Version:   time.Now().UnixMilli(),
+		SyncedAt:  time.Now(),
+	}
+
+	s.logger.Infof("同步冲突已通过合并解决: type=%s, key=%s", dataType, dataKey)
+	return s.syncRepo.Upsert(record)
+}
+
+// ==================== 操作日志队列（离线支持） ====================
+
+// EnqueueOperation 将操作加入离线队列
+func (s *CloudSyncService) EnqueueOperation(op SyncOperation) {
+	s.opQueueMu.Lock()
+	defer s.opQueueMu.Unlock()
+	op.Timestamp = time.Now()
+	op.Applied = false
+	s.opQueue = append(s.opQueue, op)
+	s.logger.Debugf("操作已加入离线队列: %s %s/%s", op.Action, op.DataType, op.DataKey)
+}
+
+// FlushOperationQueue 重放离线队列中的操作（网络恢复后调用）
+func (s *CloudSyncService) FlushOperationQueue(userID, deviceID string) (int, int, error) {
+	s.opQueueMu.Lock()
+	pending := make([]SyncOperation, 0)
+	for _, op := range s.opQueue {
+		if op.UserID == userID && !op.Applied {
+			pending = append(pending, op)
+		}
+	}
+	s.opQueueMu.Unlock()
+
+	success, failed := 0, 0
+	for i := range pending {
+		err := s.SyncData(userID, deviceID, pending[i].DataType, pending[i].DataKey, pending[i].DataValue, time.Now().UnixMilli())
+		if err != nil {
+			failed++
+			s.logger.Debugf("重放操作失败: %v", err)
+		} else {
+			success++
+			pending[i].Applied = true
+		}
+	}
+
+	// 清理已应用的操作
+	s.opQueueMu.Lock()
+	var remaining []SyncOperation
+	for _, op := range s.opQueue {
+		if !op.Applied {
+			remaining = append(remaining, op)
+		}
+	}
+	s.opQueue = remaining
+	s.opQueueMu.Unlock()
+
+	s.logger.Infof("离线队列重放完成: 成功=%d, 失败=%d", success, failed)
+	return success, failed, nil
+}
+
+// GetPendingOperations 获取待同步的操作数量
+func (s *CloudSyncService) GetPendingOperations(userID string) int {
+	s.opQueueMu.Lock()
+	defer s.opQueueMu.Unlock()
+	count := 0
+	for _, op := range s.opQueue {
+		if op.UserID == userID && !op.Applied {
+			count++
+		}
+	}
+	return count
 }
 
 // ==================== 数据导出/导入 ====================

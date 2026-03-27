@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -160,9 +161,15 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	return count, err
 }
 
-// scanMovieLibrary 扫描电影库（原有逻辑）
+// scanMovieLibrary 扫描电影库（支持增量扫描）
 func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	var count int
+	// 增量扫描：获取上次扫描时间，仅处理新增/变更的文件
+	lastScanTime := time.Time{}
+	if library.LastScan != nil {
+		lastScanTime = *library.LastScan
+	}
+
 	err := filepath.Walk(library.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			s.logger.Warnf("访问文件失败: %s, 错误: %v", path, err)
@@ -175,7 +182,18 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		if !supportedExts[ext] {
 			return nil
 		}
-		if _, err := s.mediaRepo.FindByFilePath(path); err == nil {
+		// 检查文件是否已存在
+		existing, findErr := s.mediaRepo.FindByFilePath(path)
+		if findErr == nil {
+			// 文件已存在：增量扫描模式下，如果文件未修改则跳过
+			if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
+				return nil // 文件未变更，跳过
+			}
+			// 文件已变更，更新文件大小和媒体信息
+			existing.FileSize = info.Size()
+			s.probeMediaInfo(existing)
+			s.scanExternalSubtitles(existing)
+			s.mediaRepo.Update(existing)
 			return nil
 		}
 		title := s.extractTitle(filepath.Base(path))

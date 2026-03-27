@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { playlistApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import type { Playlist } from '@/types'
 import {
   ListVideo,
@@ -20,13 +21,14 @@ export default function PlaylistsPage() {
   const [newName, setNewName] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const toast = useToast()
+  const { t } = useTranslation()
 
   const fetchPlaylists = async () => {
     try {
       const res = await playlistApi.list()
       setPlaylists(res.data.data || [])
     } catch {
-      toast.error('加载播放列表失败')
+      toast.error(t('playlists.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -44,17 +46,17 @@ export default function PlaylistsPage() {
       setShowCreate(false)
       fetchPlaylists()
     } catch {
-      toast.error('创建播放列表失败')
+      toast.error(t('playlists.createFailed'))
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除此播放列表？')) return
+    if (!confirm(t('playlists.deleteConfirm'))) return
     try {
       await playlistApi.delete(id)
       setPlaylists((p) => p.filter((pl) => pl.id !== id))
     } catch {
-      toast.error('删除播放列表失败')
+      toast.error(t('playlists.deleteFailed'))
     }
   }
 
@@ -63,7 +65,7 @@ export default function PlaylistsPage() {
       await playlistApi.removeItem(playlistId, mediaId)
       fetchPlaylists()
     } catch {
-      toast.error('移除项目失败')
+      toast.error(t('playlists.removeFailed'))
     }
   }
 
@@ -73,14 +75,14 @@ export default function PlaylistsPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
           <ListVideo size={24} className="text-neon" />
-          播放列表
+          {t('playlists.title')}
         </h1>
         <button
           onClick={() => setShowCreate(!showCreate)}
           className="btn-primary gap-1.5 px-3 py-2 text-sm"
         >
           <Plus size={16} />
-          新建列表
+          {t('playlists.create')}
         </button>
       </div>
 
@@ -93,18 +95,18 @@ export default function PlaylistsPage() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="input flex-1"
-              placeholder="播放列表名称"
+              placeholder={t('playlists.namePlaceholder')}
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             />
             <button onClick={handleCreate} className="btn-primary px-4 py-2 text-sm">
-              创建
+              {t('playlists.createBtn')}
             </button>
             <button
               onClick={() => setShowCreate(false)}
               className="btn-ghost px-4 py-2 text-sm"
             >
-              取消
+              {t('playlists.cancelBtn')}
             </button>
           </div>
         </div>
@@ -145,7 +147,7 @@ export default function PlaylistsPage() {
                   <div>
                     <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>{playlist.name}</h3>
                     <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                      {playlist.items?.length || 0} 个项目
+                      {t('playlists.itemCount', { count: String(playlist.items?.length || 0) })}
                     </p>
                   </div>
                   {expandedId === playlist.id ? (
@@ -157,7 +159,7 @@ export default function PlaylistsPage() {
                 <button
                   onClick={() => handleDelete(playlist.id)}
                   className="rounded-lg p-2 text-surface-500 transition-colors hover:text-red-400 hover:bg-red-400/5"
-                  title="删除播放列表"
+                  title={t('playlists.deletePlaylist')}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -168,7 +170,7 @@ export default function PlaylistsPage() {
                 <div style={{ borderTop: '1px solid var(--border-default)' }}>
                   {(!playlist.items || playlist.items.length === 0) && (
                     <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                      此列表暂无内容，在媒体详情页将内容添加到此列表
+                      {t('playlists.emptyList')}
                     </div>
                   )}
                   {playlist.items?.map((item) => (
@@ -201,14 +203,14 @@ export default function PlaylistsPage() {
                         className="flex-1 text-sm font-medium transition-colors hover:text-neon"
                         style={{ color: 'var(--text-primary)' }}
                       >
-                        {item.media?.title || '未知媒体'}
+                        {item.media?.title || t('history.unknownMedia')}
                       </Link>
 
                       {/* 移除 */}
                       <button
                         onClick={() => handleRemoveItem(playlist.id, item.media_id)}
                         className="rounded-lg p-1.5 text-surface-500 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
-                        title="从列表移除"
+                        title={t('playlists.removeFromList')}
                       >
                         <X size={14} />
                       </button>
@@ -231,9 +233,9 @@ export default function PlaylistsPage() {
               >
                 <ListVideo size={36} className="text-surface-600" />
               </div>
-              <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>还没有播放列表</p>
+              <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>{t('playlists.empty')}</p>
               <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                点击上方按钮创建自定义播放列表
+                {t('playlists.emptyHint')}
               </p>
             </div>
           )}

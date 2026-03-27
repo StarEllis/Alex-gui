@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { userApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import type { Favorite } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Heart } from 'lucide-react'
@@ -12,6 +13,7 @@ export default function FavoritesPage() {
   const [loading, setLoading] = useState(true)
   const size = 30
   const toast = useToast()
+  const { t } = useTranslation()
 
   useEffect(() => {
     setLoading(true)
@@ -21,7 +23,7 @@ export default function FavoritesPage() {
         setFavorites(res.data.data || [])
         setTotal(res.data.total)
       })
-      .catch(() => { toast.error('加载收藏列表失败') })
+      .catch(() => { toast.error(t('favorites.loadFailed')) })
       .finally(() => setLoading(false))
   }, [page])
 
@@ -32,7 +34,7 @@ export default function FavoritesPage() {
     <div>
       <h1 className="mb-6 flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
         <Heart size={24} className="text-red-400" />
-        我的收藏
+        {t('favorites.title')}
       </h1>
 
       <MediaGrid items={media} loading={loading} />
@@ -49,9 +51,9 @@ export default function FavoritesPage() {
           >
             <Heart size={36} className="text-surface-600" />
           </div>
-          <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>还没有收藏的内容</p>
+          <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>{t('favorites.empty')}</p>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            浏览媒体库，点击收藏按钮添加到这里
+            {t('favorites.emptyHint')}
           </p>
         </div>
       )}
@@ -64,7 +66,7 @@ export default function FavoritesPage() {
             disabled={page === 1}
             className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
           >
-            上一页
+            {t('pagination.prev')}
           </button>
           <span className="font-display text-sm tracking-wide text-neon">
             {page} / {totalPages}
@@ -74,7 +76,7 @@ export default function FavoritesPage() {
             disabled={page === totalPages}
             className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
           >
-            下一页
+            {t('pagination.next')}
           </button>
         </div>
       )}

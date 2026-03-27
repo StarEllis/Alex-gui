@@ -47,6 +47,10 @@ type Repositories struct {
 	SyncDevice     *SyncDeviceRepo
 	SyncRecord     *SyncRecordRepo
 	UserSyncConfig *UserSyncConfigRepo
+	// V4: 缓存与标签优化
+	AICache        *AICacheRepo
+	GenreMapping   *GenreMappingRepo
+	RecommendCache *RecommendCacheRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -88,6 +92,10 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		SyncDevice:          &SyncDeviceRepo{db: db},
 		SyncRecord:          &SyncRecordRepo{db: db},
 		UserSyncConfig:      &UserSyncConfigRepo{db: db},
+		// V4
+		AICache:        &AICacheRepo{db: db},
+		GenreMapping:   &GenreMappingRepo{db: db},
+		RecommendCache: &RecommendCacheRepo{db: db},
 	}
 }
 

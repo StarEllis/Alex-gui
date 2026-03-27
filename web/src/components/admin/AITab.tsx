@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { aiApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import type { AIStatus, AIErrorLog, AICacheStats, AITestResult } from '@/types'
 import {
   Sparkles,
@@ -85,6 +86,7 @@ const RECOMMEND_TEST_CASES = [
 
 export default function AITab() {
   const toast = useToast()
+  const { t } = useTranslation()
 
   // ==================== 状态 ====================
   const [status, setStatus] = useState<AIStatus | null>(null)
@@ -205,11 +207,11 @@ export default function AITab() {
       }
 
       await aiApi.updateConfig(updates)
-      toast.success('AI 配置已保存')
+      toast.success(t('aiTab.configSaved'))
       setEditApiKey('') // 清空密钥输入
       await fetchStatus()
     } catch {
-      toast.error('保存配置失败')
+      toast.error(t('aiTab.configSaveFailed'))
     } finally {
       setSaving(false)
     }
@@ -228,7 +230,7 @@ export default function AITab() {
         toast.error(`连接失败: ${res.data.data.error}`)
       }
     } catch {
-      toast.error('连接测试请求失败')
+      toast.error(t('aiTab.connectionTestFailed'))
     } finally {
       setTesting(false)
     }
@@ -243,7 +245,7 @@ export default function AITab() {
       toast.success(`已清空 ${res.data.data.cleared} 条缓存`)
       await fetchCacheStats()
     } catch {
-      toast.error('清空缓存失败')
+      toast.error(t('aiTab.clearCacheFailed'))
     } finally {
       setClearingCache(false)
     }
@@ -260,7 +262,7 @@ export default function AITab() {
       const res = await aiApi.testSmartSearch(q)
       setSearchTestResult(res.data.data)
     } catch {
-      toast.error('搜索测试失败')
+      toast.error(t('aiTab.searchTestFailed'))
     } finally {
       setTestingSearch(false)
     }
@@ -280,7 +282,7 @@ export default function AITab() {
       const res = await aiApi.testRecommendReason(t, g)
       setRecommendTestResult(res.data.data)
     } catch {
-      toast.error('推荐理由测试失败')
+      toast.error(t('aiTab.recommendTestFailed'))
     } finally {
       setTestingRecommend(false)
     }

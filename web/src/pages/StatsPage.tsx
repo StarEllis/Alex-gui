@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { statsApi, streamApi } from '@/api'
+import { useTranslation } from '@/i18n'
 import type { UserStatsOverview } from '@/types'
 import { Clock, Film, BarChart3, Heart } from 'lucide-react'
 
 export default function StatsPage() {
   const [stats, setStats] = useState<UserStatsOverview | null>(null)
   const [loading, setLoading] = useState(true)
+  const { t } = useTranslation()
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -35,10 +37,10 @@ export default function StatsPage() {
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <BarChart3 size={48} className="mb-4 text-surface-600" />
         <h3 className="text-lg font-semibold" style={{ color: 'var(--text-secondary)' }}>
-          暂无观影数据
+          {t('stats.noData')}
         </h3>
         <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
-          开始观看影片后，这里将展示您的观影报告
+          {t('stats.noDataHint')}
         </p>
       </div>
     )
@@ -47,40 +49,40 @@ export default function StatsPage() {
   return (
     <div className="space-y-8 animate-fade-in">
       <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-        观影报告
+        {t('stats.title')}
       </h1>
 
       {/* 总览卡片 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={<Clock size={24} />}
-          label="总观看时长"
-          value={`${stats.total_hours.toFixed(1)} 小时`}
-          subValue={`${stats.total_minutes.toFixed(0)} 分钟`}
+          label={t('stats.totalWatchTime')}
+          value={t('stats.hours', { hours: stats.total_hours.toFixed(1) })}
+          subValue={t('stats.minutes', { minutes: stats.total_minutes.toFixed(0) })}
           gradient="from-blue-500/10 to-cyan-500/10"
           iconColor="text-cyan-400"
         />
         <StatCard
           icon={<Film size={24} />}
-          label="观看影片数"
-          value={`${stats.most_watched?.length || 0} 部`}
-          subValue="持续增长中"
+          label={t('stats.watchedCount')}
+          value={t('stats.countUnit', { count: String(stats.most_watched?.length || 0) })}
+          subValue={t('stats.growing')}
           gradient="from-purple-500/10 to-pink-500/10"
           iconColor="text-purple-400"
         />
         <StatCard
           icon={<Heart size={24} />}
-          label="最爱类型"
-          value={stats.top_genres?.[0]?.genres?.split(',')[0] || '暂无'}
-          subValue={stats.top_genres?.[0] ? `${Number(stats.top_genres[0].total_minutes).toFixed(0)} 分钟` : ''}
+          label={t('stats.favoriteGenre')}
+          value={stats.top_genres?.[0]?.genres?.split(',')[0] || t('stats.noGenre')}
+          subValue={stats.top_genres?.[0] ? t('stats.minutes', { minutes: Number(stats.top_genres[0].total_minutes).toFixed(0) }) : ''}
           gradient="from-rose-500/10 to-orange-500/10"
           iconColor="text-rose-400"
         />
         <StatCard
           icon={<BarChart3 size={24} />}
-          label="日均观看"
-          value={stats.daily_stats?.length ? `${(stats.total_minutes / Math.max(stats.daily_stats.length, 1)).toFixed(0)} 分钟` : '0 分钟'}
-          subValue="最近30天"
+          label={t('stats.dailyAvg')}
+          value={stats.daily_stats?.length ? t('stats.dailyAvgMinutes', { minutes: (stats.total_minutes / Math.max(stats.daily_stats.length, 1)).toFixed(0) }) : t('stats.dailyAvgMinutes', { minutes: '0' })}
+          subValue={t('stats.last30Days')}
           gradient="from-green-500/10 to-emerald-500/10"
           iconColor="text-green-400"
         />
@@ -90,7 +92,7 @@ export default function StatsPage() {
       {stats.daily_stats && stats.daily_stats.length > 0 && (
         <section className="glass-panel rounded-2xl p-6">
           <h2 className="mb-6 font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-            每日观看趋势
+            {t('stats.dailyTrend')}
           </h2>
           <div className="flex items-end gap-1 overflow-x-auto pb-2" style={{ minHeight: 120 }}>
             {stats.daily_stats.map((day) => {
@@ -126,7 +128,7 @@ export default function StatsPage() {
       {stats.top_genres && stats.top_genres.length > 0 && (
         <section className="glass-panel rounded-2xl p-6">
           <h2 className="mb-4 font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-            最爱类型
+            {t('stats.topGenres')}
           </h2>
           <div className="space-y-3">
             {stats.top_genres.map((genre, i) => {
@@ -160,7 +162,7 @@ export default function StatsPage() {
       {stats.most_watched && stats.most_watched.length > 0 && (
         <section className="glass-panel rounded-2xl p-6">
           <h2 className="mb-4 font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-            看得最多
+            {t('stats.mostWatched')}
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {stats.most_watched.map((item) => (
@@ -183,7 +185,7 @@ export default function StatsPage() {
                   {item.title as string}
                 </h4>
                 <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  {Number(item.total_minutes).toFixed(0)} 分钟
+                  {t('stats.minutes', { minutes: Number(item.total_minutes).toFixed(0) })}
                 </p>
               </div>
             ))}

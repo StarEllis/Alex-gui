@@ -66,6 +66,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			libraryService:    services.Library,
 			metadataService:   services.Metadata,
 			settingRepo:       repos.SystemSetting,
+			libraryRepo:       repos.Library,
 			cfg:               cfg,
 			logger:            logger,
 		},
