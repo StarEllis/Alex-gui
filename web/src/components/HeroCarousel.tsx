@@ -1,17 +1,17 @@
 // ============================================================
-// HeroCarousel — 现代化全屏幻灯片轮播组件
+// HeroCarousel �?现代化全屏幻灯片轮播组件
 // 深空流体 · 赛博朋克风格
 // ============================================================
 //
 // 特性：
-// - framer-motion 驱动的方向感知滑动切换
-// - 触摸手势拖拽支持（移动端左右滑动）
-// - 悬停自动暂停 + 进度条指示
-// - 键盘导航（← → 方向键）
+// - framer-motion 驱动的方向感知滑动切�?
+// - 触摸手势拖拽支持（移动端左右滑动�?
+// - 悬停自动暂停 + 进度条指�?
+// - 键盘导航（← �?方向键）
 // - 视差滚动背景效果
-// - 响应式布局（移动端/桌面端差异化）
-// - reduce-motion 无障碍兼容
-// - 图片预加载策略
+// - 响应式布局（移动端/桌面端差异化�?
+// - reduce-motion 无障碍兼�?
+// - 图片预加载策�?
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -32,7 +32,7 @@ import clsx from 'clsx'
 
 // ==================== 动画变体 ====================
 
-/** 背景图切换 — 方向感知 + 缩放 */
+/** 背景图切�?�?方向感知 + 缩放 */
 const bgVariants = {
   enter: (dir: number) => ({
     opacity: 0,
@@ -44,9 +44,9 @@ const bgVariants = {
     scale: 1,
     x: '0%',
     transition: {
-      opacity: { duration: 0.8, ease: [0.22, 1, 0.36, 1] },
-      scale: { duration: 1.2, ease: [0.22, 1, 0.36, 1] },
-      x: { duration: 0.8, ease: [0.22, 1, 0.36, 1] },
+      opacity: { duration: 0.8, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+      scale: { duration: 1.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+      x: { duration: 0.8, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
     },
   },
   exit: (dir: number) => ({
@@ -54,14 +54,14 @@ const bgVariants = {
     scale: 1.04,
     x: dir > 0 ? '-4%' : '4%',
     transition: {
-      opacity: { duration: 0.5, ease: [0.36, 0, 0.66, -0.56] },
+      opacity: { duration: 0.5, ease: [0.36, 0, 0.66, -0.56] as [number, number, number, number] },
       scale: { duration: 0.5 },
       x: { duration: 0.5 },
     },
   }),
 }
 
-/** 内容区入场 — 从底部上浮 + 模糊 */
+/** 内容区入�?�?从底部上�?+ 模糊 */
 const contentVariants = {
   enter: {
     opacity: 0,
@@ -75,7 +75,7 @@ const contentVariants = {
     transition: {
       duration: 0.6,
       delay: 0.25,
-      ease: easeSmooth as unknown as number[],
+      ease: easeSmooth as unknown as [number, number, number, number],
       staggerChildren: 0.08,
       delayChildren: 0.3,
     },
@@ -86,35 +86,35 @@ const contentVariants = {
     filter: 'blur(3px)',
     transition: {
       duration: 0.3,
-      ease: easeExit as unknown as number[],
+      ease: easeExit as unknown as [number, number, number, number],
     },
   },
 }
 
-/** 内容子元素交错入场 */
+/** 内容子元素交错入�?*/
 const contentChildVariants = {
   enter: { opacity: 0, y: 12 },
   center: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.4, ease: easeSmooth as unknown as number[] },
+    transition: { duration: 0.4, ease: easeSmooth as unknown as [number, number, number, number] },
   },
   exit: { opacity: 0, y: -8, transition: { duration: 0.2 } },
 }
 
 // ==================== 常量 ====================
 const AUTO_PLAY_INTERVAL = 7000 // 自动轮播间隔 7s
-const SWIPE_THRESHOLD = 50 // 触摸滑动阈值 px
-const SWIPE_VELOCITY = 300 // 触摸滑动速度阈值
+const SWIPE_THRESHOLD = 50 // 触摸滑动阈�?px
+const SWIPE_VELOCITY = 300 // 触摸滑动速度阈�?
 
 // ==================== 工具函数 ====================
-/** 将 MixedItem 转换为 HeroCarousel 可用的 RecommendedMedia 格式 */
+/** �?MixedItem 转换�?HeroCarousel 可用�?RecommendedMedia 格式 */
 function mixedItemToRecommended(item: MixedItem, fallbackReason: string): RecommendedMedia | null {
   if (item.type === 'movie' && item.media) {
     return { media: item.media, score: 0, reason: fallbackReason }
   }
   if (item.type === 'series' && item.series) {
-    // 将 Series 适配为 Media 接口（只填充轮播展示所需的字段）
+    // �?Series 适配�?Media 接口（只填充轮播展示所需的字段）
     const s = item.series
     const pseudoMedia: Media = {
       id: s.id,
@@ -129,7 +129,7 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
       genres: s.genres,
       media_type: 'episode',
       series_id: s.id,
-      // 以下字段轮播不使用，填默认值
+      // 以下字段轮播不使用，填默认�?
       runtime: 0, file_path: '', file_size: 0, video_codec: '', audio_codec: '',
       resolution: '', duration: 0, subtitle_paths: '',
       tmdb_id: s.tmdb_id || 0, douban_id: s.douban_id || '', bangumi_id: s.bangumi_id || 0,
@@ -145,18 +145,18 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
 // ==================== 组件 Props ====================
 interface HeroCarouselProps {
   items: RecommendedMedia[]
-  /** 当 items 为空时的备选数据源（最近添加的混合列表） */
+  /** �?items 为空时的备选数据源（最近添加的混合列表�?*/
   fallbackItems?: MixedItem[]
   /** 最大展示数量，默认 5 */
   maxItems?: number
 }
 
-// ==================== 主组件 ====================
+// ==================== 主组�?====================
 export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems = 5 }: HeroCarouselProps) {
   const { t } = useTranslation()
   const prefersReducedMotion = useReducedMotion()
 
-  // 优先使用推荐数据；为空时用 fallback 数据
+  // 优先使用推荐数据；为空时�?fallback 数据
   const items = useMemo(() => {
     if (rawItems.length > 0) return rawItems.slice(0, maxItems)
     if (fallbackItems && fallbackItems.length > 0) {
@@ -169,7 +169,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
     return []
   }, [rawItems, fallbackItems, maxItems, t])
 
-  // ---- 状态 ----
+  // ---- 状�?----
   const [current, setCurrent] = useState(0)
   const [direction, setDirection] = useState(1)
   const [isPaused, setIsPaused] = useState(false)
@@ -223,7 +223,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
     }
   }, [])
 
-  // 自动轮播 — 悬停或手动暂停时停止
+  // 自动轮播 �?悬停或手动暂停时停止
   useEffect(() => {
     if (isPaused || isHovering) {
       stopAutoPlay()
@@ -252,7 +252,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
   // ---- 键盘导航 ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 只在轮播区域可见时响应
+      // 只在轮播区域可见时响�?
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
       if (rect.bottom < 0 || rect.top > window.innerHeight) return
@@ -281,7 +281,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
     }
   }, [goPrev, goNext])
 
-  // ---- 进度条动画 ----
+  // ---- 进度条动�?----
   useEffect(() => {
     if (!progressRef.current || isPaused || isHovering || items.length <= 1) return
     const el = progressRef.current
@@ -295,7 +295,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
     el.style.width = '100%'
   }, [current, isPaused, isHovering, items.length])
 
-  // ---- 安全检查 ----
+  // ---- 安全检�?----
   if (!items.length) return null
   const item = items[current]
   if (!item) return null
@@ -353,7 +353,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
           </motion.div>
         </AnimatePresence>
 
-        {/* 预加载相邻图片 */}
+        {/* 预加载相邻图�?*/}
         {items.map((rec, i) => i !== current && (
           <img
             key={`preload-${rec.media.id}`}
@@ -365,8 +365,8 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
           />
         ))}
 
-        {/* ==================== 渐变遮罩层 ==================== */}
-        {/* 底部渐变 — 确保文字可读 */}
+        {/* ==================== 渐变遮罩�?==================== */}
+        {/* 底部渐变 �?确保文字可读 */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -384,7 +384,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
           }}
         />
 
-        {/* ==================== 内容区 ==================== */}
+        {/* ==================== 内容�?==================== */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-10 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <AnimatePresence mode="wait" initial={false}>
@@ -435,7 +435,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                   )}
                 </motion.div>
 
-                {/* 简介 */}
+                {/* 简�?*/}
                 {item.media.overview && (
                   <motion.p
                     variants={contentChildVariants}
@@ -447,7 +447,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
 
                 {/* 操作按钮 */}
                 <motion.div variants={contentChildVariants} className="flex items-center gap-3">
-                  {/* 播放按钮 — 主 CTA */}
+                  {/* 播放按钮 �?�?CTA */}
                   <motion.div
                     whileHover={{ scale: 1.04, y: -2 }}
                     whileTap={{ scale: 0.96 }}
@@ -508,7 +508,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
               whileHover={{ scale: 1.1, background: 'rgba(0,0,0,0.5)' }}
               whileTap={{ scale: 0.9 }}
               transition={{ duration: 0.2 }}
-              aria-label="上一张"
+              aria-label="上一�?
             >
               <ChevronLeft size={22} className="text-white/80" />
             </motion.button>
@@ -525,17 +525,17 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
               whileHover={{ scale: 1.1, background: 'rgba(0,0,0,0.5)' }}
               whileTap={{ scale: 0.9 }}
               transition={{ duration: 0.2 }}
-              aria-label="下一张"
+              aria-label="下一�?
             >
               <ChevronRight size={22} className="text-white/80" />
             </motion.button>
           </>
         )}
 
-        {/* ==================== 底部控制栏 ==================== */}
+        {/* ==================== 底部控制�?==================== */}
         {items.length > 1 && (
           <div className="absolute bottom-0 left-0 right-0 z-10">
-            {/* 进度条 */}
+            {/* 进度�?*/}
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
               <div className="flex items-center gap-3">
                 {/* 暂停/播放按钮 */}
@@ -548,14 +548,14 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                   {isPaused ? <Play size={10} fill="currentColor" /> : <Pause size={10} />}
                 </motion.button>
 
-                {/* 指示器 + 进度条 */}
+                {/* 指示�?+ 进度�?*/}
                 <div className="flex flex-1 items-center gap-1.5">
                   {items.map((_, i) => (
                     <button
                       key={i}
                       onClick={() => goTo(i)}
                       className="group relative h-6 flex-1 cursor-pointer"
-                      aria-label={`第 ${i + 1} 张`}
+                      aria-label={`�?${i + 1} 张`}
                       aria-current={i === current ? 'true' : undefined}
                     >
                       {/* 轨道背景 */}
@@ -579,7 +579,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                           }}
                         />
                       )}
-                      {/* 已完成的指示器 */}
+                      {/* 已完成的指示�?*/}
                       {i < current && (
                         <div
                           className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
@@ -593,7 +593,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                   ))}
                 </div>
 
-                {/* 计数器 */}
+                {/* 计数�?*/}
                 <span className="shrink-0 text-[10px] font-medium tabular-nums text-white/40">
                   {String(current + 1).padStart(2, '0')}/{String(items.length).padStart(2, '0')}
                 </span>
@@ -605,7 +605,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
           </div>
         )}
 
-        {/* ==================== 右侧缩略图预览（仅桌面端） ==================== */}
+        {/* ==================== 右侧缩略图预览（仅桌面端�?==================== */}
         {items.length > 1 && (
           <div className="pointer-events-auto absolute bottom-16 right-4 z-10 hidden items-end gap-2 lg:flex lg:right-6 xl:right-8">
             {items.map((rec, i) => (
@@ -637,7 +637,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                   loading="lazy"
                   draggable={false}
                 />
-                {/* 当前项高亮边框光效 */}
+                {/* 当前项高亮边框光�?*/}
                 {i === current && (
                   <motion.div
                     className="absolute inset-0 rounded-lg"

@@ -1,14 +1,14 @@
 // ============================================================
 // 深空流体 · 动画设计令牌系统
-// 统一管理所有动画参数，确保全局一致性
+// 统一管理所有动画参数，确保全局一致�?
 // ============================================================
 
 import type { Variants, Transition } from 'framer-motion'
 
 // ==================== 缓动函数 ====================
-/** 深空流体标准缓动 — 快速启动，优雅减速 */
+/** 深空流体标准缓动 �?快速启动，优雅减�?*/
 export const easeSmooth = [0.22, 1, 0.36, 1] as const
-/** 退出缓动 — 快速加速离开 */
+/** 退出缓�?�?快速加速离开 */
 export const easeExit = [0.36, 0, 0.66, -0.56] as const
 
 export const springDefault: Transition = { type: 'spring', stiffness: 300, damping: 30 }
@@ -38,7 +38,7 @@ export const pageVariants: Variants = {
     filter: 'blur(0px)',
     transition: {
       duration: durations.page,
-      ease: easeSmooth as unknown as number[],
+      ease: easeSmooth as unknown as [number, number, number, number],
     },
   },
   exit: {
@@ -47,7 +47,7 @@ export const pageVariants: Variants = {
     filter: 'blur(2px)',
     transition: {
       duration: durations.normal,
-      ease: easeExit as unknown as number[],
+      ease: easeExit as unknown as [number, number, number, number],
     },
   },
 }
@@ -58,7 +58,7 @@ export const fadeInVariants: Variants = {
   visible: {
     opacity: 1,
     filter: 'blur(0px)',
-    transition: { duration: durations.normal, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeSmooth as unknown as [number, number, number, number] },
   },
 }
 
@@ -69,7 +69,7 @@ export const slideUpVariants: Variants = {
     opacity: 1,
     y: 0,
     filter: 'blur(0px)',
-    transition: { duration: durations.slow, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.slow, ease: easeSmooth as unknown as [number, number, number, number] },
   },
 }
 
@@ -80,11 +80,11 @@ export const scaleInVariants: Variants = {
     opacity: 1,
     scale: 1,
     filter: 'blur(0px)',
-    transition: { duration: durations.normal, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeSmooth as unknown as [number, number, number, number] },
   },
 }
 
-// ==================== 交错子元素容器 ====================
+// ==================== 交错子元素容�?====================
 export const staggerContainerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
@@ -105,7 +105,7 @@ export const staggerItemVariants: Variants = {
     scale: 1,
     transition: {
       duration: durations.normal,
-      ease: easeSmooth as unknown as number[],
+      ease: easeSmooth as unknown as [number, number, number, number],
     },
   },
 }
@@ -124,14 +124,14 @@ export const modalContentVariants: Variants = {
     scale: 1,
     y: 0,
     filter: 'blur(0px)',
-    transition: { duration: durations.normal, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeSmooth as unknown as [number, number, number, number] },
   },
   exit: {
     opacity: 0,
     scale: 0.95,
     y: 10,
     filter: 'blur(4px)',
-    transition: { duration: durations.fast, ease: easeExit as unknown as number[] },
+    transition: { duration: durations.fast, ease: easeExit as unknown as [number, number, number, number] },
   },
 }
 
@@ -148,21 +148,21 @@ export const toastVariants: Variants = {
     opacity: 0,
     x: 80,
     scale: 0.9,
-    transition: { duration: durations.fast, ease: easeExit as unknown as number[] },
+    transition: { duration: durations.fast, ease: easeExit as unknown as [number, number, number, number] },
   },
 }
 
-// ==================== 侧边栏变体 ====================
+// ==================== 侧边栏变�?====================
 export const sidebarVariants: Variants = {
   collapsed: {
     width: 68,
     minWidth: 68,
-    transition: { duration: durations.normal, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeSmooth as unknown as [number, number, number, number] },
   },
   expanded: {
     width: 240,
     minWidth: 240,
-    transition: { duration: durations.normal, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeSmooth as unknown as [number, number, number, number] },
   },
 }
 
@@ -174,7 +174,7 @@ export const sidebarMobileVariants: Variants = {
   },
   exit: {
     x: '-100%',
-    transition: { duration: durations.normal, ease: easeExit as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeExit as unknown as [number, number, number, number] },
   },
 }
 
@@ -189,13 +189,13 @@ export const carouselVariants: Variants = {
     opacity: 1,
     x: 0,
     scale: 1,
-    transition: { duration: durations.slow, ease: easeSmooth as unknown as number[] },
+    transition: { duration: durations.slow, ease: easeSmooth as unknown as [number, number, number, number] },
   },
   exit: (direction: number) => ({
     opacity: 0,
     x: direction > 0 ? -60 : 60,
     scale: 0.98,
-    transition: { duration: durations.normal, ease: easeExit as unknown as number[] },
+    transition: { duration: durations.normal, ease: easeExit as unknown as [number, number, number, number] },
   }),
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { X } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { modalOverlayVariants, modalContentVariants } from '@/lib/motion'
 
 interface TrailerModalProps {

@@ -74,7 +74,6 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
 
   // 键盘导航
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const enabledItems = items.filter(i => !i.disabled)
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       const focused = document.activeElement
