@@ -4,6 +4,7 @@ import type { Library, CreateLibraryRequest } from '@/types'
 import type { ScanProgressData, ScrapeProgressData } from '@/hooks/useWebSocket'
 import { useToast } from './Toast'
 import CreateLibraryModal from './CreateLibraryModal'
+import EditLibraryModal from './EditLibraryModal'
 import {
   FolderPlus,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   FolderOpen,
   ChevronRight,
   RotateCcw,
+  Pencil,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -54,6 +56,7 @@ export default function LibraryManager({
   const [sortAsc, setSortAsc] = useState(false)
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [scanAllLoading, setScanAllLoading] = useState(false)
+  const [editingLibrary, setEditingLibrary] = useState<Library | null>(null)
 
   // 排序逻辑
   const sortedLibraries = [...libraries].sort((a, b) => {
@@ -390,6 +393,17 @@ export default function LibraryManager({
                             <button
                               onClick={() => {
                                 setActiveMenu(null)
+                                setEditingLibrary(lib)
+                              }}
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--nav-hover-bg)]"
+                              style={{ color: 'var(--text-secondary)' }}
+                            >
+                              <Pencil size={14} />
+                              编辑媒体库
+                            </button>
+                            <button
+                              onClick={() => {
+                                setActiveMenu(null)
                                 handleReindex(lib.id)
                               }}
                               disabled={isScanning}
@@ -478,6 +492,17 @@ export default function LibraryManager({
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreate}
+      />
+
+      {/* ===== 编辑媒体库弹窗 ===== */}
+      <EditLibraryModal
+        open={!!editingLibrary}
+        library={editingLibrary}
+        onClose={() => setEditingLibrary(null)}
+        onUpdate={(updated) => {
+          setLibraries((libs) => libs.map((l) => (l.id === updated.id ? updated : l)))
+          toast.success('媒体库已更新')
+        }}
       />
     </section>
   )

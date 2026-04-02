@@ -32,6 +32,22 @@ type CreateLibraryRequest struct {
 	EnableFileWatch *bool `json:"enable_file_watch"`
 }
 
+// UpdateLibraryRequest 更新媒体库请求（所有字段可选）
+type UpdateLibraryRequest struct {
+	Name *string `json:"name"`
+	Path *string `json:"path"`
+	Type *string `json:"type"`
+	// 高级设置
+	PreferLocalNFO    *bool   `json:"prefer_local_nfo"`
+	EnableFileFilter  *bool   `json:"enable_file_filter"`
+	MinFileSize       *int    `json:"min_file_size"`
+	MetadataLang      *string `json:"metadata_lang"`
+	AllowAdultContent *bool   `json:"allow_adult_content"`
+	AutoDownloadSub   *bool   `json:"auto_download_sub"`
+	// 媒体库级别设置
+	EnableFileWatch *bool `json:"enable_file_watch"`
+}
+
 // List 获取所有媒体库
 func (h *LibraryHandler) List(c *gin.Context) {
 	libs, err := h.libService.List()
@@ -150,7 +166,7 @@ func (h *LibraryHandler) Reindex(c *gin.Context) {
 // Update 更新媒体库设置
 func (h *LibraryHandler) Update(c *gin.Context) {
 	id := c.Param("id")
-	var req CreateLibraryRequest
+	var req UpdateLibraryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
 		return
@@ -162,7 +178,38 @@ func (h *LibraryHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 更新所有提供的字段
+	// 更新基础信息
+	if req.Name != nil && *req.Name != "" {
+		lib.Name = *req.Name
+	}
+	if req.Path != nil && *req.Path != "" {
+		// 路径变更时验证新路径是否存在且可访问
+		if *req.Path != lib.Path {
+			pathInfo, pathErr := os.Stat(*req.Path)
+			if pathErr != nil {
+				if os.IsNotExist(pathErr) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不存在: %s", *req.Path)})
+					return
+				}
+				if os.IsPermission(pathErr) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无权限访问路径: %s", *req.Path)})
+					return
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("访问路径失败: %v", pathErr)})
+				return
+			}
+			if !pathInfo.IsDir() {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不是目录: %s", *req.Path)})
+				return
+			}
+		}
+		lib.Path = *req.Path
+	}
+	if req.Type != nil && *req.Type != "" {
+		lib.Type = *req.Type
+	}
+
+	// 更新高级设置
 	if req.PreferLocalNFO != nil {
 		lib.PreferLocalNFO = *req.PreferLocalNFO
 	}
