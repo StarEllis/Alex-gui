@@ -18,6 +18,8 @@ import type {
   BangumiSubject,
   BangumiConfigStatus,
   SystemSettings,
+  DoubanSearchResult,
+  TheTVDBSearchResult,
 } from '@/types'
 
 // ==================== 管理 ====================
@@ -187,6 +189,27 @@ export const adminApi = {
 
   setSeriesImageFromTMDb: (seriesId: string, tmdbPath: string, imageType: 'poster' | 'backdrop' = 'poster') =>
     api.post(`/admin/series/${seriesId}/image/tmdb`, { tmdb_path: tmdbPath, image_type: imageType }),
+
+  // 豆瓣数据源
+  searchDouban: (q: string, year?: number) =>
+    api.get<ListResponse<DoubanSearchResult>>('/admin/metadata/douban/search', {
+      params: { q, year },
+    }),
+
+  matchMediaDouban: (mediaId: string, doubanId: string) =>
+    api.post(`/admin/media/${mediaId}/match/douban`, { douban_id: doubanId }),
+
+  matchSeriesDouban: (seriesId: string, doubanId: string) =>
+    api.post(`/admin/series/${seriesId}/match/douban`, { douban_id: doubanId }),
+
+  // TheTVDB 数据源
+  searchTheTVDB: (q: string, year?: number) =>
+    api.get<ListResponse<TheTVDBSearchResult>>('/admin/metadata/thetvdb/search', {
+      params: { q, year },
+    }),
+
+  matchSeriesTheTVDB: (seriesId: string, tvdbId: number) =>
+    api.post(`/admin/series/${seriesId}/match/thetvdb`, { tvdb_id: tvdbId }),
 
   // Bangumi 数据源
   searchBangumi: (q: string, type_: number = 2, year?: number) =>

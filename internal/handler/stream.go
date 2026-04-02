@@ -86,15 +86,41 @@ func (h *StreamHandler) MediaInfo(c *gin.Context) {
 }
 
 // Poster 提供媒体海报/缩略图
+// posterPlaceholderSVG 美观的海报占位图 SVG（深色渐变背景 + 电影图标 + 提示文字）
+const posterPlaceholderSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a1b2e"/>
+      <stop offset="100%" stop-color="#0f1019"/>
+    </linearGradient>
+    <linearGradient id="icon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.25"/>
+    </linearGradient>
+  </defs>
+  <rect fill="url(#bg)" width="300" height="450" rx="0"/>
+  <rect x="0" y="0" width="300" height="450" fill="url(#icon)" opacity="0.08"/>
+  <!-- 电影胶片图标 -->
+  <g transform="translate(150,200)" fill="none" stroke="#4a5568" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5">
+    <rect x="-24" y="-18" width="48" height="36" rx="3"/>
+    <path d="M-24,-10 L-16,-10 M-24,-2 L-16,-2 M-24,6 L-16,6"/>
+    <path d="M24,-10 L16,-10 M24,-2 L16,-2 M24,6 L16,6"/>
+    <circle cx="-4" cy="0" r="6"/>
+    <circle cx="10" cy="0" r="3"/>
+  </g>
+  <text fill="#4a5568" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="12" font-weight="500" text-anchor="middle" x="150" y="248">暂无海报</text>
+</svg>`
+
 func (h *StreamHandler) Poster(c *gin.Context) {
 	id := c.Param("id")
 	posterPath, err := h.streamService.GetPosterPath(id)
 	if err != nil || posterPath == "" {
-		// 返回默认占位图（禁止缓存，确保海报就绪后能立即生效）
+		// 返回美观的占位图（禁止缓存，确保海报就绪后能立即生效）
 		c.Header("Content-Type", "image/svg+xml")
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.Header("Pragma", "no-cache")
-		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		c.Header("X-Poster-Placeholder", "true")
+		c.String(http.StatusOK, posterPlaceholderSVG)
 		return
 	}
 
@@ -103,7 +129,8 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 	if statErr != nil {
 		c.Header("Content-Type", "image/svg+xml")
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		c.Header("X-Poster-Placeholder", "true")
+		c.String(http.StatusOK, posterPlaceholderSVG)
 		return
 	}
 

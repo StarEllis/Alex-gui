@@ -49,7 +49,7 @@ export default function MediaDetailPage() {
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
-  const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi'>('tmdb')
+  const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi' | 'douban' | 'thetvdb'>('tmdb')
   const [editForm, setEditForm] = useState<{
     title: string; orig_title: string; year: number; overview: string;
     rating: number; genres: string; country: string; language: string;
@@ -175,6 +175,18 @@ export default function MediaDetailPage() {
         if ((res.data.data || []).length === 0) {
           toast.info(t('mediaDetail.tmdbNoResult'))
         }
+      } else if (matchSource === 'douban') {
+        const res = await adminApi.searchDouban(matchQuery, media?.year || undefined)
+        setMatchResults(res.data.data || [])
+        if ((res.data.data || []).length === 0) {
+          toast.info(t('mediaDetail.doubanNoResult'))
+        }
+      } else if (matchSource === 'thetvdb') {
+        const res = await adminApi.searchTheTVDB(matchQuery, media?.year || undefined)
+        setMatchResults(res.data.data || [])
+        if ((res.data.data || []).length === 0) {
+          toast.info(t('mediaDetail.thetvdbNoResult'))
+        }
       } else {
         // Bangumi 搜索：2=动画, 6=三次元
         const subjectType = (media?.genres || '').includes('动画') ? 2 : 6
@@ -185,24 +197,37 @@ export default function MediaDetailPage() {
         }
       }
     } catch {
-      toast.error(matchSource === 'tmdb' ? t('mediaDetail.tmdbSearchFailed') : t('mediaDetail.bangumiSearchFailed'))
+      const errorMap: Record<string, string> = {
+        tmdb: t('mediaDetail.tmdbSearchFailed'),
+        douban: t('mediaDetail.doubanSearchFailed'),
+        thetvdb: t('mediaDetail.thetvdbSearchFailed'),
+        bangumi: t('mediaDetail.bangumiSearchFailed'),
+      }
+      toast.error(errorMap[matchSource] || t('mediaDetail.matchFailed'))
     } finally {
       setMatchSearching(false)
     }
   }
 
-  const handleMatchSelect = async (resultId: number) => {
+  const handleMatchSelect = async (resultId: number | string) => {
     if (!id) return
     try {
+      const sourceNameMap: Record<string, string> = { tmdb: 'TMDb', bangumi: 'Bangumi', douban: '豆瓣', thetvdb: 'TheTVDB' }
       if (matchSource === 'tmdb') {
-        await adminApi.matchMetadata(id, resultId)
+        await adminApi.matchMetadata(id, resultId as number)
+      } else if (matchSource === 'douban') {
+        await adminApi.matchMediaDouban(id, resultId as string)
+      } else if (matchSource === 'thetvdb') {
+        // TheTVDB 主要用于剧集，但媒体也可以尝试
+        toast.info('TheTVDB 主要用于剧集匹配')
+        return
       } else {
-        await adminApi.matchMediaBangumi(id, resultId)
+        await adminApi.matchMediaBangumi(id, resultId as number)
       }
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
       setShowMatchModal(false)
-      toast.success(t('mediaDetail.matchSuccess', { source: matchSource === 'tmdb' ? 'TMDb' : 'Bangumi' }))
+      toast.success(t('mediaDetail.matchSuccess', { source: sourceNameMap[matchSource] }))
     } catch {
       toast.error(t('mediaDetail.matchFailed'))
     }
@@ -362,7 +387,7 @@ export default function MediaDetailPage() {
           <div className="w-full max-w-2xl rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
             <h3 className="mb-4 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('mediaDetail.manualMatch')}</h3>
             {/* 数据源切换 */}
-            <div className="mb-4 flex gap-2">
+            <div className="mb-4 flex flex-wrap gap-2">
               <button
                 onClick={() => { setMatchSource('tmdb'); setMatchResults([]) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
@@ -375,6 +400,17 @@ export default function MediaDetailPage() {
                 🎬 TMDb
               </button>
               <button
+                onClick={() => { setMatchSource('douban'); setMatchResults([]) }}
+                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
+                style={{
+                  background: matchSource === 'douban' ? 'linear-gradient(135deg, #00b414, #009910)' : 'var(--bg-surface)',
+                  color: matchSource === 'douban' ? '#fff' : 'var(--text-secondary)',
+                  border: matchSource === 'douban' ? 'none' : '1px solid var(--border-default)',
+                }}
+              >
+                🎯 {t('mediaDetail.doubanLabel')}
+              </button>
+              <button
                 onClick={() => { setMatchSource('bangumi'); setMatchResults([]) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
                 style={{
@@ -385,12 +421,25 @@ export default function MediaDetailPage() {
               >
                 📺 Bangumi
               </button>
+              <button
+                onClick={() => { setMatchSource('thetvdb'); setMatchResults([]) }}
+                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
+                style={{
+                  background: matchSource === 'thetvdb' ? 'linear-gradient(135deg, #6dc849, #4fa82d)' : 'var(--bg-surface)',
+                  color: matchSource === 'thetvdb' ? '#fff' : 'var(--text-secondary)',
+                  border: matchSource === 'thetvdb' ? 'none' : '1px solid var(--border-default)',
+                }}
+              >
+                📡 TheTVDB
+              </button>
             </div>
             <p className="mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {matchSource === 'tmdb'
-                ? t('mediaDetail.tmdbDesc')
-                : t('mediaDetail.bangumiDesc')
-              }
+              {{
+                tmdb: t('mediaDetail.tmdbDesc'),
+                douban: t('mediaDetail.doubanDesc'),
+                bangumi: t('mediaDetail.bangumiDesc'),
+                thetvdb: t('mediaDetail.thetvdbDesc'),
+              }[matchSource]}
             </p>
             <div className="mb-4 flex gap-2">
               <input
@@ -406,27 +455,51 @@ export default function MediaDetailPage() {
                 onClick={handleMatchSearch}
                 disabled={matchSearching}
                 className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
-                style={{ background: matchSource === 'tmdb' ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))' : 'linear-gradient(135deg, #f09199, #e8788a)' }}
+                style={{ background: { tmdb: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))', douban: 'linear-gradient(135deg, #00b414, #009910)', bangumi: 'linear-gradient(135deg, #f09199, #e8788a)', thetvdb: 'linear-gradient(135deg, #6dc849, #4fa82d)' }[matchSource] }}
               >
                 {matchSearching ? t('mediaDetail.searching') : t('mediaDetail.searchBtn')}
               </button>
             </div>
             <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
               {matchResults.map((result: any) => {
-                // TMDb 和 Bangumi 结果的统一展示
-                const isBangumi = matchSource === 'bangumi'
-                const displayTitle = isBangumi ? (result.name_cn || result.name) : (result.title || result.name)
-                const displayOrigTitle = isBangumi ? result.name : (result.original_title || result.original_name)
-                const displayYear = isBangumi ? result.air_date?.split('-')[0] : (result.release_date || result.first_air_date)?.split('-')[0]
-                const displayRating = isBangumi ? result.rating?.score : result.vote_average
-                const displayOverview = isBangumi ? result.summary : result.overview
-                const posterUrl = isBangumi
-                  ? result.images?.common || result.images?.medium
-                  : (result.poster_path ? `https://image.tmdb.org/t/p/w92${result.poster_path}` : null)
+                // 多数据源结果的统一展示
+                let displayTitle = '', displayOrigTitle = '', displayYear = '', displayOverview = '', posterUrl: string | null = null
+                let displayRating = 0, resultKey: string | number = result.id
+
+                if (matchSource === 'tmdb') {
+                  displayTitle = result.title || result.name
+                  displayOrigTitle = result.original_title || result.original_name
+                  displayYear = (result.release_date || result.first_air_date)?.split('-')[0] || ''
+                  displayRating = result.vote_average || 0
+                  displayOverview = result.overview || ''
+                  posterUrl = result.poster_path ? `https://image.tmdb.org/t/p/w92${result.poster_path}` : null
+                } else if (matchSource === 'douban') {
+                  displayTitle = result.title
+                  displayYear = result.year > 0 ? String(result.year) : ''
+                  displayRating = result.rating || 0
+                  displayOverview = result.overview || ''
+                  posterUrl = result.cover || null
+                  resultKey = result.id
+                } else if (matchSource === 'thetvdb') {
+                  displayTitle = result.name || result.seriesName
+                  displayOrigTitle = result.originalName || ''
+                  displayYear = result.year || (result.firstAired?.split('-')[0]) || ''
+                  displayOverview = result.overview || ''
+                  posterUrl = result.image || result.poster || null
+                  if (posterUrl && !posterUrl.startsWith('http')) posterUrl = 'https://artworks.thetvdb.com' + posterUrl
+                } else {
+                  // Bangumi
+                  displayTitle = result.name_cn || result.name
+                  displayOrigTitle = result.name
+                  displayYear = result.air_date?.split('-')[0] || ''
+                  displayRating = result.rating?.score || 0
+                  displayOverview = result.summary || ''
+                  posterUrl = result.images?.common || result.images?.medium || null
+                }
 
                 return (
                   <button
-                    key={result.id}
+                    key={resultKey}
                     onClick={() => handleMatchSelect(result.id)}
                     className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01]"
                     style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
@@ -443,9 +516,14 @@ export default function MediaDetailPage() {
                         <div className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                           {displayTitle}
                         </div>
-                        {isBangumi && (
+                        {matchSource === 'bangumi' && (
                           <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(240,145,153,0.15)', color: '#f09199' }}>
                             {result.type === 2 ? '动画' : result.type === 6 ? '三次元' : 'BGM'}
+                          </span>
+                        )}
+                        {matchSource === 'douban' && result.genres && (
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(0,180,20,0.12)', color: '#00b414' }}>
+                            {result.genres.split(',')[0]}
                           </span>
                         )}
                       </div>
@@ -457,7 +535,7 @@ export default function MediaDetailPage() {
                         {displayRating > 0 && (
                           <span className="text-yellow-400">★ {displayRating.toFixed(1)}</span>
                         )}
-                        {isBangumi && result.eps > 0 && (
+                        {matchSource === 'bangumi' && result.eps > 0 && (
                           <span>{result.eps}{t('mediaDetail.episodes')}</span>
                         )}
                       </div>
@@ -470,7 +548,7 @@ export default function MediaDetailPage() {
               })}
               {matchResults.length === 0 && !matchSearching && (
                 <div className="py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                  {t('mediaDetail.searchHint', { source: matchSource === 'tmdb' ? ' TMDb' : ' Bangumi' })}
+                  {t('mediaDetail.searchHint', { source: ' ' + { tmdb: 'TMDb', douban: '豆瓣', bangumi: 'Bangumi', thetvdb: 'TheTVDB' }[matchSource] })}
                 </div>
               )}
             </div>

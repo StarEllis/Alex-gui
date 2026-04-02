@@ -42,6 +42,8 @@ RUN addgroup -S nowen && adduser -S nowen -G nowen
 WORKDIR /app
 
 COPY --from=backend /app/nowen-video /usr/local/bin/nowen-video
+# 复制前端构建产物
+COPY --from=frontend /app/web/dist /app/web/dist
 
 # 创建数据目录
 RUN mkdir -p /data /cache /media && chown -R nowen:nowen /data /cache

@@ -104,11 +104,12 @@ func (h *SeriesHandler) Poster(c *gin.Context) {
 	id := c.Param("id")
 	posterPath, err := h.seriesService.GetSeriesPosterPath(id)
 	if err != nil || posterPath == "" {
-		// 返回默认占位图（禁止缓存，确保海报就绪后能立即生效）
+		// 返回美观的占位图（禁止缓存，确保海报就绪后能立即生效）
 		c.Header("Content-Type", "image/svg+xml")
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.Header("Pragma", "no-cache")
-		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		c.Header("X-Poster-Placeholder", "true")
+		c.String(http.StatusOK, posterPlaceholderSVG)
 		return
 	}
 
@@ -117,7 +118,8 @@ func (h *SeriesHandler) Poster(c *gin.Context) {
 	if statErr != nil {
 		c.Header("Content-Type", "image/svg+xml")
 		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		c.Header("X-Poster-Placeholder", "true")
+		c.String(http.StatusOK, posterPlaceholderSVG)
 		return
 	}
 

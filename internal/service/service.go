@@ -134,6 +134,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 注入 ProviderChain 到元数据服务
 	metadata.SetProviderChain(providerChain)
 
+	// 注入 TheTVDB 服务到元数据服务（用于手动匹配）
+	metadata.SetTheTVDBService(thetvdbService)
+
 	// 创建推荐服务并注入 AI
 	recommendService := NewRecommendService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.RecommendCache, logger)
 	recommendService.SetAIService(aiService)

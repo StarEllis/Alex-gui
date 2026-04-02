@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Play, Tv } from 'lucide-react'
+import { Play, Tv, Film } from 'lucide-react'
 import { streamApi } from '@/api'
 import type { Media, Series } from '@/types'
 import { useRef, useCallback } from 'react'
@@ -82,6 +82,13 @@ export default function MediaCard({ media, series }: MediaCardProps) {
       ? streamApi.getSeriesPosterUrl(media!.series_id)
       : streamApi.getPosterUrl(media!.id)
 
+  // 检查是否有真实海报（poster_path 非空）
+  const hasPoster = series
+    ? !!series.poster_path
+    : media!.series_id
+      ? !!(media!.series?.poster_path)
+      : !!media!.poster_path
+
   return (
     <motion.div
       ref={cardRef}
@@ -107,18 +114,32 @@ export default function MediaCard({ media, series }: MediaCardProps) {
 
           {/* 海报区域 */}
           <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl bg-theme-bg-surface">
-            <img
-              src={posterUrl}
-              alt={title}
-              className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110 group-hover:brightness-110"
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none'
+            {hasPoster ? (
+              <img
+                src={posterUrl}
+                alt={title}
+                className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110 group-hover:brightness-110"
+                loading="lazy"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none'
+                }}
+              />
+            ) : null}
+            {/* 占位（无海报或海报加载失败时可见） */}
+            <div className="absolute inset-0 -z-10 flex flex-col items-center justify-center gap-2"
+              style={{
+                background: 'linear-gradient(180deg, #1a1b2e 0%, #0f1019 100%)',
               }}
-            />
-            {/* 占位（海报加载失败时可见） */}
-            <div className="absolute inset-0 -z-10 flex items-center justify-center text-surface-700">
-              {isSeries ? <Tv size={48} /> : <Play size={48} />}
+            >
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.1))',
+                  border: '1px solid rgba(59,130,246,0.1)',
+                }}
+              >
+                {isSeries ? <Tv size={24} style={{ color: '#4a5568' }} /> : <Film size={24} style={{ color: '#4a5568' }} />}
+              </div>
+              <span className="text-xs font-medium" style={{ color: '#4a5568' }}>暂无海报</span>
             </div>
 
             {/* 悬停遮罩 */}

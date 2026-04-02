@@ -33,6 +33,7 @@ type MetadataService struct {
 	bangumi       *BangumiService // Bangumi刮削服务（补充源）
 	ai            *AIService      // AI 元数据增强（第四层 Fallback）
 	providerChain *ProviderChain  // 多数据源调度链（第三阶段）
+	thetvdb       *TheTVDBService // TheTVDB 剧集增强源
 }
 
 func NewMetadataService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *MetadataService {
@@ -147,6 +148,11 @@ func (s *MetadataService) SetAIService(ai *AIService) {
 // SetProviderChain 设置多数据源调度链（延迟注入）
 func (s *MetadataService) SetProviderChain(chain *ProviderChain) {
 	s.providerChain = chain
+}
+
+// SetTheTVDBService 设置 TheTVDB 服务（延迟注入）
+func (s *MetadataService) SetTheTVDBService(thetvdb *TheTVDBService) {
+	s.thetvdb = thetvdb
 }
 
 // ==================== TMDb API 数据结构 ====================
@@ -1489,6 +1495,124 @@ func (s *MetadataService) mapGenreIDs(ids []int) string {
 		}
 	}
 	return strings.Join(genres, ",")
+}
+
+// ==================== 豆瓣公共方法 ====================
+
+// SearchDouban 公开的豆瓣搜索方法（用于手动元数据匹配）
+func (s *MetadataService) SearchDouban(query string, year int) ([]DoubanSearchResult, error) {
+	return s.douban.searchDouban(query, year)
+}
+
+// MatchMediaWithDouban 手动关联豆瓣结果到指定媒体
+func (s *MetadataService) MatchMediaWithDouban(mediaID string, doubanID string) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+
+	// 获取豆瓣详情
+	detail, err := s.douban.getSubjectDetail(doubanID)
+	if err != nil {
+		return fmt.Errorf("获取豆瓣详情失败: %w", err)
+	}
+
+	// 应用豆瓣数据（覆盖写入）
+	if detail.Title != "" {
+		media.Title = detail.Title
+	}
+	if detail.Rating.Average > 0 {
+		media.Rating = detail.Rating.Average
+	}
+	if detail.Overview != "" {
+		media.Overview = detail.Overview
+	}
+	if len(detail.Genres) > 0 {
+		media.Genres = strings.Join(detail.Genres, ",")
+	}
+	if detail.Year != "" {
+		if y, err := strconv.Atoi(detail.Year); err == nil {
+			media.Year = y
+		}
+	}
+	media.DoubanID = doubanID
+
+	// 下载豆瓣封面
+	if detail.Cover != "" && media.PosterPath == "" {
+		localPath, err := s.douban.downloadDoubanCover(media, detail.Cover)
+		if err == nil {
+			media.PosterPath = localPath
+		}
+	}
+
+	return s.mediaRepo.Update(media)
+}
+
+// MatchSeriesWithDouban 手动关联豆瓣结果到指定剧集合集
+func (s *MetadataService) MatchSeriesWithDouban(seriesID string, doubanID string) error {
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return fmt.Errorf("剧集合集不存在")
+	}
+
+	detail, err := s.douban.getSubjectDetail(doubanID)
+	if err != nil {
+		return fmt.Errorf("获取豆瓣详情失败: %w", err)
+	}
+
+	if detail.Title != "" {
+		series.Title = detail.Title
+	}
+	if detail.Rating.Average > 0 {
+		series.Rating = detail.Rating.Average
+	}
+	if detail.Overview != "" {
+		series.Overview = detail.Overview
+	}
+	if len(detail.Genres) > 0 {
+		series.Genres = strings.Join(detail.Genres, ",")
+	}
+	if detail.Year != "" {
+		if y, err := strconv.Atoi(detail.Year); err == nil {
+			series.Year = y
+		}
+	}
+	series.DoubanID = doubanID
+
+	return s.seriesRepo.Update(series)
+}
+
+// ==================== TheTVDB 公共方法 ====================
+
+// SearchTheTVDB 公开的 TheTVDB 搜索方法（用于手动元数据匹配）
+func (s *MetadataService) SearchTheTVDB(query string, year int) ([]TheTVDBSeries, error) {
+	if s.thetvdb == nil || !s.thetvdb.IsEnabled() {
+		return nil, fmt.Errorf("TheTVDB 未配置或不可用")
+	}
+	return s.thetvdb.SearchSeries(query, year)
+}
+
+// MatchSeriesWithTheTVDB 手动关联 TheTVDB 结果到指定剧集合集
+func (s *MetadataService) MatchSeriesWithTheTVDB(seriesID string, tvdbID int) error {
+	if s.thetvdb == nil || !s.thetvdb.IsEnabled() {
+		return fmt.Errorf("TheTVDB 未配置或不可用")
+	}
+
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil {
+		return fmt.Errorf("剧集合集不存在")
+	}
+
+	// 获取 TheTVDB 详情
+	detail, err := s.thetvdb.GetSeriesDetail(tvdbID)
+	if err != nil {
+		return fmt.Errorf("获取 TheTVDB 详情失败: %w", err)
+	}
+
+	// 应用 TheTVDB 数据
+	s.thetvdb.applySeriesResult(series, detail)
+
+	return s.seriesRepo.Update(series)
 }
 
 // ==================== Bangumi 公共方法 ====================

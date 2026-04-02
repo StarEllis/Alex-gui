@@ -53,7 +53,7 @@ export default function SeriesDetailPage() {
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
-  const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi'>('tmdb')
+  const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi' | 'douban' | 'thetvdb'>('tmdb')
   const [editForm, setEditForm] = useState<{
     title: string; orig_title: string; year: number; overview: string;
     rating: number; genres: string; country: string; language: string; studio: string
@@ -135,7 +135,19 @@ export default function SeriesDetailPage() {
         const res = await adminApi.searchMetadata(matchQuery, 'tv')
         setMatchResults(res.data.data || [])
         if ((res.data.data || []).length === 0) {
-          toast.info('TMDb 未找到匹配结果，请尝试其他关键词或切换到 Bangumi 数据源')
+          toast.info('TMDb 未找到匹配结果，请尝试其他关键词或切换到其他数据源')
+        }
+      } else if (matchSource === 'douban') {
+        const res = await adminApi.searchDouban(matchQuery, series?.year || undefined)
+        setMatchResults(res.data.data || [])
+        if ((res.data.data || []).length === 0) {
+          toast.info('豆瓣未找到匹配结果，请尝试其他关键词')
+        }
+      } else if (matchSource === 'thetvdb') {
+        const res = await adminApi.searchTheTVDB(matchQuery, series?.year || undefined)
+        setMatchResults(res.data.data || [])
+        if ((res.data.data || []).length === 0) {
+          toast.info('TheTVDB 未找到匹配结果，请尝试其他关键词')
         }
       } else {
         // Bangumi 搜索：2=动画, 6=三次元
@@ -147,24 +159,35 @@ export default function SeriesDetailPage() {
         }
       }
     } catch {
-      toast.error(matchSource === 'tmdb' ? '搜索失败，请检查 TMDb API Key 配置' : 'Bangumi 搜索失败')
+      const errorMap: Record<string, string> = {
+        tmdb: '搜索失败，请检查 TMDb API Key 配置',
+        douban: '豆瓣搜索失败',
+        thetvdb: 'TheTVDB 搜索失败，请检查 API Key 配置',
+        bangumi: 'Bangumi 搜索失败',
+      }
+      toast.error(errorMap[matchSource] || '搜索失败')
     } finally {
       setMatchSearching(false)
     }
   }
 
-  const handleMatchSelect = async (resultId: number) => {
+  const handleMatchSelect = async (resultId: number | string) => {
     if (!id) return
     try {
+      const sourceNameMap: Record<string, string> = { tmdb: 'TMDb', bangumi: 'Bangumi', douban: '豆瓣', thetvdb: 'TheTVDB' }
       if (matchSource === 'tmdb') {
-        await adminApi.matchSeriesMetadata(id, resultId)
+        await adminApi.matchSeriesMetadata(id, resultId as number)
+      } else if (matchSource === 'douban') {
+        await adminApi.matchSeriesDouban(id, resultId as string)
+      } else if (matchSource === 'thetvdb') {
+        await adminApi.matchSeriesTheTVDB(id, resultId as number)
       } else {
-        await adminApi.matchSeriesBangumi(id, resultId)
+        await adminApi.matchSeriesBangumi(id, resultId as number)
       }
       const res = await seriesApi.detail(id)
       setSeries(res.data.data)
       setShowMatchModal(false)
-      toast.success(`剧集匹配成功（来源：${matchSource === 'tmdb' ? 'TMDb' : 'Bangumi'}）`)
+      toast.success(`剧集匹配成功（来源：${sourceNameMap[matchSource]}）`)
     } catch {
       toast.error('匹配失败')
     }
@@ -722,7 +745,7 @@ export default function SeriesDetailPage() {
           <div className="w-full max-w-2xl rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
             <h3 className="mb-4 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>手动匹配剧集</h3>
             {/* 数据源切换 */}
-            <div className="mb-4 flex gap-2">
+            <div className="mb-4 flex flex-wrap gap-2">
               <button
                 onClick={() => { setMatchSource('tmdb'); setMatchResults([]) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
@@ -735,6 +758,17 @@ export default function SeriesDetailPage() {
                 🎬 TMDb
               </button>
               <button
+                onClick={() => { setMatchSource('douban'); setMatchResults([]) }}
+                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
+                style={{
+                  background: matchSource === 'douban' ? 'linear-gradient(135deg, #00b414, #009910)' : 'var(--bg-surface)',
+                  color: matchSource === 'douban' ? '#fff' : 'var(--text-secondary)',
+                  border: matchSource === 'douban' ? 'none' : '1px solid var(--border-default)',
+                }}
+              >
+                🎯 豆瓣
+              </button>
+              <button
                 onClick={() => { setMatchSource('bangumi'); setMatchResults([]) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
                 style={{
@@ -745,12 +779,25 @@ export default function SeriesDetailPage() {
               >
                 📺 Bangumi
               </button>
+              <button
+                onClick={() => { setMatchSource('thetvdb'); setMatchResults([]) }}
+                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
+                style={{
+                  background: matchSource === 'thetvdb' ? 'linear-gradient(135deg, #6dc849, #4fa82d)' : 'var(--bg-surface)',
+                  color: matchSource === 'thetvdb' ? '#fff' : 'var(--text-secondary)',
+                  border: matchSource === 'thetvdb' ? 'none' : '1px solid var(--border-default)',
+                }}
+              >
+                📡 TheTVDB
+              </button>
             </div>
             <p className="mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {matchSource === 'tmdb'
-                ? '搜索 TMDb 数据库，适合欧美电视剧。'
-                : '搜索 Bangumi (bgm.tv) 数据库，适合日本动画/日剧。'
-              }
+              {{
+                tmdb: '搜索 TMDb 数据库，适合欧美电视剧。',
+                douban: '搜索豆瓣数据库，适合国产剧集和电影。',
+                bangumi: '搜索 Bangumi (bgm.tv) 数据库，适合日本动画/日剧。',
+                thetvdb: '搜索 TheTVDB 数据库，适合各类电视剧集。',
+              }[matchSource]}
             </p>
             <div className="mb-4 flex gap-2">
               <input
@@ -766,26 +813,50 @@ export default function SeriesDetailPage() {
                 onClick={handleMatchSearch}
                 disabled={matchSearching}
                 className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
-                style={{ background: matchSource === 'tmdb' ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))' : 'linear-gradient(135deg, #f09199, #e8788a)' }}
+                style={{ background: { tmdb: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))', douban: 'linear-gradient(135deg, #00b414, #009910)', bangumi: 'linear-gradient(135deg, #f09199, #e8788a)', thetvdb: 'linear-gradient(135deg, #6dc849, #4fa82d)' }[matchSource] }}
               >
                 {matchSearching ? '搜索中...' : '搜索'}
               </button>
             </div>
             <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
               {matchResults.map((result: any) => {
-                const isBangumi = matchSource === 'bangumi'
-                const displayTitle = isBangumi ? (result.name_cn || result.name) : (result.name || result.title)
-                const displayOrigTitle = isBangumi ? result.name : (result.original_name || result.original_title)
-                const displayYear = isBangumi ? result.air_date?.split('-')[0] : (result.first_air_date || result.release_date)?.split('-')[0]
-                const displayRating = isBangumi ? result.rating?.score : result.vote_average
-                const displayOverview = isBangumi ? result.summary : result.overview
-                const posterUrl = isBangumi
-                  ? result.images?.common || result.images?.medium
-                  : (result.poster_path ? `https://image.tmdb.org/t/p/w92${result.poster_path}` : null)
+                let displayTitle = '', displayOrigTitle = '', displayYear = '', displayOverview = '', posterUrl: string | null = null
+                let displayRating = 0, resultKey: string | number = result.id
+
+                if (matchSource === 'tmdb') {
+                  displayTitle = result.name || result.title
+                  displayOrigTitle = result.original_name || result.original_title
+                  displayYear = (result.first_air_date || result.release_date)?.split('-')[0] || ''
+                  displayRating = result.vote_average || 0
+                  displayOverview = result.overview || ''
+                  posterUrl = result.poster_path ? `https://image.tmdb.org/t/p/w92${result.poster_path}` : null
+                } else if (matchSource === 'douban') {
+                  displayTitle = result.title
+                  displayYear = result.year > 0 ? String(result.year) : ''
+                  displayRating = result.rating || 0
+                  displayOverview = result.overview || ''
+                  posterUrl = result.cover || null
+                  resultKey = result.id
+                } else if (matchSource === 'thetvdb') {
+                  displayTitle = result.name || result.seriesName
+                  displayOrigTitle = result.originalName || ''
+                  displayYear = result.year || (result.firstAired?.split('-')[0]) || ''
+                  displayOverview = result.overview || ''
+                  posterUrl = result.image || result.poster || null
+                  if (posterUrl && !posterUrl.startsWith('http')) posterUrl = 'https://artworks.thetvdb.com' + posterUrl
+                } else {
+                  // Bangumi
+                  displayTitle = result.name_cn || result.name
+                  displayOrigTitle = result.name
+                  displayYear = result.air_date?.split('-')[0] || ''
+                  displayRating = result.rating?.score || 0
+                  displayOverview = result.summary || ''
+                  posterUrl = result.images?.common || result.images?.medium || null
+                }
 
                 return (
                   <button
-                    key={result.id}
+                    key={resultKey}
                     onClick={() => handleMatchSelect(result.id)}
                     className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01]"
                     style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
@@ -802,9 +873,14 @@ export default function SeriesDetailPage() {
                         <div className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                           {displayTitle}
                         </div>
-                        {isBangumi && (
+                        {matchSource === 'bangumi' && (
                           <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(240,145,153,0.15)', color: '#f09199' }}>
                             {result.type === 2 ? '动画' : result.type === 6 ? '三次元' : 'BGM'}
+                          </span>
+                        )}
+                        {matchSource === 'douban' && result.genres && (
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(0,180,20,0.12)', color: '#00b414' }}>
+                            {result.genres.split(',')[0]}
                           </span>
                         )}
                       </div>
@@ -816,7 +892,7 @@ export default function SeriesDetailPage() {
                         {displayRating > 0 && (
                           <span className="text-yellow-400">★ {displayRating.toFixed(1)}</span>
                         )}
-                        {isBangumi && result.eps > 0 && (
+                        {matchSource === 'bangumi' && result.eps > 0 && (
                           <span>{result.eps}话</span>
                         )}
                       </div>
@@ -829,7 +905,7 @@ export default function SeriesDetailPage() {
               })}
               {matchResults.length === 0 && !matchSearching && (
                 <div className="py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                  输入关键词搜索{matchSource === 'tmdb' ? ' TMDb' : ' Bangumi'} 数据库
+                  输入关键词搜索 {{ tmdb: 'TMDb', douban: '豆瓣', bangumi: 'Bangumi', thetvdb: 'TheTVDB' }[matchSource]} 数据库
                 </div>
               )}
             </div>

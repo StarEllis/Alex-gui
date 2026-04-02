@@ -587,6 +587,35 @@ export interface SystemSettings {
   enable_direct_link: boolean
 }
 
+// ==================== 豆瓣数据源 ====================
+export interface DoubanSearchResult {
+  id: string
+  title: string
+  year: number
+  rating: number
+  cover: string
+  overview: string
+  genres: string
+}
+
+// ==================== TheTVDB 数据源 ====================
+export interface TheTVDBSearchResult {
+  id: number
+  name: string
+  originalName: string
+  image: string
+  overview: string
+  firstAired: string
+  year: string
+  status: string
+  network: string
+  genre: string[]
+  country: string
+  originalCountry: string
+  originalLanguage: string
+  primaryLanguage: string
+}
+
 // ==================== Bangumi 数据源 ====================
 export interface BangumiSubject {
   id: number

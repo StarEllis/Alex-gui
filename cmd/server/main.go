@@ -380,6 +380,15 @@ func main() {
 		admin.PUT("/settings/bangumi", handlers.Admin.UpdateBangumiConfig)
 		admin.DELETE("/settings/bangumi", handlers.Admin.ClearBangumiConfig)
 
+		// 豆瓣数据源
+		admin.GET("/metadata/douban/search", handlers.Admin.SearchDouban)
+		admin.POST("/media/:mediaId/match/douban", handlers.Admin.MatchMediaDouban)
+		admin.POST("/series/:seriesId/match/douban", handlers.Admin.MatchSeriesDouban)
+
+		// TheTVDB 数据源
+		admin.GET("/metadata/thetvdb/search", handlers.Admin.SearchTheTVDB)
+		admin.POST("/series/:seriesId/match/thetvdb", handlers.Admin.MatchSeriesTheTVDB)
+
 		// 数据备份与恢复
 		admin.POST("/backup/json", handlers.Backup.ExportJSON)
 		admin.POST("/backup/zip", handlers.Backup.ExportZIP)

@@ -185,6 +185,106 @@ func (h *AdminHandler) ScrapeSeriesMetadata(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "元数据已刷新"})
 }
 
+// ==================== 豆瓣数据源管理 ====================
+
+// SearchDouban 搜索豆瓣条目
+func (h *AdminHandler) SearchDouban(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供搜索关键词"})
+		return
+	}
+	year, _ := strconv.Atoi(c.Query("year"))
+
+	results, err := h.metadataService.SearchDouban(query, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "豆瓣搜索失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": results})
+}
+
+// MatchMediaDouban 手动关联豆瓣条目到媒体
+func (h *AdminHandler) MatchMediaDouban(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+
+	var req struct {
+		DoubanID string `json:"douban_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 douban_id"})
+		return
+	}
+
+	if err := h.metadataService.MatchMediaWithDouban(mediaID, req.DoubanID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "关联豆瓣元数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已关联豆瓣元数据"})
+}
+
+// MatchSeriesDouban 手动关联豆瓣条目到剧集合集
+func (h *AdminHandler) MatchSeriesDouban(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req struct {
+		DoubanID string `json:"douban_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 douban_id"})
+		return
+	}
+
+	if err := h.metadataService.MatchSeriesWithDouban(seriesID, req.DoubanID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "关联豆瓣元数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已关联豆瓣元数据"})
+}
+
+// ==================== TheTVDB 数据源管理 ====================
+
+// SearchTheTVDB 搜索 TheTVDB 剧集
+func (h *AdminHandler) SearchTheTVDB(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供搜索关键词"})
+		return
+	}
+	year, _ := strconv.Atoi(c.Query("year"))
+
+	results, err := h.metadataService.SearchTheTVDB(query, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "TheTVDB 搜索失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": results})
+}
+
+// MatchSeriesTheTVDB 手动关联 TheTVDB 条目到剧集合集
+func (h *AdminHandler) MatchSeriesTheTVDB(c *gin.Context) {
+	seriesID := c.Param("seriesId")
+
+	var req struct {
+		TVDBID int `json:"tvdb_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 tvdb_id"})
+		return
+	}
+
+	if err := h.metadataService.MatchSeriesWithTheTVDB(seriesID, req.TVDBID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "关联 TheTVDB 元数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已关联 TheTVDB 元数据"})
+}
+
 // ==================== Bangumi 数据源管理 ====================
 
 // SearchBangumi 搜索 Bangumi 条目
