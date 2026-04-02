@@ -4,7 +4,6 @@ import { useToast } from '@/components/Toast'
 import {
   Share2,
   Loader2,
-  Check,
   X,
   Copy,
   Lock,

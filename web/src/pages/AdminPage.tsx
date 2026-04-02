@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, SystemSettings } from '@/types'
@@ -23,6 +23,7 @@ import {
   Activity,
   Search,
   ChevronRight,
+  ChevronLeft,
   Settings,
   Trash2,
   Sparkles,
@@ -63,6 +64,149 @@ const TABS = [
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
+
+// ==================== 标签页横向滚动导航组件 ====================
+function TabScrollNav({
+  activeTab,
+  switchTab,
+  hasActiveProgress,
+  transcodeJobs,
+  t,
+}: {
+  activeTab: TabId
+  switchTab: (tab: TabId) => void
+  hasActiveProgress: boolean
+  transcodeJobs: TranscodeJob[]
+  t: (key: string) => string
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  // 检测是否可以向左/右滚动
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const { scrollLeft, scrollWidth, clientWidth } = el
+    setCanScrollLeft(scrollLeft > 1)
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 1)
+  }, [])
+
+  // 监听滚动和窗口大小变化
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    checkScroll()
+    el.addEventListener('scroll', checkScroll, { passive: true })
+    const resizeObserver = new ResizeObserver(checkScroll)
+    resizeObserver.observe(el)
+    return () => {
+      el.removeEventListener('scroll', checkScroll)
+      resizeObserver.disconnect()
+    }
+  }, [checkScroll])
+
+  // 选中标签自动滚动到可视区域
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const activeButton = el.querySelector(`[data-tab-id="${activeTab}"]`) as HTMLElement
+    if (!activeButton) return
+    const { offsetLeft, offsetWidth } = activeButton
+    const { scrollLeft, clientWidth } = el
+    // 如果选中标签在左侧不可见
+    if (offsetLeft < scrollLeft) {
+      el.scrollTo({ left: offsetLeft - 12, behavior: 'smooth' })
+    }
+    // 如果选中标签在右侧不可见
+    else if (offsetLeft + offsetWidth > scrollLeft + clientWidth) {
+      el.scrollTo({ left: offsetLeft + offsetWidth - clientWidth + 12, behavior: 'smooth' })
+    }
+  }, [activeTab])
+
+  // 滚动操作
+  const scroll = (direction: 'left' | 'right') => {
+    const el = scrollRef.current
+    if (!el) return
+    const scrollAmount = el.clientWidth * 0.6
+    el.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth',
+    })
+  }
+
+  return (
+    <div className="relative group/tabs">
+      {/* 左侧滚动按钮 */}
+      {canScrollLeft && (
+        <button
+          onClick={() => scroll('left')}
+          className="absolute left-0 top-0 z-10 flex h-full w-8 items-center justify-center transition-opacity"
+          style={{
+            background: 'linear-gradient(to right, var(--bg-primary) 60%, transparent)',
+          }}
+          aria-label="向左滚动"
+        >
+          <ChevronLeft size={16} className="text-surface-400 hover:text-neon transition-colors" />
+        </button>
+      )}
+
+      {/* 标签页容器 */}
+      <div
+        ref={scrollRef}
+        className="flex gap-1 overflow-x-auto pb-px scrollbar-hide scroll-smooth"
+        style={{
+          borderBottom: '1px solid var(--border-default)',
+          paddingLeft: canScrollLeft ? '24px' : undefined,
+          paddingRight: canScrollRight ? '24px' : undefined,
+          WebkitOverflowScrolling: 'touch', // iOS 触摸滑动优化
+        }}
+      >
+        {TABS.map((tab) => {
+          const Icon = tab.icon
+          const isActive = activeTab === tab.id
+          // 给「任务」标签添加活动指示器
+          const hasIndicator = tab.id === 'tasks' && (hasActiveProgress || transcodeJobs.some((j) => j.status === 'running'))
+          // 给「仪表盘」标签在有进度时添加指示器
+          const hasDashIndicator = tab.id === 'dashboard' && hasActiveProgress
+
+          return (
+            <button
+              key={tab.id}
+              data-tab-id={tab.id}
+              onClick={() => switchTab(tab.id)}
+              className={clsx('admin-tab whitespace-nowrap', isActive && 'active')}
+            >
+              <Icon size={16} />
+              <span className="hidden sm:inline">{t(tab.labelKey)}</span>
+              <span className="sm:hidden">{t(tab.shortLabelKey)}</span>
+              {(hasIndicator || hasDashIndicator) && (
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-neon" />
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* 右侧滚动按钮 */}
+      {canScrollRight && (
+        <button
+          onClick={() => scroll('right')}
+          className="absolute right-0 top-0 z-10 flex h-full w-8 items-center justify-center transition-opacity"
+          style={{
+            background: 'linear-gradient(to left, var(--bg-primary) 60%, transparent)',
+          }}
+          aria-label="向右滚动"
+        >
+          <ChevronRight size={16} className="text-surface-400 hover:text-neon transition-colors" />
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function AdminPage() {
   // 从 URL hash 读取初始标签
@@ -377,38 +521,14 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* ==================== 标签页导航 ==================== */}
-        <div
-          className="flex gap-1 overflow-x-auto pb-px scrollbar-hide"
-          style={{ borderBottom: '1px solid var(--border-default)' }}
-        >
-          {TABS.map((tab) => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.id
-            // 给「任务」标签添加活动指示器
-            const hasIndicator = tab.id === 'tasks' && (hasActiveProgress || transcodeJobs.some((j) => j.status === 'running'))
-            // 给「仪表盘」标签在有进度时添加指示器
-            const hasDashIndicator = tab.id === 'dashboard' && hasActiveProgress
-
-            return (
-              <button
-                key={tab.id}
-                onClick={() => switchTab(tab.id)}
-                className={clsx('admin-tab whitespace-nowrap', isActive && 'active')}
-              >
-                <Icon size={16} />
-                <span className="hidden sm:inline">{t(tab.labelKey)}</span>
-                <span className="sm:hidden">{t(tab.shortLabelKey)}</span>
-                {(hasIndicator || hasDashIndicator) && (
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-neon" />
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+        {/* ==================== 标签页导航（支持横向滚动） ==================== */}
+        <TabScrollNav
+          activeTab={activeTab}
+          switchTab={switchTab}
+          hasActiveProgress={hasActiveProgress}
+          transcodeJobs={transcodeJobs}
+          t={t}
+        />
       </div>
 
       {/* ==================== 标签页内容区 ==================== */}
