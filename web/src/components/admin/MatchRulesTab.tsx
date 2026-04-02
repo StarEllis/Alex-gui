@@ -6,19 +6,15 @@ import {
   Filter,
   Plus,
   Trash2,
-  Edit3,
   Check,
-  X,
   Loader2,
   Play,
   ToggleLeft,
   ToggleRight,
-  Zap,
   FileText,
   FolderOpen,
   Code,
   Search,
-  AlertCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -45,7 +41,6 @@ export default function MatchRulesTab() {
   const [libraries, setLibraries] = useState<Library[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
 
   // 创建表单
   const [formName, setFormName] = useState('')

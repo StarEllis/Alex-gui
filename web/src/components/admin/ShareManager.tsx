@@ -1,17 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { ShareLink, Library } from '@/types'
+import type { ShareLink } from '@/types'
 import { shareApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import {
   Share2,
-  Plus,
   Trash2,
   Copy,
   ExternalLink,
   Eye,
-  EyeOff,
   Lock,
-  Unlock,
   Loader2,
   ToggleLeft,
   ToggleRight,
@@ -114,10 +111,10 @@ export default function ShareManager() {
                       {share.title || `分享 ${share.code}`}
                     </span>
                     {share.password && (
-                      <Lock size={12} className="text-amber-400 flex-shrink-0" title="需要密码" />
+                      <Lock size={12} className="text-amber-400 flex-shrink-0" />
                     )}
                     {share.allow_download && (
-                      <Download size={12} className="text-green-400 flex-shrink-0" title="允许下载" />
+                      <Download size={12} className="text-green-400 flex-shrink-0" />
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-surface-500">

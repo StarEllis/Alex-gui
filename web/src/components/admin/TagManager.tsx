@@ -10,7 +10,6 @@ import {
   Check,
   X,
   Loader2,
-  Palette,
   Hash,
 } from 'lucide-react'
 import clsx from 'clsx'

@@ -27,6 +27,9 @@ import {
   Trash2,
   Sparkles,
   Radio,
+  Tags,
+  Share2,
+  Filter,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -38,6 +41,9 @@ import BackupTab from '@/components/admin/BackupTab'
 import AccessLogsTab from '@/components/admin/AccessLogsTab'
 import AITab from '@/components/admin/AITab'
 import LiveSourcesTab from '@/components/admin/LiveSourcesTab'
+import TagManager from '@/components/admin/TagManager'
+import ShareManager from '@/components/admin/ShareManager'
+import MatchRulesTab from '@/components/admin/MatchRulesTab'
 import { useTranslation } from '@/i18n'
 
 // ==================== 标签页定义 ====================
@@ -46,6 +52,9 @@ const TABS = [
   { id: 'library', labelKey: 'admin.tabLibrary', icon: FolderOpen, shortLabelKey: 'admin.shortLibrary' },
   { id: 'users', labelKey: 'admin.tabUsers', icon: Users, shortLabelKey: 'admin.shortUsers' },
   { id: 'tasks', labelKey: 'admin.tabTasks', icon: ListTodo, shortLabelKey: 'admin.shortTasks' },
+  { id: 'tags', labelKey: 'admin.tabTags' as any, icon: Tags, shortLabelKey: 'admin.shortTags' as any },
+  { id: 'shares', labelKey: 'admin.tabShares' as any, icon: Share2, shortLabelKey: 'admin.shortShares' as any },
+  { id: 'rules', labelKey: 'admin.tabRules' as any, icon: Filter, shortLabelKey: 'admin.shortRules' as any },
   { id: 'monitor', labelKey: 'admin.tabMonitor', icon: Activity, shortLabelKey: 'admin.shortMonitor' },
   { id: 'logs', labelKey: 'admin.tabLogs', icon: Settings, shortLabelKey: 'admin.shortLogs' },
   { id: 'backup', labelKey: 'admin.tabBackup', icon: Settings, shortLabelKey: 'admin.shortBackup' },
@@ -616,6 +625,21 @@ export default function AdminPage() {
             transcodeJobs={transcodeJobs}
             transcodeProgress={transcodeProgress}
           />
+        )}
+
+        {/* ===== 标签管理标签页 ===== */}
+        {activeTab === 'tags' && (
+          <TagManager />
+        )}
+
+        {/* ===== 分享链接标签页 ===== */}
+        {activeTab === 'shares' && (
+          <ShareManager />
+        )}
+
+        {/* ===== 匹配规则标签页 ===== */}
+        {activeTab === 'rules' && (
+          <MatchRulesTab />
         )}
 
         {/* ===== 监控与日志标签页 ===== */}
