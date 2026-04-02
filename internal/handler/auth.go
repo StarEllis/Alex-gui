@@ -31,6 +31,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, token)
 }
 
+// Status 获取系统初始化状态（公开接口，无需认证）
+func (h *AuthHandler) Status(c *gin.Context) {
+	status, err := h.authService.GetInitStatus()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取状态失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": status})
+}
+
 // Register 用户注册
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req service.RegisterRequest

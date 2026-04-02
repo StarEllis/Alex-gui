@@ -57,6 +57,24 @@ func (s *AuthService) Login(req *LoginRequest) (*TokenResponse, error) {
 	return s.generateToken(user)
 }
 
+// InitStatus 系统初始化状态
+type InitStatus struct {
+	Initialized      bool `json:"initialized"`       // 是否已有用户
+	RegistrationOpen bool `json:"registration_open"` // 是否允许注册
+}
+
+// GetInitStatus 获取系统初始化状态（公开接口，无需认证）
+func (s *AuthService) GetInitStatus() (*InitStatus, error) {
+	count, err := s.userRepo.Count()
+	if err != nil {
+		return nil, err
+	}
+	return &InitStatus{
+		Initialized:      count > 0,
+		RegistrationOpen: count == 0 || s.cfg.Registration.Enabled,
+	}, nil
+}
+
 // Register 用户注册
 func (s *AuthService) Register(req *RegisterRequest) (*TokenResponse, error) {
 	// 检查是否为第一个用户（第一个用户始终允许注册为管理员）

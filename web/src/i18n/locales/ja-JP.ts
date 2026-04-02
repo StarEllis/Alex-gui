@@ -212,6 +212,7 @@ const jaJP: Record<string, string> = {
   'auth.switchToLogin': 'アカウントをお持ちの方はログイン',
   'auth.switchToRegister': 'アカウントをお持ちでない方は新規登録',
   'auth.defaultAccount': 'デフォルトアカウント: admin / admin123',
+  'auth.firstUserHint': '🚀 初回利用：最初に登録したアカウントが管理者になります',
   'auth.slogan': 'ディープスペースシネマ · フューチャーハブ',
 
   // ==================== ナビゲーション（V3） ====================

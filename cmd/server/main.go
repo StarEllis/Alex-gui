@@ -87,6 +87,7 @@ func main() {
 	auth := r.Group("/api/auth")
 	{
 		auth.POST("/login", handlers.Auth.Login)
+		auth.GET("/status", handlers.Auth.Status)                                // 系统初始化状态（公开）
 		auth.POST("/register", middleware.RateLimit(10), handlers.Auth.Register) // 注册接口额外限制：每分钟10次
 	}
 

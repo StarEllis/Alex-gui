@@ -212,6 +212,7 @@ const enUS: Record<string, string> = {
   'auth.switchToLogin': 'Already have an account? Sign in',
   'auth.switchToRegister': "Don't have an account? Create one",
   'auth.defaultAccount': 'Default account: admin / admin123',
+  'auth.firstUserHint': '🚀 First time? The first registered account becomes admin',
   'auth.slogan': 'Deep Space Cinema · Future Hub',
 
   // ==================== Navigation (V3) ====================

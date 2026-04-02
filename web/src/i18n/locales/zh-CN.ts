@@ -212,6 +212,7 @@ const zhCN: Record<string, string> = {
   'auth.switchToLogin': '已有账号？去登录',
   'auth.switchToRegister': '没有账号？创建一个',
   'auth.defaultAccount': '首次使用默认账号: admin / admin123',
+  'auth.firstUserHint': '🚀 首次使用，注册的第一个账号将成为管理员',
   'auth.slogan': '深空影音 · 未来枢纽',
 
   // ==================== V3: 导航 ====================

@@ -15,4 +15,8 @@ export const authApi = {
 
   refreshToken: () =>
     api.post<TokenResponse>('/auth/refresh'),
+
+  /** 获取系统初始化状态（公开接口，无需认证） */
+  getStatus: () =>
+    api.get<{ data: { initialized: boolean; registration_open: boolean } }>('/auth/status'),
 }
