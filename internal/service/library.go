@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -159,6 +160,35 @@ func (s *LibraryService) Scan(id string) error {
 	lib, err := s.repo.FindByID(id)
 	if err != nil {
 		return ErrLibraryNotFound
+	}
+
+	// 同步检查媒体库路径是否存在且可访问
+	info, err := os.Stat(lib.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			s.logger.Errorf("媒体库路径不存在: %s (媒体库: %s)", lib.Path, lib.Name)
+			return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", lib.Path)
+		}
+		if os.IsPermission(err) {
+			s.logger.Errorf("无权限访问媒体库路径: %s (媒体库: %s)", lib.Path, lib.Name)
+			return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", lib.Path)
+		}
+		s.logger.Errorf("访问媒体库路径失败: %s, 错误: %v", lib.Path, err)
+		return fmt.Errorf("访问媒体库路径失败: %v", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("媒体库路径不是目录: %s", lib.Path)
+	}
+
+	// 检查目录是否为空（给出提示但不阻止扫描）
+	entries, err := os.ReadDir(lib.Path)
+	if err != nil {
+		s.logger.Errorf("读取媒体库目录失败: %s, 错误: %v", lib.Path, err)
+		return fmt.Errorf("读取媒体库目录失败: %v", err)
+	}
+	if len(entries) == 0 {
+		s.logger.Warnf("媒体库目录为空: %s (媒体库: %s)", lib.Path, lib.Name)
+		return fmt.Errorf("媒体库目录为空: %s，请确认路径下有影视文件", lib.Path)
 	}
 
 	// 防止重复扫描
@@ -339,6 +369,21 @@ func (s *LibraryService) Reindex(id string) error {
 	lib, err := s.repo.FindByID(id)
 	if err != nil {
 		return ErrLibraryNotFound
+	}
+
+	// 同步检查媒体库路径是否存在且可访问
+	info, err := os.Stat(lib.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", lib.Path)
+		}
+		if os.IsPermission(err) {
+			return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", lib.Path)
+		}
+		return fmt.Errorf("访问媒体库路径失败: %v", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("媒体库路径不是目录: %s", lib.Path)
 	}
 
 	// 防止重复操作

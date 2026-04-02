@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { libraryApi } from '@/api'
 import type { Library, CreateLibraryRequest } from '@/types'
 import type { ScanProgressData, ScrapeProgressData } from '@/hooks/useWebSocket'
+import { useToast } from './Toast'
 import CreateLibraryModal from './CreateLibraryModal'
 import {
   FolderPlus,
@@ -47,10 +48,12 @@ export default function LibraryManager({
   scanProgress,
   scrapeProgress,
 }: LibraryManagerProps) {
+  const toast = useToast()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'created' | 'type'>('created')
   const [sortAsc, setSortAsc] = useState(false)
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
+  const [scanAllLoading, setScanAllLoading] = useState(false)
 
   // 排序逻辑
   const sortedLibraries = [...libraries].sort((a, b) => {
@@ -71,20 +74,31 @@ export default function LibraryManager({
     setScanning((s) => new Set(s).add(id))
     try {
       await libraryApi.scan(id)
-    } catch {
+    } catch (err: any) {
       setScanning((s) => {
         const ns = new Set(s)
         ns.delete(id)
         return ns
       })
+      const msg = err?.response?.data?.error || '扫描启动失败'
+      toast.error(msg)
     }
   }
 
   const handleScanAll = async () => {
-    for (const lib of libraries) {
-      if (!scanning.has(lib.id)) {
-        handleScan(lib.id)
+    const toScan = libraries.filter((lib) => !scanning.has(lib.id))
+    if (toScan.length === 0) {
+      toast.info('所有媒体库已在扫描中')
+      return
+    }
+    setScanAllLoading(true)
+    try {
+      for (const lib of toScan) {
+        await handleScan(lib.id)
       }
+      toast.success(`已启动 ${toScan.length} 个媒体库扫描`)
+    } finally {
+      setScanAllLoading(false)
     }
   }
 
@@ -176,7 +190,8 @@ export default function LibraryManager({
           {libraries.length > 0 && (
             <button
               onClick={handleScanAll}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all"
+              disabled={scanAllLoading}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all disabled:opacity-40"
               style={{
                 border: '1px solid var(--border-default)',
                 color: 'var(--text-secondary)',
@@ -184,8 +199,12 @@ export default function LibraryManager({
               }}
               title="扫描所有媒体库文件"
             >
-              <ScanLine size={14} />
-              扫描媒体库文件
+              {scanAllLoading ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <ScanLine size={14} />
+              )}
+              {scanAllLoading ? '扫描中...' : '扫描媒体库文件'}
             </button>
           )}
         </div>

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
@@ -45,6 +47,25 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 	var req CreateLibraryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	// 验证媒体库路径是否存在且可访问
+	info, err := os.Stat(req.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", req.Path)})
+			return
+		}
+		if os.IsPermission(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无权限访问路径: %s，请检查文件权限", req.Path)})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("访问路径失败: %v", err)})
+		return
+	}
+	if !info.IsDir() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不是目录: %s", req.Path)})
 		return
 	}
 

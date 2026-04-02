@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { seriesApi, userApi, streamApi, playlistApi, adminApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -10,6 +10,7 @@ import {
   Star,
   Clock,
   ChevronRight,
+  ChevronLeft,
   Tv,
   Heart,
   Check,
@@ -22,6 +23,8 @@ import {
   Unlink,
   Pencil,
   Trash2,
+  LayoutList,
+  GalleryHorizontal,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -35,6 +38,8 @@ export default function SeriesDetailPage() {
   const [activeSeason, setActiveSeason] = useState<number>(1)
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'season' | 'all'>('season')
+  const [seasonDisplayMode, setSeasonDisplayMode] = useState<'slide' | 'list'>('slide')
+  const slideContainerRef = useRef<HTMLDivElement>(null)
   const [isFavorited, setIsFavorited] = useState(false)
   const [, setPlaylists] = useState<Playlist[]>([])
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
@@ -702,12 +707,103 @@ export default function SeriesDetailPage() {
                 </div>
               )}
 
-              {/* 当前季的剧集列表 */}
-              <div className="space-y-2">
-                {activeSeasonData?.episodes.map((ep) => (
-                  <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
-                ))}
+              {/* 展示模式切换 */}
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
+                  共 {activeSeasonData?.episode_count || 0} 集
+                </span>
+                <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-surface)' }}>
+                  <button
+                    onClick={() => setSeasonDisplayMode('slide')}
+                    className={clsx(
+                      'flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-200',
+                      seasonDisplayMode === 'slide' ? '' : 'hover:bg-[var(--nav-hover-bg)]'
+                    )}
+                    style={seasonDisplayMode === 'slide' ? {
+                      background: 'var(--bg-card)',
+                      color: 'var(--neon-blue)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    } : { color: 'var(--text-muted)' }}
+                    title="幻灯片模式"
+                  >
+                    <GalleryHorizontal size={14} />
+                  </button>
+                  <button
+                    onClick={() => setSeasonDisplayMode('list')}
+                    className={clsx(
+                      'flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-200',
+                      seasonDisplayMode === 'list' ? '' : 'hover:bg-[var(--nav-hover-bg)]'
+                    )}
+                    style={seasonDisplayMode === 'list' ? {
+                      background: 'var(--bg-card)',
+                      color: 'var(--neon-blue)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    } : { color: 'var(--text-muted)' }}
+                    title="列表模式"
+                  >
+                    <LayoutList size={14} />
+                  </button>
+                </div>
               </div>
+
+              {/* 幻灯片模式 */}
+              {seasonDisplayMode === 'slide' && (
+                <div className="relative group/slider">
+                  {/* 左箭头 */}
+                  <button
+                    onClick={() => {
+                      const el = slideContainerRef.current
+                      if (el) el.scrollBy({ left: -320, behavior: 'smooth' })
+                    }}
+                    className="absolute -left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full opacity-0 transition-all duration-300 group-hover/slider:opacity-100 hover:scale-110"
+                    style={{
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-secondary)',
+                      boxShadow: 'var(--shadow-elevated)',
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  {/* 滑动容器 */}
+                  <div
+                    ref={slideContainerRef}
+                    className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide"
+                    style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
+                  >
+                    {activeSeasonData?.episodes.map((ep) => (
+                      <EpisodeSlideCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
+                    ))}
+                  </div>
+
+                  {/* 右箭头 */}
+                  <button
+                    onClick={() => {
+                      const el = slideContainerRef.current
+                      if (el) el.scrollBy({ left: 320, behavior: 'smooth' })
+                    }}
+                    className="absolute -right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full opacity-0 transition-all duration-300 group-hover/slider:opacity-100 hover:scale-110"
+                    style={{
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-secondary)',
+                      boxShadow: 'var(--shadow-elevated)',
+                    }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+
+              {/* 列表模式 */}
+              {seasonDisplayMode === 'list' && (
+                <div className="space-y-2">
+                  {activeSeasonData?.episodes.map((ep) => (
+                    <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1099,6 +1195,111 @@ function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Med
 
       {/* 箭头 */}
       <ChevronRight size={16} className="flex-shrink-0 transition-colors group-hover:text-neon" style={{ color: 'var(--text-muted)' }} />
+    </Link>
+  )
+}
+
+// 幻灯片模式的剧集卡片组件
+function EpisodeSlideCard({ episode: ep, seriesTitle, historyRecord }: { episode: Media; seriesTitle: string; historyRecord?: WatchHistory }) {
+  const watchStatus = (() => {
+    if (!historyRecord) return { watched: false, progress: 0 }
+    return {
+      watched: historyRecord.completed || (historyRecord.duration > 0 && historyRecord.position / historyRecord.duration > 0.9),
+      progress: historyRecord.duration > 0 ? Math.round((historyRecord.position / historyRecord.duration) * 100) : 0,
+    }
+  })()
+
+  const formatDuration = (seconds: number) => {
+    if (!seconds) return ''
+    const m = Math.floor(seconds / 60)
+    return `${m}分钟`
+  }
+
+  return (
+    <Link
+      to={`/media/${ep.id}`}
+      className="glass-panel-subtle group flex-shrink-0 overflow-hidden rounded-xl transition-all duration-300 hover:border-neon-blue/20 hover:shadow-card-hover"
+      style={{ width: '200px', scrollSnapAlign: 'start' }}
+    >
+      {/* 缩略图区域 - 16:9 比例 */}
+      <div className="relative aspect-video w-full overflow-hidden" style={{ background: 'var(--bg-surface)' }}>
+        {ep.poster_path ? (
+          <img
+            src={streamApi.getPosterUrl(ep.id)}
+            alt={ep.title}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center" style={{ color: 'var(--text-muted)' }}>
+            <Play size={28} />
+          </div>
+        )}
+        {/* 悬停播放按钮 */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-full"
+            style={{
+              background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+              boxShadow: '0 0 12px var(--neon-blue-40)',
+            }}
+          >
+            <Play size={18} className="ml-0.5 text-white" fill="white" />
+          </div>
+        </div>
+        {/* 集数标签 */}
+        <div className="absolute left-1.5 top-1.5">
+          <span className="badge-neon text-[10px]">
+            E{String(ep.episode_num).padStart(2, '0')}
+          </span>
+        </div>
+        {/* 时长标签 */}
+        {ep.duration > 0 && (
+          <div className="absolute bottom-1.5 right-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-white" style={{ background: 'rgba(0,0,0,0.7)' }}>
+            {formatDuration(ep.duration)}
+          </div>
+        )}
+        {/* 已观看覆盖层 */}
+        {watchStatus.watched && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))' }}>
+              <Check size={16} className="text-white" />
+            </div>
+          </div>
+        )}
+        {/* 观看进度条 */}
+        {!watchStatus.watched && watchStatus.progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+            <div
+              className="h-full"
+              style={{
+                width: `${watchStatus.progress}%`,
+                background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
+                boxShadow: '0 0 6px var(--neon-blue-30)',
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 信息区域 */}
+      <div className="p-2.5">
+        <h4 className={clsx(
+          'truncate text-xs font-medium transition-colors group-hover:text-neon'
+        )} style={watchStatus.watched ? { color: 'var(--text-muted)' } : { color: 'var(--text-primary)' }}>
+          {ep.episode_title || (ep.episode_num > 0 ? `第 ${ep.episode_num} 集` : seriesTitle)}
+        </h4>
+        <div className="mt-1 flex items-center gap-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+          {watchStatus.watched && (
+            <span className="text-green-400/70">✓ 已看</span>
+          )}
+          {!watchStatus.watched && watchStatus.progress > 0 && (
+            <span className="text-neon/60">{watchStatus.progress}%</span>
+          )}
+          {ep.resolution && (
+            <span className="badge-neon !py-0 text-[9px]">{ep.resolution}</span>
+          )}
+        </div>
+      </div>
     </Link>
   )
 }
