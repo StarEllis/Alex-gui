@@ -4,7 +4,8 @@ import { seriesApi, userApi, streamApi, playlistApi, adminApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import EditMetadataModal from '@/components/EditMetadataModal'
-import type { Series, SeasonInfo, Media, Playlist, WatchHistory } from '@/types'
+import CastGrid from '@/components/media/CastGrid'
+import type { Series, SeasonInfo, Media, Playlist, WatchHistory, MediaPerson } from '@/types'
 import {
   Play,
   Star,
@@ -48,6 +49,8 @@ export default function SeriesDetailPage() {
   const [imgLoaded, setImgLoaded] = useState(false)
   // 观看历史：在父组件一次性获取，避免每个 EpisodeCard 重复请求
   const [historyMap, setHistoryMap] = useState<Record<string, WatchHistory>>({})
+  // 演职人员
+  const [persons, setPersons] = useState<MediaPerson[]>([])
 
   // 管理功能状态
   const [scraping, setScraping] = useState(false)
@@ -58,6 +61,7 @@ export default function SeriesDetailPage() {
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
+  const [matchSelecting, setMatchSelecting] = useState(false)
   const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi' | 'douban' | 'thetvdb'>('tmdb')
   const [editForm, setEditForm] = useState<{
     title: string; orig_title: string; year: number; overview: string;
@@ -97,6 +101,13 @@ export default function SeriesDetailPage() {
       }
       setHistoryMap(map)
     }).catch(() => {})
+
+    // 获取演职人员信息
+    seriesApi.getPersons(id).then((res) => {
+      setPersons(res.data.data || [])
+    }).catch(() => {
+      setPersons([])
+    })
   }, [id, navigate])
 
   const activeSeasonData = seasons.find((s) => s.season_num === activeSeason)
@@ -178,6 +189,7 @@ export default function SeriesDetailPage() {
 
   const handleMatchSelect = async (resultId: number | string) => {
     if (!id) return
+    setMatchSelecting(true)
     try {
       const sourceNameMap: Record<string, string> = { tmdb: 'TMDb', bangumi: 'Bangumi', douban: '豆瓣', thetvdb: 'TheTVDB' }
       if (matchSource === 'tmdb') {
@@ -189,12 +201,23 @@ export default function SeriesDetailPage() {
       } else {
         await adminApi.matchSeriesBangumi(id, resultId as number)
       }
-      const res = await seriesApi.detail(id)
-      setSeries(res.data.data)
+      // 重新获取剧集详情和季信息以刷新页面
+      const [seriesRes, seasonsRes] = await Promise.all([
+        seriesApi.detail(id),
+        seriesApi.seasons(id),
+      ])
+      setSeries(seriesRes.data.data)
+      const seasonData = seasonsRes.data.data || []
+      setSeasons(seasonData)
+      if (seasonData.length > 0) {
+        setActiveSeason(seasonData[0].season_num)
+      }
       setShowMatchModal(false)
       toast.success(`剧集匹配成功（来源：${sourceNameMap[matchSource]}）`)
     } catch {
       toast.error('匹配失败')
+    } finally {
+      setMatchSelecting(false)
     }
   }
 
@@ -643,6 +666,9 @@ export default function SeriesDetailPage() {
           </section>
         )}
 
+        {/* 演职人员 */}
+        <CastGrid persons={persons} />
+
         {/* 视图切换 + 季标签 */}
         <div className="space-y-4">
           <div className="flex items-center gap-2 pb-3" style={{ borderBottom: '1px solid var(--border-default)' }}>
@@ -838,7 +864,7 @@ export default function SeriesDetailPage() {
       {/* ==================== 手动匹配弹窗 ==================== */}
       {showMatchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-          <div className="w-full max-w-2xl rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
+          <div className="relative w-full max-w-2xl rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
             <h3 className="mb-4 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>手动匹配剧集</h3>
             {/* 数据源切换 */}
             <div className="mb-4 flex flex-wrap gap-2">
@@ -954,7 +980,8 @@ export default function SeriesDetailPage() {
                   <button
                     key={resultKey}
                     onClick={() => handleMatchSelect(result.id)}
-                    className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01]"
+                    disabled={matchSelecting}
+                    className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
                   >
                     {posterUrl ? (
@@ -1008,12 +1035,21 @@ export default function SeriesDetailPage() {
             <div className="mt-4 flex justify-end">
               <button
                 onClick={() => setShowMatchModal(false)}
-                className="rounded-xl px-5 py-2 text-sm font-medium transition-colors hover:opacity-80"
+                disabled={matchSelecting}
+                className="rounded-xl px-5 py-2 text-sm font-medium transition-colors hover:opacity-80 disabled:opacity-50"
                 style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
               >
                 取消
               </button>
             </div>
+            {/* 匹配中 loading 遮罩 */}
+            {matchSelecting && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+                <RefreshCw size={32} className="animate-spin text-neon mb-3" />
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>正在匹配元数据...</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>请稍候，正在获取并同步剧集信息</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1191,6 +1227,12 @@ function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Med
             </span>
           )}
         </div>
+        {/* 单集简介 */}
+        {ep.overview && (
+          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+            {ep.overview}
+          </p>
+        )}
       </div>
 
       {/* 箭头 */}
@@ -1299,6 +1341,12 @@ function EpisodeSlideCard({ episode: ep, seriesTitle, historyRecord }: { episode
             <span className="badge-neon !py-0 text-[9px]">{ep.resolution}</span>
           )}
         </div>
+        {/* 单集简介 */}
+        {ep.overview && (
+          <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+            {ep.overview}
+          </p>
+        )}
       </div>
     </Link>
   )

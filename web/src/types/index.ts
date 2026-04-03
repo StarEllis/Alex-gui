@@ -356,10 +356,17 @@ export interface StreamDetail {
   codec_name: string
   codec_long_name: string
   profile?: string
+  level?: number
   width?: number
   height?: number
+  coded_width?: number
+  coded_height?: number
+  aspect_ratio?: string
   frame_rate?: string
   bit_rate?: string
+  bit_depth?: number
+  ref_frames?: number
+  is_interlaced: boolean
   sample_rate?: string
   channels?: number
   channel_layout?: string
@@ -370,8 +377,12 @@ export interface StreamDetail {
   pix_fmt?: string
   color_space?: string
   color_transfer?: string
+  color_primaries?: string
+  color_range?: string
   bits_per_sample?: number
   duration?: string
+  start_time?: string
+  nb_frames?: string
   tags?: Record<string, string>
 }
 
@@ -382,6 +393,8 @@ export interface FormatDetail {
   size: string
   bit_rate: string
   stream_count: number
+  start_time?: string
+  tags?: Record<string, string>
 }
 
 export interface FileDetail {
@@ -389,8 +402,12 @@ export interface FileDetail {
   file_dir: string
   file_ext: string
   file_size: number
+  mime_type: string
+  permissions: string
+  owner: string
   created_at: string
   modified_at: string
+  md5: string
 }
 
 export interface LibraryInfo {

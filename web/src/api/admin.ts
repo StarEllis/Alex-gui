@@ -240,4 +240,47 @@ export const adminApi = {
     api.get<{ data: { current: string; parent: string; items: { name: string; path: string; is_dir: boolean }[] } }>('/admin/fs/browse', {
       params: { path },
     }),
+
+  // 一键清空数据（保留影视文件）
+  clearAllData: (confirm: string) =>
+    api.post<{ data: {
+      status: string
+      message: string
+      total_cleared: number
+      success_count: number
+      error_count: number
+      details: { table: string; cleared: number; status: string; message?: string }[]
+    } }>('/admin/system/clear-data', { confirm }),
+
+  // 剧集合并（多季自动合并为一个整体）
+  mergeSeries: (primaryId: string, secondaryIds: string[]) =>
+    api.post<{ message: string; data: {
+      primary_series_id: string
+      primary_title: string
+      merged_count: number
+      total_episodes: number
+      total_seasons: number
+      merged_series_ids: string[]
+    } }>('/admin/series/merge', { primary_id: primaryId, secondary_ids: secondaryIds }),
+
+  autoMergeSeries: () =>
+    api.post<{ message: string; data: {
+      groups_processed: number
+      total_merged: number
+      details: {
+        primary_series_id: string
+        primary_title: string
+        merged_count: number
+        total_episodes: number
+        total_seasons: number
+        merged_series_ids: string[]
+      }[]
+    } }>('/admin/series/auto-merge'),
+
+  mergeCandidates: () =>
+    api.get<{ data: {
+      normalized_title: string
+      count: number
+      series: { id: string; title: string; season_count: number; episode_count: number; poster_path: string }[]
+    }[]; total: number }>('/admin/series/merge-candidates'),
 }

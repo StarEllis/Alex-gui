@@ -372,14 +372,37 @@ func mergeConfigDir() error {
 			}
 
 			// 将分片配置写入主 viper 的对应前缀下
+			// 注意：分片配置中的空值不应覆盖主配置文件中已存在的非空值，
+			// 避免 config/secrets.yaml 中的空 tmdb_api_key 覆盖 config.yaml 中用户已保存的值
 			for _, key := range subViper.AllKeys() {
 				fullKey := cf.prefix + "." + key
-				viper.Set(fullKey, subViper.Get(key))
+				newVal := subViper.Get(key)
+				existingVal := viper.Get(fullKey)
+				// 仅当分片配置的值非空，或主配置中尚无该值时，才进行覆盖
+				if !isEmptyValue(newVal) || existingVal == nil || isEmptyValue(existingVal) {
+					viper.Set(fullKey, newVal)
+				}
 			}
 		}
 	}
 
 	return nil
+}
+
+// isEmptyValue 判断配置值是否为"空"（空字符串、nil、空切片等）
+// 用于 mergeConfigDir 中避免分片配置的空值覆盖主配置中已有的非空值
+func isEmptyValue(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	switch val := v.(type) {
+	case string:
+		return val == ""
+	case []interface{}:
+		return len(val) == 0
+	default:
+		return false
+	}
 }
 
 // migrateFromFlatConfig 将旧版扁平字段值合并到子模块配置中
@@ -511,6 +534,10 @@ func (c *Config) SetTMDbAPIKey(key string) error {
 	c.mu.Unlock()
 
 	viper.Set("secrets.tmdb_api_key", key)
+
+	// 同时更新分片配置文件（如果存在），确保重启后不会被旧的空值覆盖
+	c.updateSecretsFile("tmdb_api_key", key)
+
 	return c.saveConfig()
 }
 
@@ -526,6 +553,26 @@ func (c *Config) saveConfig() error {
 		configFile = "config.yaml"
 	}
 	return viper.WriteConfigAs(configFile)
+}
+
+// updateSecretsFile 更新 config/secrets.yaml 分片文件中的指定字段
+// 避免分片文件中的旧值在重启时覆盖用户通过 API 保存的新值
+func (c *Config) updateSecretsFile(key, value string) {
+	secretsDirs := []string{"./config", "./data/config", "/etc/nowen-video/config"}
+	for _, dir := range secretsDirs {
+		filePath := filepath.Join(dir, "secrets.yaml")
+		if _, err := os.Stat(filePath); err != nil {
+			continue
+		}
+		subViper := viper.New()
+		subViper.SetConfigFile(filePath)
+		if err := subViper.ReadInConfig(); err != nil {
+			continue
+		}
+		subViper.Set(key, value)
+		_ = subViper.WriteConfigAs(filePath)
+		return // 只更新第一个找到的文件
+	}
 }
 
 // ==================== 数据库 DSN 构造 ====================

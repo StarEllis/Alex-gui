@@ -139,6 +139,7 @@ func (s *BangumiService) ScrapeMedia(media *model.Media, searchTitle string, yea
 	if len(results) == 0 {
 		// 尝试动画类型
 		if subjectType != BangumiTypeAnime {
+			randomDelay(1500, 3000) // 重试前等待
 			results, err = s.SearchSubjects(searchTitle, BangumiTypeAnime, year)
 			if err != nil {
 				return fmt.Errorf("Bangumi 搜索失败: %w", err)
@@ -146,6 +147,7 @@ func (s *BangumiService) ScrapeMedia(media *model.Media, searchTitle string, yea
 		}
 		// 不带年份重试
 		if len(results) == 0 && year > 0 {
+			randomDelay(1500, 3000) // 重试前等待
 			results, err = s.SearchSubjects(searchTitle, subjectType, 0)
 			if err != nil {
 				return fmt.Errorf("Bangumi 搜索失败: %w", err)
@@ -158,7 +160,8 @@ func (s *BangumiService) ScrapeMedia(media *model.Media, searchTitle string, yea
 
 	best := results[0]
 
-	// 获取详情以获取更完整的信息
+	// 获取详情以获取更完整的信息（搜索与详情请求之间添加随机延迟）
+	randomDelay(1500, 3000)
 	detail, err := s.GetSubjectDetail(best.ID)
 	if err == nil {
 		best = *detail
@@ -183,10 +186,12 @@ func (s *BangumiService) ApplyBangumiData(media *model.Media, searchTitle string
 
 	if len(results) == 0 {
 		// 尝试三次元类型
+		randomDelay(1500, 3000)
 		results, _ = s.SearchSubjects(searchTitle, BangumiTypeReal, year)
 	}
 
 	if len(results) == 0 && year > 0 {
+		randomDelay(1500, 3000)
 		results, _ = s.SearchSubjects(searchTitle, BangumiTypeAnime, 0)
 	}
 
@@ -196,6 +201,7 @@ func (s *BangumiService) ApplyBangumiData(media *model.Media, searchTitle string
 	}
 
 	best := results[0]
+	randomDelay(1500, 3000) // 搜索与详情请求之间添加随机延迟
 	detail, err := s.GetSubjectDetail(best.ID)
 	if err == nil {
 		best = *detail
@@ -413,9 +419,11 @@ func (s *BangumiService) GetSubjectDetail(subjectID int) (*BangumiSubject, error
 
 // setHeaders 设置 Bangumi API 请求头
 func (s *BangumiService) setHeaders(req *http.Request) {
-	// Bangumi API 强制要求 User-Agent
+	// Bangumi API 强制要求 User-Agent，使用项目标识 + 真实浏览器 UA 混合
 	req.Header.Set("User-Agent", "nowen-video/1.0 (https://github.com/nowen-video)")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Connection", "keep-alive")
 
 	// 如果配置了 Access Token，添加认证头
 	token := s.cfg.Secrets.BangumiAccessToken

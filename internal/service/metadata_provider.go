@@ -191,6 +191,7 @@ func (c *ProviderChain) ScrapeMedia(media *model.Media, searchTitle string, year
 
 	var primaryErr error
 	primaryDone := false
+	providerCallCount := 0
 
 	for _, provider := range c.providers {
 		if !provider.IsEnabled() {
@@ -201,6 +202,12 @@ func (c *ProviderChain) ScrapeMedia(media *model.Media, searchTitle string, year
 		if !c.isProviderApplicable(provider, media.MediaType, isAnime, isTVShow) {
 			continue
 		}
+
+		// 数据源调用之间添加随机延迟（首次调用不延迟）
+		if providerCallCount > 0 {
+			randomDelay(2000, 4000)
+		}
+		providerCallCount++
 
 		mode := "supplement"
 		if !primaryDone {
@@ -243,6 +250,7 @@ func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, y
 
 	var primaryErr error
 	primaryDone := false
+	providerCallCount := 0
 
 	for _, provider := range c.providers {
 		if !provider.IsEnabled() {
@@ -253,6 +261,12 @@ func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, y
 		if !c.isProviderApplicable(provider, "tvshow", isAnime, true) {
 			continue
 		}
+
+		// 数据源调用之间添加随机延迟（首次调用不延迟）
+		if providerCallCount > 0 {
+			randomDelay(2000, 4000)
+		}
+		providerCallCount++
 
 		mode := "supplement"
 		if !primaryDone {
@@ -425,6 +439,7 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 	}
 
 	best := results[0]
+	series.TMDbID = best.ID // 保存 TMDb ID，用于后续逐集刮削
 	title := best.Name
 	if title == "" {
 		title = best.Title

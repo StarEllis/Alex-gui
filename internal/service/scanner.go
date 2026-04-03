@@ -32,6 +32,83 @@ var supportedExts = map[string]bool{
 	".strm": true, // STRM 远程流文件
 }
 
+// extrasExcludeDirs Emby/Kodi 标准的非正片内容目录名（小写）
+var extrasExcludeDirs = map[string]bool{
+	"extras":             true,
+	"extra":              true,
+	"featurettes":        true,
+	"behind the scenes":  true,
+	"deleted scenes":     true,
+	"interviews":         true,
+	"trailers":           true,
+	"trailer":            true,
+	"samples":            true,
+	"sample":             true,
+	"shorts":             true,
+	"scenes":             true,
+	"bonus":              true,
+	"bonus features":     true,
+}
+
+// extrasSuffixes Emby 标准的特典文件命名后缀（小写）
+var extrasSuffixes = []string{
+	"-behindthescenes", "-deleted", "-featurette",
+	"-interview", "-scene", "-short", "-trailer", "-sample",
+}
+
+// isExtrasPath 判断文件路径是否在非正片目录下
+func isExtrasPath(filePath string) bool {
+	parts := strings.Split(filepath.ToSlash(filePath), "/")
+	for _, part := range parts {
+		if extrasExcludeDirs[strings.ToLower(part)] {
+			return true
+		}
+	}
+	return false
+}
+
+// isExtrasFile 判断文件名是否含有非正片后缀
+func isExtrasFile(filename string) bool {
+	lower := strings.ToLower(strings.TrimSuffix(filename, filepath.Ext(filename)))
+	for _, suffix := range extrasSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// idTagPatterns 从文件名/文件夹名中提取元数据 ID 的正则
+var idTagPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)[\[\{](tmdbid|tmdb)[=\-](\d+)[\]\}]`),
+	regexp.MustCompile(`(?i)[\[\{](imdbid|imdb)[=\-](tt\d+)[\]\}]`),
+	regexp.MustCompile(`(?i)[\[\{](tvdbid|tvdb)[=\-](\d+)[\]\}]`),
+}
+
+// yearInNamePattern 从文件名/文件夹名中提取年份 (2009) 或 [2009]
+var yearInNamePattern = regexp.MustCompile(`[\(\[]((?:19|20)\d{2})[\)\]]`)
+
+// parseIDFromName 从文件名/文件夹名中提取元数据 ID
+func parseIDFromName(name string) (idType string, idValue string) {
+	for _, pattern := range idTagPatterns {
+		if m := pattern.FindStringSubmatch(name); len(m) >= 3 {
+			return strings.ToLower(m[1]), m[2]
+		}
+	}
+	return "", ""
+}
+
+// extractYearFromName 从文件名/文件夹名中提取年份
+func extractYearFromName(name string) int {
+	if m := yearInNamePattern.FindStringSubmatch(name); len(m) >= 2 {
+		year, _ := strconv.Atoi(m[1])
+		if year >= 1900 && year <= 2099 {
+			return year
+		}
+	}
+	return 0
+}
+
 // FFprobeResult FFprobe输出结构
 type FFprobeResult struct {
 	Streams []FFprobeStream `json:"streams"`
@@ -184,6 +261,10 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			return nil
 		}
 		if info.IsDir() {
+			// 跳过 extras/trailers 等非正片目录（P0: 兼容 Emby 标准）
+			if extrasExcludeDirs[strings.ToLower(filepath.Base(path))] {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		totalFiles++
@@ -192,6 +273,23 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			return nil
 		}
 		videoFiles++
+
+		// P0: 文件大小过滤（启用 MinFileSize 配置）
+		if library.EnableFileFilter && library.MinFileSize > 0 {
+			minBytes := int64(library.MinFileSize) * 1024 * 1024
+			if info.Size() < minBytes {
+				s.logger.Debugf("跳过过小文件(%dMB < %dMB): %s",
+					info.Size()/(1024*1024), library.MinFileSize, path)
+				return nil
+			}
+		}
+
+		// P0: 排除 extras 路径和 Emby 特典后缀文件
+		if isExtrasPath(path) || isExtrasFile(filepath.Base(path)) {
+			s.logger.Debugf("跳过非正片内容: %s", path)
+			return nil
+		}
+
 		// 检查文件是否已存在
 		existing, findErr := s.mediaRepo.FindByFilePath(path)
 		if findErr == nil {
@@ -209,13 +307,18 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			s.logger.Debugf("更新已有媒体: %s", path)
 			return nil
 		}
-		title := s.extractTitle(filepath.Base(path))
+
+		// P0: 增强的标题提取（含年份 + ID 标签解析）
+		filename := filepath.Base(path)
+		title, year, tmdbID := s.extractTitleEnhanced(filename)
 		media := &model.Media{
 			LibraryID: library.ID,
 			Title:     title,
 			FilePath:  path,
 			FileSize:  info.Size(),
 			MediaType: "movie",
+			Year:      year,
+			TMDbID:    tmdbID,
 		}
 		s.probeMediaInfo(media)
 		s.scanExternalSubtitles(media)
@@ -537,6 +640,18 @@ var episodePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`[\-\.\s](\d{2,4})[\]\-\.\s]`),
 }
 
+// multiEpPatterns 多集连播文件正则（优先于单集模式匹配）
+var multiEpPatterns = []*regexp.Regexp{
+	// S01E02-E03 / S01E02-E05 / S01E02-e03
+	regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,4})\s*[-–~]\s*E(\d{1,4})`),
+	// S01E02-03 (无前缀 E 的范围)
+	regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,4})\s*[-–~]\s*(\d{1,4})`),
+}
+
+// dateEpisodePattern 日期格式集号正则（用于脱口秀/日播剧等）
+// 匹配: 2024.01.15 / 2024-01-15 / 2024_01_15
+var dateEpisodePattern = regexp.MustCompile(`((?:19|20)\d{2})[\.\-_](\d{2})[\.\-_](\d{2})`)
+
 // 独立季号正则：从文件名中提取 S2、Season 2 等季号（不依赖集号）
 var seasonInFilenamePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bS(\d{1,2})\b`),
@@ -549,7 +664,8 @@ var seasonDirPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^Season\s*(\d{1,2})$`),
 	regexp.MustCompile(`(?i)^S(\d{1,2})$`),
 	regexp.MustCompile(`^第\s*(\d{1,2})\s*季$`),
-	regexp.MustCompile(`(?i)^Specials?$`), // 特别篇
+	regexp.MustCompile(`(?i)^Specials?$`),   // 特别篇
+	regexp.MustCompile(`(?i)^Season\s*0+$`), // Season 0 / Season 00（Emby 特别篇格式）
 }
 
 // seriesFolder 多季合并时使用的目录信息
@@ -561,11 +677,13 @@ type seriesFolder struct {
 
 // EpisodeInfo 解析出的剧集信息
 type EpisodeInfo struct {
-	SeasonNum    int
-	EpisodeNum   int
-	EpisodeTitle string
-	FilePath     string
-	FileInfo     os.FileInfo
+	SeasonNum     int
+	EpisodeNum    int
+	EpisodeNumEnd int    // 多集连播结束集号（0=单集），如 S01E02-E05 → Start=2, End=5
+	EpisodeTitle  string
+	AirDate       string // 日期格式集号：2024-01-15（脱口秀/日播剧）
+	FilePath      string
+	FileInfo      os.FileInfo
 }
 
 // scanTVShowLibrary 扫描剧集库（基于文件夹的合集识别 + 根目录散落文件智能归类）
@@ -1286,7 +1404,56 @@ func (s *ScannerService) parseEpisodeInfo(filename string) EpisodeInfo {
 	// 预处理：移除文件扩展名，方便后续解析
 	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
 
-	// === 阶段一：提取集号 ===
+	// === 阶段零：多集连播检测（优先于单集匹配） ===
+
+	// 多集模式0: S01E02-E03 / S01E02-E05
+	if m := multiEpPatterns[0].FindStringSubmatch(filename); len(m) >= 4 {
+		sNum, _ := strconv.Atoi(m[1])
+		eStart, _ := strconv.Atoi(m[2])
+		eEnd, _ := strconv.Atoi(m[3])
+		if eEnd > eStart && sNum <= 30 {
+			ep.SeasonNum = sNum
+			ep.EpisodeNum = eStart
+			ep.EpisodeNumEnd = eEnd
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+			return ep
+		}
+	}
+
+	// 多集模式1: S01E02-03 (无前缀E的范围)
+	if m := multiEpPatterns[1].FindStringSubmatch(filename); len(m) >= 4 {
+		sNum, _ := strconv.Atoi(m[1])
+		eStart, _ := strconv.Atoi(m[2])
+		eEnd, _ := strconv.Atoi(m[3])
+		if eEnd > eStart && sNum <= 30 && !resolutionNums[eEnd] {
+			ep.SeasonNum = sNum
+			ep.EpisodeNum = eStart
+			ep.EpisodeNumEnd = eEnd
+			ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+			return ep
+		}
+	}
+
+	// === 阶段零-B：日期格式集号检测（日播剧/脱口秀） ===
+	if m := dateEpisodePattern.FindStringSubmatch(filename); len(m) >= 4 {
+		year, _ := strconv.Atoi(m[1])
+		month, _ := strconv.Atoi(m[2])
+		day, _ := strconv.Atoi(m[3])
+		// 验证日期合理性
+		if year >= 1990 && year <= 2099 && month >= 1 && month <= 12 && day >= 1 && day <= 31 {
+			// 不与 SxxExx 冲突：如果同时有 S01E01 格式，优先使用 SxxExx
+			if !episodePatterns[0].MatchString(filename) && !episodePatterns[1].MatchString(filename) {
+				ep.AirDate = fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+				// 将日期编码为集号: MMDD (方便排序)
+				ep.EpisodeNum = month*100 + day
+				ep.SeasonNum = year - 2000 // 年份作为季号标识（如 2024 → 24）
+				ep.EpisodeTitle = s.extractEpisodeTitle(nameWithoutExt, m[0])
+				return ep
+			}
+		}
+	}
+
+	// === 阶段一：提取集号（原有逻辑） ===
 
 	// 模式 0: S01E01 — 最精确的格式，同时包含季号和集号
 	if m := episodePatterns[0].FindStringSubmatch(filename); len(m) >= 3 {
@@ -1861,18 +2028,58 @@ func (s *ScannerService) classifyResolution(width, height int) string {
 	}
 }
 
-// extractTitle 从文件名提取标题
+// extractTitle 从文件名提取标题（保持向后兼容的简单版本）
 func (s *ScannerService) extractTitle(filename string) string {
+	title, _, _ := s.extractTitleEnhanced(filename)
+	return title
+}
+
+// extractTitleEnhanced 从文件名增强提取标题、年份和 TMDb ID
+// 支持 Emby 标准命名格式：Title (Year) [tmdbid=xxx]
+func (s *ScannerService) extractTitleEnhanced(filename string) (title string, year int, tmdbID int) {
 	// 去掉扩展名
-	title := strings.TrimSuffix(filename, filepath.Ext(filename))
-	// 替换常见分隔符为空格
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	// 步骤1：提取 ID 标签 [tmdbid=xxx]、{imdb-ttxxx} 等
+	idType, idValue := parseIDFromName(name)
+	if idType == "tmdbid" || idType == "tmdb" {
+		tmdbID, _ = strconv.Atoi(idValue)
+	}
+	// 从名称中移除 ID 标签
+	for _, pattern := range idTagPatterns {
+		name = pattern.ReplaceAllString(name, "")
+	}
+
+	// 步骤2：提取年份 (2009) 或 [2009]
+	year = extractYearFromName(name)
+	// 移除年份标记
+	name = yearInNamePattern.ReplaceAllString(name, "")
+
+	// 步骤3：清理常见编码/来源/分辨率标记
+	cleanPatterns := []string{
+		`(?i)\b(BluRay|BDRip|HDRip|WEB-?DL|WEBRip|DVDRip|HDTV|HDCam|REMUX)\b`,
+		`(?i)\b(x264|x265|h\.?264|h\.?265|HEVC|AVC|AAC|DTS|AC3|FLAC|OPUS)\b`,
+		`(?i)\b(1080p|720p|480p|2160p|4K|UHD)\b`,
+		`(?i)\b(PROPER|REPACK|EXTENDED|UNRATED|DIRECTORS\.?CUT|REMASTERED)\b`,
+	}
+	for _, p := range cleanPatterns {
+		re := regexp.MustCompile(p)
+		name = re.ReplaceAllString(name, " ")
+	}
+
+	// 步骤4：替换常见分隔符为空格
 	replacer := strings.NewReplacer(
 		".", " ",
 		"_", " ",
-		"-", " ",
 	)
-	title = replacer.Replace(title)
-	return strings.TrimSpace(title)
+	name = replacer.Replace(name)
+
+	// 步骤5：清理多余空格和首尾的分隔符
+	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
+	name = strings.Trim(name, " -")
+
+	title = strings.TrimSpace(name)
+	return
 }
 
 // GetExternalSubtitles 获取媒体文件的外挂字幕列表

@@ -92,6 +92,7 @@ func (s *DoubanService) ScrapeMedia(media *model.Media, searchTitle string, year
 	if len(results) == 0 {
 		// 不带年份重试
 		if year > 0 {
+			randomDelay(3000, 6000) // 重试前等待 3-6 秒
 			results, err = s.searchDouban(searchTitle, 0)
 			if err != nil {
 				return fmt.Errorf("豆瓣搜索失败: %w", err)
@@ -122,6 +123,7 @@ func (s *DoubanService) ApplyDoubanData(media *model.Media, searchTitle string, 
 	}
 
 	if len(results) == 0 && year > 0 {
+		randomDelay(3000, 6000) // 重试前等待 3-6 秒
 		results, err = s.searchDouban(searchTitle, 0)
 		if err != nil {
 			return
@@ -185,10 +187,10 @@ func (s *DoubanService) searchDouban(query string, year int) ([]DoubanSearchResu
 		return nil, err
 	}
 
-	// 设置请求头，模拟浏览器请求
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", "https://movie.douban.com/")
+	// 设置请求头，模拟浏览器请求（使用随机 User-Agent 和完整的浏览器指纹）
+	setBrowserHeaders(req, "https://movie.douban.com/")
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -238,6 +240,9 @@ func (s *DoubanService) searchDouban(query string, year int) ([]DoubanSearchResu
 
 	// 获取第一个结果的详细信息
 	if len(results) > 0 && results[0].ID != "" {
+		// 搜索和详情请求之间添加随机延迟，模拟真实用户浏览行为
+		randomDelay(3000, 6000)
+
 		detail, err := s.getSubjectDetail(results[0].ID)
 		if err == nil {
 			results[0].Rating = detail.Rating.Average
@@ -264,8 +269,11 @@ func (s *DoubanService) getSubjectDetail(doubanID string) (*DoubanSubjectDetail,
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", getRandomUserAgent())
 	req.Header.Set("Referer", fmt.Sprintf("https://movie.douban.com/subject/%s/", doubanID))
+	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -323,7 +331,7 @@ func (s *DoubanService) downloadDoubanCover(media *model.Media, coverURL string)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("User-Agent", getRandomUserAgent())
 	req.Header.Set("Referer", "https://movie.douban.com/")
 
 	resp, err := s.client.Do(req)

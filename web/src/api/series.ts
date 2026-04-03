@@ -25,4 +25,7 @@ export const seriesApi = {
     api.get<{ data: Media | null; message?: string }>(`/series/${id}/next`, {
       params: { season, episode },
     }),
+
+  getPersons: (id: string) =>
+    api.get<ListResponse<import('@/types').MediaPerson>>(`/series/${id}/persons`),
 }

@@ -120,6 +120,26 @@ func TestParseEpisodeInfo(t *testing.T) {
 			wantEpisodeNum: 13,
 			desc:           "[13FINAL] 格式：FINAL后缀",
 		},
+
+		// === P1 新增：多集连播格式 ===
+		{
+			filename:       "Glee.S01E01-E02.720p.mkv",
+			wantSeasonNum:  1,
+			wantEpisodeNum: 1,
+			desc:           "多集连播 S01E01-E02",
+		},
+		{
+			filename:       "Show.S02E05-E08.1080p.mkv",
+			wantSeasonNum:  2,
+			wantEpisodeNum: 5,
+			desc:           "多集连播 S02E05-E08",
+		},
+		{
+			filename:       "Drama.S01E10-12.720p.mkv",
+			wantSeasonNum:  1,
+			wantEpisodeNum: 10,
+			desc:           "多集连播 S01E10-12（无前缀E）",
+		},
 	}
 
 	for _, tt := range tests {

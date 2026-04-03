@@ -15,6 +15,10 @@ func (r *PersonRepo) Create(person *model.Person) error {
 	return r.db.Create(person).Error
 }
 
+func (r *PersonRepo) Update(person *model.Person) error {
+	return r.db.Save(person).Error
+}
+
 func (r *PersonRepo) FindByID(id string) (*model.Person, error) {
 	var person model.Person
 	err := r.db.First(&person, "id = ?", id).Error

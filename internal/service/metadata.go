@@ -23,28 +23,32 @@ import (
 
 // MetadataService 元数据刮削服务
 type MetadataService struct {
-	mediaRepo     *repository.MediaRepo
-	seriesRepo    *repository.SeriesRepo
-	cfg           *config.Config
-	logger        *zap.SugaredLogger
-	client        *http.Client
-	wsHub         *WSHub          // WebSocket事件广播
-	douban        *DoubanService  // 豆瓣刮削服务（补充源）
-	bangumi       *BangumiService // Bangumi刮削服务（补充源）
-	ai            *AIService      // AI 元数据增强（第四层 Fallback）
-	providerChain *ProviderChain  // 多数据源调度链（第三阶段）
-	thetvdb       *TheTVDBService // TheTVDB 剧集增强源
+	mediaRepo       *repository.MediaRepo
+	seriesRepo      *repository.SeriesRepo
+	personRepo      *repository.PersonRepo      // 演员信息仓储
+	mediaPersonRepo *repository.MediaPersonRepo // 媒体-演员关联仓储
+	cfg             *config.Config
+	logger          *zap.SugaredLogger
+	client          *http.Client
+	wsHub           *WSHub          // WebSocket事件广播
+	douban          *DoubanService  // 豆瓣刮削服务（补充源）
+	bangumi         *BangumiService // Bangumi刮削服务（补充源）
+	ai              *AIService      // AI 元数据增强（第四层 Fallback）
+	providerChain   *ProviderChain  // 多数据源调度链（第三阶段）
+	thetvdb         *TheTVDBService // TheTVDB 剧集增强源
 }
 
-func NewMetadataService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *MetadataService {
+func NewMetadataService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, personRepo *repository.PersonRepo, mediaPersonRepo *repository.MediaPersonRepo, cfg *config.Config, logger *zap.SugaredLogger) *MetadataService {
 	s := &MetadataService{
-		mediaRepo:  mediaRepo,
-		seriesRepo: seriesRepo,
-		cfg:        cfg,
-		logger:     logger,
-		client:     buildTMDbHTTPClient(cfg, logger),
-		douban:     NewDoubanService(mediaRepo, cfg, logger),
-		bangumi:    NewBangumiService(mediaRepo, seriesRepo, cfg, logger),
+		mediaRepo:       mediaRepo,
+		seriesRepo:      seriesRepo,
+		personRepo:      personRepo,
+		mediaPersonRepo: mediaPersonRepo,
+		cfg:             cfg,
+		logger:          logger,
+		client:          buildTMDbHTTPClient(cfg, logger),
+		douban:          NewDoubanService(mediaRepo, cfg, logger),
+		bangumi:         NewBangumiService(mediaRepo, seriesRepo, cfg, logger),
 	}
 	return s
 }
@@ -110,14 +114,21 @@ func defaultIfEmpty(s, def string) string {
 
 // tmdbGetWithRetry 带重试的 TMDb GET 请求
 // 超时后自动重试 1 次（共 2 次尝试），仍然失败则返回错误
+// 每次请求携带随机 User-Agent 和浏览器级请求头，重试间隔 2-4 秒随机化
 func (s *MetadataService) tmdbGetWithRetry(url string) (*http.Response, error) {
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		if attempt > 0 {
 			s.logger.Debugf("TMDb 请求重试 (%d/2): %s", attempt+1, url)
-			time.Sleep(500 * time.Millisecond)
+			randomDelay(2000, 4000) // 重试间隔 2-4 秒随机化
 		}
-		resp, err := s.client.Get(url)
+		req, reqErr := http.NewRequest("GET", url, nil)
+		if reqErr != nil {
+			lastErr = reqErr
+			continue
+		}
+		setAPIHeaders(req) // 设置随机 User-Agent + 浏览器级请求头
+		resp, err := s.client.Do(req)
 		if err != nil {
 			lastErr = err
 			continue
@@ -215,6 +226,53 @@ type TMDbGenre struct {
 	Name string `json:"name"`
 }
 
+// TMDbTVSeasonDetail TMDb TV 季详情（包含每集信息）
+type TMDbTVSeasonDetail struct {
+	ID           int             `json:"id"`
+	SeasonNumber int             `json:"season_number"`
+	Name         string          `json:"name"`
+	Overview     string          `json:"overview"`
+	AirDate      string          `json:"air_date"`
+	Episodes     []TMDbTVEpisode `json:"episodes"`
+}
+
+// TMDbTVEpisode TMDb TV 单集信息
+type TMDbTVEpisode struct {
+	ID            int     `json:"id"`
+	EpisodeNumber int     `json:"episode_number"`
+	SeasonNumber  int     `json:"season_number"`
+	Name          string  `json:"name"`
+	Overview      string  `json:"overview"`
+	AirDate       string  `json:"air_date"`
+	StillPath     string  `json:"still_path"`
+	VoteAverage   float64 `json:"vote_average"`
+	Runtime       int     `json:"runtime"`
+}
+
+// TMDbCredits TMDb 演职人员信息（/movie/{id}/credits 或 /tv/{id}/credits 返回）
+type TMDbCredits struct {
+	Cast []TMDbCastMember `json:"cast"`
+	Crew []TMDbCrewMember `json:"crew"`
+}
+
+// TMDbCastMember TMDb 演员信息
+type TMDbCastMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	ProfilePath string `json:"profile_path"`
+	Order       int    `json:"order"`
+}
+
+// TMDbCrewMember TMDb 剧组成员信息
+type TMDbCrewMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Job         string `json:"job"`
+	Department  string `json:"department"`
+	ProfilePath string `json:"profile_path"`
+}
+
 // ==================== 核心方法 ====================
 
 // ScrapeMedia 为单个媒体项刮削元数据
@@ -226,8 +284,33 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 
 	s.logger.Infof("开始刮削元数据: %s", media.Title)
 
+	// P1: 如果扫描阶段已从文件名解析到 TMDb ID，直接用 ID 获取详情，跳过搜索步骤
+	if media.TMDbID > 0 && media.Overview == "" {
+		s.logger.Infof("检测到 TMDbID=%d（来自文件名），直接使用 ID 刮削: %s", media.TMDbID, media.Title)
+		var idErr error
+		if media.MediaType == "movie" {
+			idErr = s.scrapeMovieByTMDbID(media, media.TMDbID)
+		} else {
+			idErr = s.scrapeTVByTMDbID(media, media.TMDbID)
+		}
+		if idErr == nil {
+			if saveErr := s.mediaRepo.Update(media); saveErr != nil {
+				s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
+				return saveErr
+			}
+			s.logger.Infof("TMDb ID 直连刮削成功: %s", media.Title)
+			randomDelay(1500, 3000)
+			return nil
+		}
+		s.logger.Debugf("TMDb ID 直连刮削失败，回退到搜索模式: %s - %v", media.Title, idErr)
+	}
+
 	// 从标题中提取搜索关键词和年份
 	searchTitle, year := s.parseTitle(media.Title)
+	// 如果扫描阶段已提取到年份但标题解析未提取到，使用扫描阶段的年份
+	if year == 0 && media.Year > 0 {
+		year = media.Year
+	}
 
 	// 如果已配置 ProviderChain，使用新的多数据源调度链
 	if s.providerChain != nil {
@@ -242,7 +325,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 			return saveErr
 		}
 		s.logger.Infof("元数据刮削完成 (多数据源): %s", media.Title)
-		time.Sleep(200 * time.Millisecond)
+		randomDelay(1500, 3000) // 单次刮削完成后等待 1.5-3 秒，防止限流
 		return nil
 	}
 
@@ -321,8 +404,8 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 		}
 	}
 
-	// 等待一下避免限流
-	time.Sleep(200 * time.Millisecond)
+	// 等待一下避免限流（随机 1.5-3 秒）
+	randomDelay(1500, 3000)
 
 	return nil
 }
@@ -376,8 +459,8 @@ func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Medi
 			Message:    fmt.Sprintf("刮削进度: [%d/%d] %s", i+1, total, media.Title),
 		})
 
-		// TMDb限速：每秒最多40次请求，我们保守一点
-		time.Sleep(300 * time.Millisecond)
+		// TMDb限速保护：每次请求间隔 2-5 秒随机化，防止 IP 被封禁
+		randomDelay(2000, 5000)
 	}
 
 	// 发送刮削完成事件
@@ -422,8 +505,8 @@ func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, ye
 		}
 	}
 
-	// 取第一个结果
-	best := results[0]
+	// P1: 使用置信度排序选择最佳匹配结果
+	best := s.bestMatchResult(results, searchTitle, year)
 
 	// 获取详情
 	detail, err := s.getMovieDetail(best.ID)
@@ -456,6 +539,13 @@ func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, ye
 		}
 	}
 
+	// 获取并保存演职人员
+	if s.cfg.Secrets.TMDbAPIKey != "" && best.ID > 0 {
+		if credits, err := s.getTMDbMovieCredits(best.ID); err == nil {
+			s.saveCreditsForMedia(media.ID, credits)
+		}
+	}
+
 	return s.mediaRepo.Update(media)
 }
 
@@ -478,7 +568,8 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 		}
 	}
 
-	best := results[0]
+	// P1: 使用置信度排序选择最佳匹配结果
+	best := s.bestMatchResult(results, searchTitle, year)
 
 	// 应用搜索结果
 	title := best.Name
@@ -522,7 +613,183 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 	return s.mediaRepo.Update(media)
 }
 
-// ==================== TMDb API 调用 ====================
+// scrapeMovieByTMDbID 通过 TMDb ID 直接获取电影详情（跳过搜索步骤）
+// P1: 当文件名中包含 [tmdbid=xxx] 标签时调用，100% 精确匹配
+func (s *MetadataService) scrapeMovieByTMDbID(media *model.Media, tmdbID int) error {
+	detail, err := s.getMovieDetail(tmdbID)
+	if err != nil {
+		return fmt.Errorf("TMDb ID=%d 获取电影详情失败: %w", tmdbID, err)
+	}
+	s.applyMovieDetail(media, detail)
+	media.TMDbID = tmdbID
+
+	// 下载海报
+	if detail.PosterPath != "" {
+		localPath, dlErr := s.downloadPoster(media, detail.PosterPath)
+		if dlErr == nil {
+			media.PosterPath = localPath
+		}
+	}
+	// 下载背景图
+	if detail.BackdropPath != "" {
+		localPath, dlErr := s.downloadBackdrop(media, detail.BackdropPath)
+		if dlErr == nil {
+			media.BackdropPath = localPath
+		}
+	}
+	// 获取演职人员
+	if credits, credErr := s.getTMDbMovieCredits(tmdbID); credErr == nil {
+		s.saveCreditsForMedia(media.ID, credits)
+	}
+
+	return s.mediaRepo.Update(media)
+}
+
+// scrapeTVByTMDbID 通过 TMDb ID 直接获取剧集详情（跳过搜索步骤）
+func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error {
+	// 使用 TMDb TV Detail API
+	apiURL := fmt.Sprintf("%s/3/tv/%d?api_key=%s&language=zh-CN",
+		s.getTMDbAPIBase(), tmdbID, s.cfg.Secrets.TMDbAPIKey)
+	resp, err := s.tmdbGetWithRetry(apiURL)
+	if err != nil {
+		return fmt.Errorf("TMDb TV ID=%d 获取详情失败: %w", tmdbID, err)
+	}
+	defer resp.Body.Close()
+
+	var tvDetail struct {
+		ID           int     `json:"id"`
+		Name         string  `json:"name"`
+		OriginalName string  `json:"original_name"`
+		Overview     string  `json:"overview"`
+		PosterPath   string  `json:"poster_path"`
+		BackdropPath string  `json:"backdrop_path"`
+		FirstAirDate string  `json:"first_air_date"`
+		VoteAverage  float64 `json:"vote_average"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tvDetail); err != nil {
+		return fmt.Errorf("解析 TMDb TV 详情失败: %w", err)
+	}
+
+	media.OrigTitle = tvDetail.OriginalName
+	if tvDetail.Overview != "" {
+		media.Overview = tvDetail.Overview
+	}
+	media.Rating = tvDetail.VoteAverage
+	media.TMDbID = tmdbID
+
+	if len(tvDetail.FirstAirDate) >= 4 {
+		media.Year, _ = strconv.Atoi(tvDetail.FirstAirDate[:4])
+	}
+
+	// 下载海报
+	if tvDetail.PosterPath != "" {
+		localPath, dlErr := s.downloadPoster(media, tvDetail.PosterPath)
+		if dlErr == nil {
+			media.PosterPath = localPath
+		}
+	}
+	if tvDetail.BackdropPath != "" {
+		localPath, dlErr := s.downloadBackdrop(media, tvDetail.BackdropPath)
+		if dlErr == nil {
+			media.BackdropPath = localPath
+		}
+	}
+
+	return s.mediaRepo.Update(media)
+}
+
+// bestMatchResult 从搜索结果中选择最佳匹配（P1: 置信度排序替代简单取 results[0]）
+// 综合考虑标题匹配度、年份匹配、数据完整性等因素
+func (s *MetadataService) bestMatchResult(results []TMDbMovie, searchTitle string, year int) TMDbMovie {
+	if len(results) == 1 {
+		return results[0]
+	}
+
+	type scored struct {
+		index int
+		score float64
+	}
+
+	searchLower := strings.ToLower(strings.TrimSpace(searchTitle))
+	var candidates []scored
+
+	for i, r := range results {
+		score := 0.0
+
+		// 获取标题
+		title := r.Title
+		if title == "" {
+			title = r.Name
+		}
+		origTitle := r.OriginalTitle
+		if origTitle == "" {
+			origTitle = r.OriginalName
+		}
+
+		titleLower := strings.ToLower(strings.TrimSpace(title))
+		origTitleLower := strings.ToLower(strings.TrimSpace(origTitle))
+
+		// 标题完全匹配 → +50 分
+		if titleLower == searchLower || origTitleLower == searchLower {
+			score += 50
+		} else if strings.Contains(titleLower, searchLower) || strings.Contains(origTitleLower, searchLower) {
+			// 标题包含搜索词 → +30 分
+			score += 30
+		} else if strings.Contains(searchLower, titleLower) && len(titleLower) > 2 {
+			// 搜索词包含标题 → +20 分
+			score += 20
+		}
+
+		// 年份匹配 → +30 分（精确）或 +15 分（相差 1 年）
+		if year > 0 {
+			dateStr := r.ReleaseDate
+			if dateStr == "" {
+				dateStr = r.FirstAirDate
+			}
+			if len(dateStr) >= 4 {
+				resultYear, _ := strconv.Atoi(dateStr[:4])
+				if resultYear == year {
+					score += 30
+				} else if resultYear > 0 && absInt(resultYear-year) == 1 {
+					score += 15
+				}
+			}
+		}
+
+		// 数据完整性加分
+		if r.PosterPath != "" {
+			score += 5
+		}
+		if r.Overview != "" {
+			score += 5
+		}
+		if r.VoteAverage > 0 {
+			score += 5
+		}
+
+		// 排名权重（搜索结果本身有排序，前面的结果轻微加分）
+		if i < 3 {
+			score += float64(3-i) * 2
+		}
+
+		candidates = append(candidates, scored{i, score})
+	}
+
+	// 选择得分最高的
+	bestIdx := 0
+	bestScore := 0.0
+	for _, c := range candidates {
+		if c.score > bestScore {
+			bestScore = c.score
+			bestIdx = c.index
+		}
+	}
+
+	s.logger.Debugf("搜索结果匹配排序: 搜索=%q year=%d, 最佳=#%d (%.1f分), 共%d个候选",
+		searchTitle, year, bestIdx+1, bestScore, len(results))
+
+	return results[bestIdx]
+}
 
 // searchTMDb 搜索TMDb
 func (s *MetadataService) searchTMDb(mediaType, query string, year int) ([]TMDbMovie, error) {
@@ -572,6 +839,345 @@ func (s *MetadataService) getMovieDetail(tmdbID int) (*TMDbMovieDetail, error) {
 	}
 
 	return &detail, nil
+}
+
+// getTVSeasonDetail 获取 TMDb TV 季详情（包含每集的标题、简介等）
+// API: /3/tv/{tv_id}/season/{season_number}
+func (s *MetadataService) getTVSeasonDetail(tvID int, seasonNum int) (*TMDbTVSeasonDetail, error) {
+	apiURL := fmt.Sprintf("%s/3/tv/%d/season/%d?api_key=%s&language=zh-CN",
+		s.getTMDbAPIBase(), tvID, seasonNum, s.cfg.Secrets.TMDbAPIKey)
+
+	resp, err := s.tmdbGetWithRetry(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("TMDb 季详情请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var detail TMDbTVSeasonDetail
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return nil, fmt.Errorf("解析 TMDb 季详情失败: %w", err)
+	}
+
+	return &detail, nil
+}
+
+// scrapeSeriesEpisodes 从 TMDb 获取逐集元数据（每集独立的标题和简介）
+// 遍历系列中所有季，调用 /3/tv/{id}/season/{num} 获取每集数据，并更新到对应的 Media 记录
+func (s *MetadataService) scrapeSeriesEpisodes(seriesID string, tmdbID int) {
+	if tmdbID == 0 || s.cfg.Secrets.TMDbAPIKey == "" {
+		return
+	}
+
+	episodes, err := s.mediaRepo.ListBySeriesID(seriesID)
+	if err != nil || len(episodes) == 0 {
+		return
+	}
+
+	// 收集所有需要刮削的季号（去重）
+	seasonSet := make(map[int]bool)
+	for _, ep := range episodes {
+		sn := ep.SeasonNum
+		if sn == 0 {
+			sn = 1
+		}
+		seasonSet[sn] = true
+	}
+
+	// 按季构建 episode 查找索引：seasonNum -> episodeNum -> *Media
+	epIndex := make(map[int]map[int]*model.Media)
+	for i := range episodes {
+		ep := &episodes[i]
+		sn := ep.SeasonNum
+		if sn == 0 {
+			sn = 1
+		}
+		if epIndex[sn] == nil {
+			epIndex[sn] = make(map[int]*model.Media)
+		}
+		epIndex[sn][ep.EpisodeNum] = ep
+	}
+
+	totalUpdated := 0
+
+	for seasonNum := range seasonSet {
+		seasonDetail, err := s.getTVSeasonDetail(tmdbID, seasonNum)
+		if err != nil {
+			s.logger.Debugf("获取 TMDb 季 %d 详情失败 (tmdb_id=%d): %v", seasonNum, tmdbID, err)
+			continue
+		}
+
+		seasonEpMap := epIndex[seasonNum]
+		if seasonEpMap == nil {
+			continue
+		}
+
+		for _, tmdbEp := range seasonDetail.Episodes {
+			localEp, ok := seasonEpMap[tmdbEp.EpisodeNumber]
+			if !ok {
+				continue
+			}
+
+			updated := false
+
+			// 更新单集简介（核心功能：确保每集有独立简介）
+			if tmdbEp.Overview != "" && localEp.Overview == "" {
+				localEp.Overview = tmdbEp.Overview
+				updated = true
+			}
+
+			// 更新单集标题
+			if tmdbEp.Name != "" && localEp.EpisodeTitle == "" {
+				localEp.EpisodeTitle = tmdbEp.Name
+				updated = true
+			}
+
+			// 更新单集评分（如果有独立评分且本地未设置）
+			if tmdbEp.VoteAverage > 0 && localEp.Rating == 0 {
+				localEp.Rating = tmdbEp.VoteAverage
+				updated = true
+			}
+
+			// 更新单集时长
+			if tmdbEp.Runtime > 0 && localEp.Runtime == 0 {
+				localEp.Runtime = tmdbEp.Runtime
+				updated = true
+			}
+
+			// 下载每集独立截图（still）作为该集的封面
+			if tmdbEp.StillPath != "" && localEp.PosterPath == "" {
+				stillURL := fmt.Sprintf("%s/t/p/w500%s", s.getTMDbImageBase(), tmdbEp.StillPath)
+				ext := filepath.Ext(tmdbEp.StillPath)
+				if ext == "" {
+					ext = ".jpg"
+				}
+				cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", localEp.ID)
+				if err := os.MkdirAll(cacheDir, 0755); err == nil {
+					localPath := filepath.Join(cacheDir, "poster"+ext)
+					if err := s.downloadToFile(stillURL, localPath); err == nil {
+						localEp.PosterPath = localPath
+						updated = true
+						s.logger.Debugf("下载剧集 S%02dE%02d 独立封面成功: %s", seasonNum, tmdbEp.EpisodeNumber, tmdbEp.StillPath)
+					} else {
+						s.logger.Debugf("下载剧集 S%02dE%02d 独立封面失败: %v", seasonNum, tmdbEp.EpisodeNumber, err)
+					}
+				}
+			}
+
+			if updated {
+				if err := s.mediaRepo.Update(localEp); err != nil {
+					s.logger.Debugf("更新剧集 S%02dE%02d 元数据失败: %v", seasonNum, tmdbEp.EpisodeNumber, err)
+				} else {
+					totalUpdated++
+				}
+			}
+		}
+
+		// 避免 TMDb API 速率限制（季间间隔 2-4 秒随机化）
+		randomDelay(2000, 4000)
+	}
+
+	if totalUpdated > 0 {
+		s.logger.Infof("TMDb 逐集刮削完成: 共更新 %d 集的独立元数据 (tmdb_id=%d)", totalUpdated, tmdbID)
+	}
+}
+
+// ==================== 演职人员刮削 ====================
+
+// getTMDbMovieCredits 获取电影演职人员
+func (s *MetadataService) getTMDbMovieCredits(tmdbID int) (*TMDbCredits, error) {
+	apiURL := fmt.Sprintf("%s/3/movie/%d/credits?api_key=%s&language=zh-CN",
+		s.getTMDbAPIBase(), tmdbID, s.cfg.Secrets.TMDbAPIKey)
+
+	resp, err := s.tmdbGetWithRetry(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("TMDb 电影演职人员请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var credits TMDbCredits
+	if err := json.NewDecoder(resp.Body).Decode(&credits); err != nil {
+		return nil, fmt.Errorf("解析 TMDb 演职人员失败: %w", err)
+	}
+	return &credits, nil
+}
+
+// getTMDbTVCredits 获取剧集演职人员
+func (s *MetadataService) getTMDbTVCredits(tmdbID int) (*TMDbCredits, error) {
+	apiURL := fmt.Sprintf("%s/3/tv/%d/credits?api_key=%s&language=zh-CN",
+		s.getTMDbAPIBase(), tmdbID, s.cfg.Secrets.TMDbAPIKey)
+
+	resp, err := s.tmdbGetWithRetry(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("TMDb 剧集演职人员请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var credits TMDbCredits
+	if err := json.NewDecoder(resp.Body).Decode(&credits); err != nil {
+		return nil, fmt.Errorf("解析 TMDb 演职人员失败: %w", err)
+	}
+	return &credits, nil
+}
+
+// saveCreditsForMedia 将 TMDb Credits 保存为 Media 的演职人员记录
+func (s *MetadataService) saveCreditsForMedia(mediaID string, credits *TMDbCredits) {
+	if s.personRepo == nil || s.mediaPersonRepo == nil || credits == nil {
+		return
+	}
+
+	// 先清除旧的关联数据，避免重复
+	s.mediaPersonRepo.DeleteByMediaID(mediaID)
+
+	saved := 0
+
+	// 保存导演（从 crew 中筛选 job=Director）
+	for _, crew := range credits.Crew {
+		if crew.Job != "Director" {
+			continue
+		}
+		person, err := s.personRepo.FindOrCreate(crew.Name, crew.ID)
+		if err != nil {
+			continue
+		}
+		// 更新头像
+		if crew.ProfilePath != "" && person.ProfileURL == "" {
+			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), crew.ProfilePath)
+			s.personRepo.Update(person)
+		}
+		mp := &model.MediaPerson{
+			MediaID:   mediaID,
+			PersonID:  person.ID,
+			Role:      "director",
+			SortOrder: saved,
+		}
+		if err := s.mediaPersonRepo.Create(mp); err == nil {
+			saved++
+		}
+	}
+
+	// 保存编剧（从 crew 中筛选 job=Writer 或 Screenplay）
+	for _, crew := range credits.Crew {
+		if crew.Job != "Writer" && crew.Job != "Screenplay" && crew.Job != "Novel" {
+			continue
+		}
+		person, err := s.personRepo.FindOrCreate(crew.Name, crew.ID)
+		if err != nil {
+			continue
+		}
+		if crew.ProfilePath != "" && person.ProfileURL == "" {
+			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), crew.ProfilePath)
+			s.personRepo.Update(person)
+		}
+		mp := &model.MediaPerson{
+			MediaID:   mediaID,
+			PersonID:  person.ID,
+			Role:      "writer",
+			SortOrder: saved,
+		}
+		if err := s.mediaPersonRepo.Create(mp); err == nil {
+			saved++
+		}
+	}
+
+	// 保存演员（最多 20 个）
+	maxActors := 20
+	for i, cast := range credits.Cast {
+		if i >= maxActors {
+			break
+		}
+		person, err := s.personRepo.FindOrCreate(cast.Name, cast.ID)
+		if err != nil {
+			continue
+		}
+		if cast.ProfilePath != "" && person.ProfileURL == "" {
+			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), cast.ProfilePath)
+			s.personRepo.Update(person)
+		}
+		mp := &model.MediaPerson{
+			MediaID:   mediaID,
+			PersonID:  person.ID,
+			Role:      "actor",
+			Character: cast.Character,
+			SortOrder: saved,
+		}
+		if err := s.mediaPersonRepo.Create(mp); err == nil {
+			saved++
+		}
+	}
+
+	if saved > 0 {
+		s.logger.Debugf("已保存 %d 个演职人员 (media_id=%s)", saved, mediaID)
+	}
+}
+
+// saveCreditsForSeries 将 TMDb Credits 保存为 Series 的演职人员记录
+func (s *MetadataService) saveCreditsForSeries(seriesID string, credits *TMDbCredits) {
+	if s.personRepo == nil || s.mediaPersonRepo == nil || credits == nil {
+		return
+	}
+
+	// 先清除旧的关联数据，避免重复
+	s.mediaPersonRepo.DeleteBySeriesID(seriesID)
+
+	saved := 0
+
+	// 保存导演 / 剧集创建者
+	for _, crew := range credits.Crew {
+		if crew.Job != "Director" && crew.Job != "Executive Producer" {
+			continue
+		}
+		role := "director"
+		if crew.Job == "Executive Producer" {
+			role = "writer" // 剧集中 EP 近似于编剧/创作者
+		}
+		person, err := s.personRepo.FindOrCreate(crew.Name, crew.ID)
+		if err != nil {
+			continue
+		}
+		if crew.ProfilePath != "" && person.ProfileURL == "" {
+			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), crew.ProfilePath)
+			s.personRepo.Update(person)
+		}
+		mp := &model.MediaPerson{
+			SeriesID:  seriesID,
+			PersonID:  person.ID,
+			Role:      role,
+			SortOrder: saved,
+		}
+		if err := s.mediaPersonRepo.Create(mp); err == nil {
+			saved++
+		}
+	}
+
+	// 保存演员（最多 20 个）
+	maxActors := 20
+	for i, cast := range credits.Cast {
+		if i >= maxActors {
+			break
+		}
+		person, err := s.personRepo.FindOrCreate(cast.Name, cast.ID)
+		if err != nil {
+			continue
+		}
+		if cast.ProfilePath != "" && person.ProfileURL == "" {
+			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), cast.ProfilePath)
+			s.personRepo.Update(person)
+		}
+		mp := &model.MediaPerson{
+			SeriesID:  seriesID,
+			PersonID:  person.ID,
+			Role:      "actor",
+			Character: cast.Character,
+			SortOrder: saved,
+		}
+		if err := s.mediaPersonRepo.Create(mp); err == nil {
+			saved++
+		}
+	}
+
+	if saved > 0 {
+		s.logger.Infof("已保存 %d 个演职人员 (series_id=%s)", saved, seriesID)
+	}
 }
 
 // ==================== 数据应用 ====================
@@ -1022,6 +1628,13 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 			return fmt.Errorf("更新剧集合集失败: %w", saveErr)
 		}
 
+		// 获取并保存演职人员
+		if series.TMDbID > 0 && s.cfg.Secrets.TMDbAPIKey != "" {
+			if credits, credErr := s.getTMDbTVCredits(series.TMDbID); credErr == nil {
+				s.saveCreditsForSeries(seriesID, credits)
+			}
+		}
+
 		// 将合集元数据同步到各集
 		s.syncSeriesToEpisodes(seriesID, series)
 
@@ -1047,6 +1660,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 	// 应用TMDb结果到合集
 	if tmdbResult != nil {
+		series.TMDbID = tmdbResult.ID // 保存 TMDb ID，用于后续逐集刮削
 		title := tmdbResult.Name
 		if title == "" {
 			title = tmdbResult.Title
@@ -1173,6 +1787,13 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		return fmt.Errorf("更新剧集合集失败: %w", err)
 	}
 
+	// 获取并保存演职人员
+	if series.TMDbID > 0 && s.cfg.Secrets.TMDbAPIKey != "" {
+		if credits, err := s.getTMDbTVCredits(series.TMDbID); err == nil {
+			s.saveCreditsForSeries(seriesID, credits)
+		}
+	}
+
 	// 第三步：将合集元数据同步到各集（海报、评分、类型等）
 	s.syncSeriesToEpisodes(seriesID, series)
 
@@ -1181,10 +1802,18 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 }
 
 // syncSeriesToEpisodes 将合集元数据同步到各集（海报、评分、类型等）
+// 先尝试 TMDb 逐集刮削获取每集独立简介/标题，然后用合集元数据补充仍然为空的字段
 func (s *MetadataService) syncSeriesToEpisodes(seriesID string, series *model.Series) {
+	// 第一步：尝试 TMDb 逐集刮削（获取每集独立的简介和标题）
+	if series.TMDbID > 0 {
+		s.scrapeSeriesEpisodes(seriesID, series.TMDbID)
+	}
+
+	// 第二步：用合集元数据补充仍然为空的字段（作为 fallback）
 	episodes, _ := s.mediaRepo.ListBySeriesID(seriesID)
 	for _, ep := range episodes {
 		updated := false
+		// 仅当逐集刮削未获取到简介时，才用合集简介补充
 		if ep.Overview == "" && series.Overview != "" {
 			ep.Overview = series.Overview
 			updated = true
@@ -1248,8 +1877,8 @@ func (s *MetadataService) ScrapeAllSeries(libraryID string) (int, int) {
 		} else {
 			success++
 		}
-		// 限速
-		time.Sleep(500 * time.Millisecond)
+		// 限速保护（剧集间隔 3-6 秒随机化）
+		randomDelay(3000, 6000)
 	}
 
 	return success, failed
@@ -1370,6 +1999,7 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 	// 应用数据
 	series.TMDbID = detail.ID
 	if detail.Name != "" {
+		series.Title = detail.Name
 		series.OrigTitle = detail.OriginalName
 	}
 	if detail.Overview != "" {
@@ -1435,7 +2065,22 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 	}
 
 	s.logger.Infof("已手动匹配剧集合集: %s -> TMDb ID %d", series.Title, tmdbID)
-	return s.seriesRepo.Update(series)
+	if err := s.seriesRepo.Update(series); err != nil {
+		return err
+	}
+
+	// 获取并保存演职人员
+	if credits, err := s.getTMDbTVCredits(tmdbID); err == nil {
+		s.saveCreditsForSeries(seriesID, credits)
+	}
+
+	// 手动匹配后也执行逐集刮削，获取每集独立简介和标题
+	s.scrapeSeriesEpisodes(seriesID, tmdbID)
+
+	// 将合集元数据同步到仍然为空的字段
+	s.syncSeriesToEpisodes(seriesID, series)
+
+	return nil
 }
 
 // MatchMediaWithTMDb 手动关联TMDb结果到指定媒体
@@ -1472,6 +2117,11 @@ func (s *MetadataService) MatchMediaWithTMDb(mediaID string, tmdbID int) error {
 		if err == nil {
 			media.BackdropPath = localPath
 		}
+	}
+
+	// 获取并保存演职人员
+	if credits, err := s.getTMDbMovieCredits(tmdbID); err == nil {
+		s.saveCreditsForMedia(media.ID, credits)
 	}
 
 	return s.mediaRepo.Update(media)

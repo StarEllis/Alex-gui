@@ -9,6 +9,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // AdminHandler 管理处理器
@@ -20,10 +21,12 @@ type AdminHandler struct {
 	permissionService *service.PermissionService
 	libraryService    *service.LibraryService
 	metadataService   *service.MetadataService
+	seriesService     *service.SeriesService
 	settingRepo       *repository.SystemSettingRepo
 	libraryRepo       *repository.LibraryRepo
 	cfg               *config.Config
 	logger            *zap.SugaredLogger
+	db                *gorm.DB
 }
 
 // ==================== 用户管理 ====================

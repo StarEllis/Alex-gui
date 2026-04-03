@@ -180,9 +180,10 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             <FileText size={16} className="text-neon/60" />
             {t('mediaInfo.fileInfo')}
           </h3>
-          <div className="glass-panel rounded-xl p-5">
+          <div className="glass-panel rounded-xl p-5 space-y-4">
+            {/* 文件路径 */}
             {media.file_path && (
-              <div className="mb-4 flex items-start gap-3">
+              <div className="flex items-start gap-3">
                 <span className="shrink-0 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.filePath')}</span>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <code className="flex-1 truncate rounded-lg px-3 py-1.5 text-xs"
@@ -201,19 +202,39 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
                 </div>
               </div>
             )}
-            <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+
+            {/* 基本文件属性 - 网格布局 */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
               <div>
-                <span style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.fileSize')}</span>
+                <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.fileSize')}</span>
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatSize(media.file_size)}</span>
               </div>
               <div>
-                <span style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.addedDate')}</span>
+                <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.addedDate')}</span>
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDate(media.created_at)}</span>
               </div>
               {media.duration > 0 && (
                 <div>
-                  <span style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.totalDuration')}</span>
+                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.totalDuration')}</span>
                   <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDuration(media.duration)}</span>
+                </div>
+              )}
+              {media.video_codec && (
+                <div>
+                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>视频编码</span>
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{media.video_codec}</span>
+                </div>
+              )}
+              {media.audio_codec && (
+                <div>
+                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>音频编码</span>
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{media.audio_codec}</span>
+                </div>
+              )}
+              {media.resolution && (
+                <div>
+                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>分辨率</span>
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{media.resolution}</span>
                 </div>
               )}
             </div>

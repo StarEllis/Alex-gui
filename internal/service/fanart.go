@@ -95,7 +95,13 @@ func (s *FanartService) GetMovieImages(tmdbID int) (*FanartMovieImages, error) {
 	apiURL := fmt.Sprintf("https://webservice.fanart.tv/v3/movies/%d?api_key=%s",
 		tmdbID, s.cfg.Secrets.FanartTVAPIKey)
 
-	resp, err := s.client.Get(apiURL)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Fanart.tv 创建请求失败: %w", err)
+	}
+	setAPIHeaders(req) // 设置随机 User-Agent + 浏览器级请求头
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Fanart.tv 请求失败: %w", err)
 	}
@@ -123,7 +129,13 @@ func (s *FanartService) GetTVImages(tvdbID int) (*FanartTVImages, error) {
 	apiURL := fmt.Sprintf("https://webservice.fanart.tv/v3/tv/%d?api_key=%s",
 		tvdbID, s.cfg.Secrets.FanartTVAPIKey)
 
-	resp, err := s.client.Get(apiURL)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Fanart.tv 创建请求失败: %w", err)
+	}
+	setAPIHeaders(req) // 设置随机 User-Agent + 浏览器级请求头
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Fanart.tv 请求失败: %w", err)
 	}
@@ -176,6 +188,7 @@ func (s *FanartService) EnhanceMovieImages(media *model.Media) error {
 
 	// 补充高质量背景图
 	if media.BackdropPath == "" && len(images.MovieBackground) > 0 {
+		randomDelay(1000, 2000) // 图片下载之间添加延迟
 		bestBg := s.selectBestImage(images.MovieBackground, "", "")
 		if bestBg != nil {
 			localPath, err := s.downloadFanartImage(media.ID, bestBg.URL, "backdrop")
@@ -222,6 +235,7 @@ func (s *FanartService) EnhanceTVImages(series *model.Series, tvdbID int) error 
 
 	// 补充背景图
 	if series.BackdropPath == "" && len(images.TVBackground) > 0 {
+		randomDelay(1000, 2000) // 图片下载之间添加延迟
 		bestBg := s.selectBestImage(images.TVBackground, "", "")
 		if bestBg != nil {
 			localPath, err := s.downloadFanartImageForSeries(series.ID, bestBg.URL, "backdrop")
@@ -293,7 +307,14 @@ func (s *FanartService) downloadImage(entityID, imageURL, imageType, entityType 
 		return "", fmt.Errorf("图片URL为空")
 	}
 
-	resp, err := s.client.Get(imageURL)
+	req, err := http.NewRequest("GET", imageURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("Fanart.tv 创建下载请求失败: %w", err)
+	}
+	req.Header.Set("User-Agent", getRandomUserAgent())
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("下载 Fanart.tv 图片失败: %w", err)
 	}

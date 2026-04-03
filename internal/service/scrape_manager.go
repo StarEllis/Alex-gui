@@ -830,6 +830,6 @@ func (s *ScrapeManagerService) processQueue() {
 			continue
 		}
 		s.executeScrape(task)
-		time.Sleep(500 * time.Millisecond) // 避免过快请求
+		randomDelay(3000, 6000) // 任务间隔 3-6 秒随机化，防止过快请求
 	}
 }

@@ -71,7 +71,7 @@ type Services struct {
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
 	transcoder := NewTranscodeService(repos.Transcode, cfg, logger)
 	scanner := NewScannerService(repos.Media, repos.Series, cfg, logger)
-	metadata := NewMetadataService(repos.Media, repos.Series, cfg, logger)
+	metadata := NewMetadataService(repos.Media, repos.Series, repos.Person, repos.MediaPerson, cfg, logger)
 
 	// 创建WebSocket Hub
 	wsHub := NewWSHub(logger)
@@ -240,7 +240,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	pulseService := NewPulseService(repos.Pulse, logger)
 	pulseService.SetWSHub(wsHub)
 
-	return &Services{
+	svcs := &Services{
 		User:           NewUserService(repos.User, cfg, logger),
 		Auth:           NewAuthService(repos.User, cfg, logger),
 		Library:        libService,
@@ -297,4 +297,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		ShareLinkSvc: NewShareLinkService(repos.ShareLink, repos.Media, repos.Series, logger),
 		MatchRuleSvc: NewMatchRuleService(repos.MatchRule, logger),
 	}
+
+	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）
+	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
+
+	return svcs
 }

@@ -150,6 +150,7 @@ func main() {
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
 		api.GET("/series/:id/poster", handlers.Series.Poster)
 		api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
+		api.GET("/series/:id/persons", handlers.Series.GetPersons)
 		api.GET("/media/:id/persons", handlers.Media.GetPersons)
 
 		// 字幕
@@ -377,6 +378,11 @@ func main() {
 		admin.PUT("/series/:seriesId/metadata", handlers.Admin.UpdateSeriesMetadata)
 		admin.DELETE("/series/:seriesId", handlers.Admin.DeleteSeries)
 
+		// 剧集合并（多季自动合并为一个整体）
+		admin.POST("/series/merge", handlers.Admin.MergeSeries)
+		admin.POST("/series/auto-merge", handlers.Admin.AutoMergeSeries)
+		admin.GET("/series/merge-candidates", handlers.Admin.MergeCandidates)
+
 		// 图片管理
 		admin.GET("/images/tmdb", handlers.Admin.SearchTMDbImages)
 		admin.POST("/media/:mediaId/image/upload", handlers.Admin.UploadMediaImage)
@@ -388,6 +394,9 @@ func main() {
 
 		// 文件系统浏览
 		admin.GET("/fs/browse", handlers.Admin.BrowseFS)
+
+		// 一键清空数据（保留影视文件）
+		admin.POST("/system/clear-data", handlers.Admin.ClearAllData)
 
 		// Bangumi 数据源
 		admin.GET("/metadata/bangumi/search", handlers.Admin.SearchBangumi)

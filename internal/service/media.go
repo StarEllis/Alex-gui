@@ -155,6 +155,95 @@ func (s *MediaService) ListMixed(page, size int, libraryID string) ([]MixedItem,
 	return allItems[start:end], total, nil
 }
 
+// deduplicateSeriesByTitle 对同名 Series 去重
+// 标准化标题相同（去掉季号后相同）的多个 Series，合并它们的统计信息，只保留元数据最丰富的那个
+// 保留的 Series 会更新 SeasonCount 和 EpisodeCount 为所有同名系列的总和
+func deduplicateSeriesByTitle(seriesList []model.Series) []model.Series {
+	type groupInfo struct {
+		bestIdx      int
+		bestScore    int
+		totalSeasons int
+		totalEps     int
+		latestUpdate time.Time
+	}
+
+	// 按 libraryID + 标准化标题分组
+	type gk struct {
+		lib  string
+		name string
+	}
+	groups := make(map[gk]*groupInfo)
+	groupOrder := make([]gk, 0) // 保持插入顺序
+
+	for i, ser := range seriesList {
+		normalized := normalizeSeriesTitleForMerge(ser.Title)
+		if normalized == "" {
+			normalized = ser.Title
+		}
+		key := gk{lib: ser.LibraryID, name: normalized}
+
+		if g, ok := groups[key]; ok {
+			g.totalSeasons += ser.SeasonCount
+			g.totalEps += ser.EpisodeCount
+			if ser.UpdatedAt.After(g.latestUpdate) {
+				g.latestUpdate = ser.UpdatedAt
+			}
+			// 比较元数据丰富度
+			score := seriesMetadataScore(&ser)
+			if score > g.bestScore {
+				g.bestScore = score
+				g.bestIdx = i
+			}
+		} else {
+			groups[key] = &groupInfo{
+				bestIdx:      i,
+				bestScore:    seriesMetadataScore(&ser),
+				totalSeasons: ser.SeasonCount,
+				totalEps:     ser.EpisodeCount,
+				latestUpdate: ser.UpdatedAt,
+			}
+			groupOrder = append(groupOrder, key)
+		}
+	}
+
+	// 构建去重后的结果
+	result := make([]model.Series, 0, len(groups))
+	for _, key := range groupOrder {
+		g := groups[key]
+		ser := seriesList[g.bestIdx]
+		// 更新展示数据（使用所有同名系列的总和）
+		ser.SeasonCount = g.totalSeasons
+		ser.EpisodeCount = g.totalEps
+		if g.latestUpdate.After(ser.UpdatedAt) {
+			ser.UpdatedAt = g.latestUpdate
+		}
+		result = append(result, ser)
+	}
+	return result
+}
+
+// seriesMetadataScore 评估 Series 元数据丰富度
+func seriesMetadataScore(ser *model.Series) int {
+	score := 0
+	if ser.Overview != "" {
+		score += 3
+	}
+	if ser.PosterPath != "" {
+		score += 3
+	}
+	if ser.BackdropPath != "" {
+		score += 2
+	}
+	if ser.Rating > 0 {
+		score += 2
+	}
+	if ser.TMDbID > 0 {
+		score += 2
+	}
+	score += ser.EpisodeCount
+	return score
+}
+
 // sortMixedItems 按 created_at 降序排序混合列表
 func sortMixedItems(items []MixedItem) {
 	for i := 0; i < len(items)-1; i++ {
@@ -179,6 +268,7 @@ func getMixedItemTime(item MixedItem) time.Time {
 }
 
 // RecentMixed 最近添加混合列表（电影+合集按时间混合排列）
+// 自动对同名 Series 去重：标准化标题相同的多个 Series 只展示最新更新的那个
 func (s *MediaService) RecentMixed(limit int) ([]MixedItem, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
@@ -189,10 +279,13 @@ func (s *MediaService) RecentMixed(limit int) ([]MixedItem, error) {
 		return nil, err
 	}
 
-	seriesList, err := s.seriesRepo.RecentUpdated(limit)
+	seriesList, err := s.seriesRepo.RecentUpdated(limit * 2) // 多取一些，去重后再截断
 	if err != nil {
 		return nil, err
 	}
+
+	// 对同名 Series 去重：按标准化标题分组，每组只保留最新更新的
+	seriesList = deduplicateSeriesByTitle(seriesList)
 
 	var items []MixedItem
 	for i := range movies {
@@ -438,48 +531,65 @@ func (s *MediaService) ClearHistory(userID string) error {
 
 // StreamDetail 流详细信息
 type StreamDetail struct {
-	Index         int               `json:"index"`
-	CodecType     string            `json:"codec_type"`      // video, audio, subtitle
-	CodecName     string            `json:"codec_name"`      // h264, hevc, aac 等
-	CodecLongName string            `json:"codec_long_name"` // 编码器完整名称
-	Profile       string            `json:"profile,omitempty"`
-	Width         int               `json:"width,omitempty"`
-	Height        int               `json:"height,omitempty"`
-	FrameRate     string            `json:"frame_rate,omitempty"`     // 帧率（如 "23.976"）
-	BitRate       string            `json:"bit_rate,omitempty"`       // 码率
-	SampleRate    string            `json:"sample_rate,omitempty"`    // 音频采样率
-	Channels      int               `json:"channels,omitempty"`       // 音频声道数
-	ChannelLayout string            `json:"channel_layout,omitempty"` // 声道布局（如 "stereo", "5.1"）
-	Language      string            `json:"language,omitempty"`       // 语言
-	Title         string            `json:"title,omitempty"`          // 轨道标题
-	IsDefault     bool              `json:"is_default"`
-	IsForced      bool              `json:"is_forced"`
-	PixFmt        string            `json:"pix_fmt,omitempty"`        // 像素格式
-	ColorSpace    string            `json:"color_space,omitempty"`    // 色彩空间
-	ColorTransfer string            `json:"color_transfer,omitempty"` // 色彩传输特性
-	BitsPerSample int               `json:"bits_per_sample,omitempty"`
-	Duration      string            `json:"duration,omitempty"`
-	Tags          map[string]string `json:"tags,omitempty"`
+	Index          int               `json:"index"`
+	CodecType      string            `json:"codec_type"`      // video, audio, subtitle
+	CodecName      string            `json:"codec_name"`      // h264, hevc, aac 等
+	CodecLongName  string            `json:"codec_long_name"` // 编码器完整名称
+	Profile        string            `json:"profile,omitempty"`
+	Level          int               `json:"level,omitempty"` // 编码等级
+	Width          int               `json:"width,omitempty"`
+	Height         int               `json:"height,omitempty"`
+	CodedWidth     int               `json:"coded_width,omitempty"`    // 编码宽度
+	CodedHeight    int               `json:"coded_height,omitempty"`   // 编码高度
+	AspectRatio    string            `json:"aspect_ratio,omitempty"`   // 显示宽高比（如 "16:9"）
+	FrameRate      string            `json:"frame_rate,omitempty"`     // 帧率（如 "23.976"）
+	BitRate        string            `json:"bit_rate,omitempty"`       // 码率
+	BitDepth       int               `json:"bit_depth,omitempty"`      // 位深度
+	RefFrames      int               `json:"ref_frames,omitempty"`     // 参考帧数
+	IsInterlaced   bool              `json:"is_interlaced"`            // 是否隔行扫描
+	SampleRate     string            `json:"sample_rate,omitempty"`    // 音频采样率
+	Channels       int               `json:"channels,omitempty"`       // 音频声道数
+	ChannelLayout  string            `json:"channel_layout,omitempty"` // 声道布局（如 "stereo", "5.1"）
+	Language       string            `json:"language,omitempty"`       // 语言
+	Title          string            `json:"title,omitempty"`          // 轨道标题
+	IsDefault      bool              `json:"is_default"`
+	IsForced       bool              `json:"is_forced"`
+	PixFmt         string            `json:"pix_fmt,omitempty"`         // 像素格式
+	ColorSpace     string            `json:"color_space,omitempty"`     // 色彩空间
+	ColorTransfer  string            `json:"color_transfer,omitempty"`  // 色彩传输特性
+	ColorPrimaries string            `json:"color_primaries,omitempty"` // 色彩原色
+	ColorRange     string            `json:"color_range,omitempty"`     // 色彩范围（tv/pc）
+	BitsPerSample  int               `json:"bits_per_sample,omitempty"`
+	Duration       string            `json:"duration,omitempty"`
+	StartTime      string            `json:"start_time,omitempty"` // 起始时间
+	NbFrames       string            `json:"nb_frames,omitempty"`  // 总帧数
+	Tags           map[string]string `json:"tags,omitempty"`
 }
 
 // FormatDetail 容器格式详细信息
 type FormatDetail struct {
-	FormatName     string `json:"format_name"`      // 容器格式（如 "matroska,webm"）
-	FormatLongName string `json:"format_long_name"` // 容器格式完整名称
-	Duration       string `json:"duration"`         // 总时长（秒）
-	Size           string `json:"size"`             // 文件大小（字节）
-	BitRate        string `json:"bit_rate"`         // 总码率
-	StreamCount    int    `json:"stream_count"`     // 流数量
+	FormatName     string            `json:"format_name"`      // 容器格式（如 "matroska,webm"）
+	FormatLongName string            `json:"format_long_name"` // 容器格式完整名称
+	Duration       string            `json:"duration"`         // 总时长（秒）
+	Size           string            `json:"size"`             // 文件大小（字节）
+	BitRate        string            `json:"bit_rate"`         // 总码率
+	StreamCount    int               `json:"stream_count"`     // 流数量
+	StartTime      string            `json:"start_time"`       // 起始时间
+	Tags           map[string]string `json:"tags,omitempty"`   // 容器元数据标签
 }
 
 // FileDetail 文件系统详细信息
 type FileDetail struct {
-	FileName   string `json:"file_name"`   // 文件名
-	FileDir    string `json:"file_dir"`    // 所在目录
-	FileExt    string `json:"file_ext"`    // 扩展名
-	FileSize   int64  `json:"file_size"`   // 文件大小（字节）
-	CreatedAt  string `json:"created_at"`  // 文件创建时间
-	ModifiedAt string `json:"modified_at"` // 文件修改时间
+	FileName    string `json:"file_name"`   // 文件名
+	FileDir     string `json:"file_dir"`    // 所在目录
+	FileExt     string `json:"file_ext"`    // 扩展名
+	FileSize    int64  `json:"file_size"`   // 文件大小（字节）
+	MimeType    string `json:"mime_type"`   // MIME 类型
+	Permissions string `json:"permissions"` // 文件权限（如 "-rwxr-xr-x"）
+	Owner       string `json:"owner"`       // 文件所有者
+	CreatedAt   string `json:"created_at"`  // 文件创建时间
+	ModifiedAt  string `json:"modified_at"` // 文件修改时间
+	MD5         string `json:"md5"`         // MD5 哈希值（按需计算）
 }
 
 // LibraryInfo 媒体库简要信息
@@ -579,38 +689,51 @@ func (s *MediaService) probeTechSpecs(filePath string) *TechSpecs {
 
 	var probeResult struct {
 		Streams []struct {
-			Index         int               `json:"index"`
-			CodecType     string            `json:"codec_type"`
-			CodecName     string            `json:"codec_name"`
-			CodecLongName string            `json:"codec_long_name"`
-			Profile       string            `json:"profile"`
-			Width         int               `json:"width"`
-			Height        int               `json:"height"`
-			RFrameRate    string            `json:"r_frame_rate"`
-			AvgFrameRate  string            `json:"avg_frame_rate"`
-			BitRate       string            `json:"bit_rate"`
-			SampleRate    string            `json:"sample_rate"`
-			Channels      int               `json:"channels"`
-			ChannelLayout string            `json:"channel_layout"`
-			PixFmt        string            `json:"pix_fmt"`
-			ColorSpace    string            `json:"color_space"`
-			ColorTransfer string            `json:"color_transfer"`
-			BitsPerSample int               `json:"bits_per_raw_sample"`
-			Duration      string            `json:"duration"`
-			Tags          map[string]string `json:"tags"`
-			Disposition   struct {
+			Index            int               `json:"index"`
+			CodecType        string            `json:"codec_type"`
+			CodecName        string            `json:"codec_name"`
+			CodecLongName    string            `json:"codec_long_name"`
+			Profile          string            `json:"profile"`
+			Level            int               `json:"level"`
+			Width            int               `json:"width"`
+			Height           int               `json:"height"`
+			CodedWidth       int               `json:"coded_width"`
+			CodedHeight      int               `json:"coded_height"`
+			DisplayAspect    string            `json:"display_aspect_ratio"`
+			RFrameRate       string            `json:"r_frame_rate"`
+			AvgFrameRate     string            `json:"avg_frame_rate"`
+			BitRate          string            `json:"bit_rate"`
+			BitsPerRawSample string            `json:"bits_per_raw_sample"`
+			NbFrames         string            `json:"nb_frames"`
+			Refs             int               `json:"refs"`
+			FieldOrder       string            `json:"field_order"`
+			StartTime        string            `json:"start_time"`
+			SampleRate       string            `json:"sample_rate"`
+			Channels         int               `json:"channels"`
+			ChannelLayout    string            `json:"channel_layout"`
+			BitsPerSample    int               `json:"bits_per_sample"`
+			PixFmt           string            `json:"pix_fmt"`
+			ColorSpace       string            `json:"color_space"`
+			ColorTransfer    string            `json:"color_transfer"`
+			ColorPrimaries   string            `json:"color_primaries"`
+			ColorRange       string            `json:"color_range"`
+			Duration         string            `json:"duration"`
+			Tags             map[string]string `json:"tags"`
+			Disposition      struct {
 				Default int `json:"default"`
 				Forced  int `json:"forced"`
 			} `json:"disposition"`
 		} `json:"streams"`
 		Format struct {
-			Filename       string `json:"filename"`
-			NbStreams      int    `json:"nb_streams"`
-			FormatName     string `json:"format_name"`
-			FormatLongName string `json:"format_long_name"`
-			Duration       string `json:"duration"`
-			Size           string `json:"size"`
-			BitRate        string `json:"bit_rate"`
+			Filename       string            `json:"filename"`
+			NbStreams      int               `json:"nb_streams"`
+			FormatName     string            `json:"format_name"`
+			FormatLongName string            `json:"format_long_name"`
+			StartTime      string            `json:"start_time"`
+			Duration       string            `json:"duration"`
+			Size           string            `json:"size"`
+			BitRate        string            `json:"bit_rate"`
+			Tags           map[string]string `json:"tags"`
 		} `json:"format"`
 	}
 
@@ -627,30 +750,51 @@ func (s *MediaService) probeTechSpecs(filePath string) *TechSpecs {
 			Size:           probeResult.Format.Size,
 			BitRate:        probeResult.Format.BitRate,
 			StreamCount:    probeResult.Format.NbStreams,
+			StartTime:      probeResult.Format.StartTime,
+			Tags:           probeResult.Format.Tags,
 		},
 	}
 
 	for _, stream := range probeResult.Streams {
+		// 解析位深度
+		bitDepth := stream.BitsPerSample
+		if bitDepth == 0 && stream.BitsPerRawSample != "" {
+			if bd, err := strconv.Atoi(stream.BitsPerRawSample); err == nil {
+				bitDepth = bd
+			}
+		}
+
 		detail := StreamDetail{
-			Index:         stream.Index,
-			CodecType:     stream.CodecType,
-			CodecName:     stream.CodecName,
-			CodecLongName: stream.CodecLongName,
-			Profile:       stream.Profile,
-			Width:         stream.Width,
-			Height:        stream.Height,
-			BitRate:       stream.BitRate,
-			SampleRate:    stream.SampleRate,
-			Channels:      stream.Channels,
-			ChannelLayout: stream.ChannelLayout,
-			PixFmt:        stream.PixFmt,
-			ColorSpace:    stream.ColorSpace,
-			ColorTransfer: stream.ColorTransfer,
-			BitsPerSample: stream.BitsPerSample,
-			Duration:      stream.Duration,
-			IsDefault:     stream.Disposition.Default == 1,
-			IsForced:      stream.Disposition.Forced == 1,
-			Tags:          stream.Tags,
+			Index:          stream.Index,
+			CodecType:      stream.CodecType,
+			CodecName:      stream.CodecName,
+			CodecLongName:  stream.CodecLongName,
+			Profile:        stream.Profile,
+			Level:          stream.Level,
+			Width:          stream.Width,
+			Height:         stream.Height,
+			CodedWidth:     stream.CodedWidth,
+			CodedHeight:    stream.CodedHeight,
+			AspectRatio:    stream.DisplayAspect,
+			BitRate:        stream.BitRate,
+			BitDepth:       bitDepth,
+			RefFrames:      stream.Refs,
+			IsInterlaced:   stream.FieldOrder != "" && stream.FieldOrder != "progressive" && stream.FieldOrder != "unknown",
+			SampleRate:     stream.SampleRate,
+			Channels:       stream.Channels,
+			ChannelLayout:  stream.ChannelLayout,
+			PixFmt:         stream.PixFmt,
+			ColorSpace:     stream.ColorSpace,
+			ColorTransfer:  stream.ColorTransfer,
+			ColorPrimaries: stream.ColorPrimaries,
+			ColorRange:     stream.ColorRange,
+			BitsPerSample:  bitDepth,
+			Duration:       stream.Duration,
+			StartTime:      stream.StartTime,
+			NbFrames:       stream.NbFrames,
+			IsDefault:      stream.Disposition.Default == 1,
+			IsForced:       stream.Disposition.Forced == 1,
+			Tags:           stream.Tags,
 		}
 
 		// 解析帧率
@@ -722,11 +866,29 @@ func (s *MediaService) getMediaPlaybackStats(mediaID string) *PlaybackStatsInfo 
 }
 
 // getFileDetail 获取文件系统详细信息
+// getMimeType 根据扩展名推断 MIME 类型
+func getMimeType(ext string) string {
+	mimeMap := map[string]string{
+		".mp4": "video/mp4", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
+		".mov": "video/quicktime", ".wmv": "video/x-ms-wmv", ".flv": "video/x-flv",
+		".webm": "video/webm", ".ts": "video/mp2t", ".m4v": "video/x-m4v",
+		".mpg": "video/mpeg", ".mpeg": "video/mpeg", ".3gp": "video/3gpp",
+		".ogv": "video/ogg", ".rmvb": "application/vnd.rn-realmedia-vbr",
+		".rm": "application/vnd.rn-realmedia",
+	}
+	if mime, ok := mimeMap[ext]; ok {
+		return mime
+	}
+	return "application/octet-stream"
+}
+
 func (s *MediaService) getFileDetail(filePath string) *FileDetail {
+	ext := strings.ToLower(filepath.Ext(filePath))
 	detail := &FileDetail{
 		FileName: filepath.Base(filePath),
 		FileDir:  filepath.Dir(filePath),
-		FileExt:  strings.ToLower(filepath.Ext(filePath)),
+		FileExt:  ext,
+		MimeType: getMimeType(ext),
 	}
 
 	info, err := os.Stat(filePath)
@@ -738,6 +900,12 @@ func (s *MediaService) getFileDetail(filePath string) *FileDetail {
 	detail.ModifiedAt = info.ModTime().Format(time.RFC3339)
 	// 注意：Go 标准库不直接支持获取文件创建时间，使用修改时间作为近似值
 	detail.CreatedAt = info.ModTime().Format(time.RFC3339)
+
+	// 获取文件权限
+	detail.Permissions = info.Mode().String()
+
+	// 获取文件所有者（跨平台兼容）
+	detail.Owner = getFileOwner(info)
 
 	return detail
 }

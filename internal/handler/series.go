@@ -9,14 +9,16 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
 
 // SeriesHandler 剧集合集处理器
 type SeriesHandler struct {
-	seriesService *service.SeriesService
-	logger        *zap.SugaredLogger
+	seriesService   *service.SeriesService
+	mediaPersonRepo *repository.MediaPersonRepo
+	logger          *zap.SugaredLogger
 }
 
 // List 获取剧集合集列表
@@ -190,4 +192,15 @@ func (h *SeriesHandler) Backdrop(c *gin.Context) {
 
 	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
 	c.File(series.BackdropPath)
+}
+
+// GetPersons 获取剧集合集的演职人员列表
+func (h *SeriesHandler) GetPersons(c *gin.Context) {
+	seriesID := c.Param("id")
+	persons, err := h.mediaPersonRepo.ListBySeriesID(seriesID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": persons})
 }

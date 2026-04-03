@@ -210,6 +210,9 @@ func (s *TheTVDBService) doRequest(method, url string) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+s.token)
 	s.tokenMu.RUnlock()
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", getRandomUserAgent())
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -223,6 +226,8 @@ func (s *TheTVDBService) doRequest(method, url string) (*http.Response, error) {
 		s.token = ""
 		s.tokenMu.Unlock()
 
+		randomDelay(1500, 3000) // 重新认证前等待
+
 		if err := s.authenticate(); err != nil {
 			return nil, err
 		}
@@ -232,6 +237,9 @@ func (s *TheTVDBService) doRequest(method, url string) (*http.Response, error) {
 		req2.Header.Set("Authorization", "Bearer "+s.token)
 		s.tokenMu.RUnlock()
 		req2.Header.Set("Accept", "application/json")
+		req2.Header.Set("User-Agent", getRandomUserAgent())
+		req2.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+		req2.Header.Set("Connection", "keep-alive")
 
 		return s.client.Do(req2)
 	}
@@ -326,6 +334,7 @@ func (s *TheTVDBService) ScrapeSeriesMetadata(series *model.Series, searchTitle 
 	if len(results) == 0 {
 		// 不带年份重试
 		if year > 0 {
+			randomDelay(1500, 3000) // 重试前等待
 			results, err = s.SearchSeries(searchTitle, 0)
 			if err != nil {
 				return fmt.Errorf("TheTVDB 搜索失败: %w", err)
@@ -356,6 +365,7 @@ func (s *TheTVDBService) ScrapeEpisodeMetadata(media *model.Media, searchTitle s
 	results, err := s.SearchSeries(searchTitle, year)
 	if err != nil || len(results) == 0 {
 		if year > 0 {
+			randomDelay(1500, 3000) // 重试前等待
 			results, err = s.SearchSeries(searchTitle, 0)
 		}
 		if err != nil || len(results) == 0 {
@@ -382,6 +392,7 @@ func (s *TheTVDBService) ScrapeEpisodeMetadata(media *model.Media, searchTitle s
 		seasonNum = 1
 	}
 
+	randomDelay(1500, 3000) // 搜索与获取剧集列表之间添加延迟
 	episodes, err := s.GetEpisodes(tvdbID, seasonNum)
 	if err != nil {
 		return fmt.Errorf("获取剧集列表失败: %w", err)
@@ -415,6 +426,15 @@ func (s *TheTVDBService) ScrapeEpisodeMetadata(media *model.Media, searchTitle s
 
 // applySeriesResult 将 TheTVDB 搜索结果应用到剧集合集（仅补充缺失字段）
 func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDBSeries) {
+	// 同步标题
+	displayName := result.Name
+	if displayName == "" {
+		displayName = result.SeriesName
+	}
+	if displayName != "" {
+		series.Title = displayName
+	}
+
 	// 补充原始标题
 	origName := result.OriginalName
 	if origName == "" {
@@ -513,7 +533,14 @@ func (s *TheTVDBService) downloadTheTVDBImage(entityID, imageURL, imageType stri
 		imageURL = "https://artworks.thetvdb.com" + imageURL
 	}
 
-	resp, err := s.client.Get(imageURL)
+	req, err := http.NewRequest("GET", imageURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("创建图片请求失败: %w", err)
+	}
+	req.Header.Set("User-Agent", getRandomUserAgent())
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("下载图片失败: %w", err)
 	}
