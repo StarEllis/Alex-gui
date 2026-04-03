@@ -45,10 +45,11 @@ type WSEvent struct {
 type ScanProgressData struct {
 	LibraryID   string `json:"library_id"`
 	LibraryName string `json:"library_name"`
-	Phase       string `json:"phase"`     // scanning / scraping
+	Phase       string `json:"phase"`     // scanning / scraping / cleaning
 	Current     int    `json:"current"`   // 当前处理数
 	Total       int    `json:"total"`     // 总数（刮削时有值）
 	NewFound    int    `json:"new_found"` // 新发现的文件数
+	Cleaned     int    `json:"cleaned"`   // 清理的已删除文件数
 	Message     string `json:"message"`   // 描述信息
 }
 

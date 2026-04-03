@@ -15,7 +15,6 @@ import {
   Clock,
   Play,
   FolderOpen,
-  Download,
   FileJson,
   FileCode,
   Shield,

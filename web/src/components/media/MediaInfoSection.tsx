@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { formatDate } from '@/utils/format'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
 import {
   ChevronDown,
