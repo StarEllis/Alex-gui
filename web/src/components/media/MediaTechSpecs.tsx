@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { formatSize, formatDuration, formatDate } from '@/utils/format'
 import type { TechSpecs, FileDetail, LibraryInfo, PlaybackStatsInfo, StreamDetail } from '@/types'
 import {
@@ -15,22 +15,21 @@ import {
   Clock,
   Play,
   FolderOpen,
+  Download,
+  FileJson,
+  FileCode,
+  Shield,
+  User,
+  Hash,
+  Info,
 } from 'lucide-react'
-
-interface MediaTechSpecsProps {
-  techSpecs: TechSpecs | null
-  fileInfo: FileDetail | null
-  library: LibraryInfo | null
-  playbackStats: PlaybackStatsInfo | null
-  loading: boolean
-}
 
 /** 格式化码率为可读格式 */
 function formatBitRate(bitRate?: string): string {
   if (!bitRate) return '-'
   const num = parseInt(bitRate)
   if (isNaN(num)) return bitRate
-  if (num >= 1000000) return `${(num / 1000000).toFixed(1)} Mbps`
+  if (num >= 1000000) return `${(num / 1000000).toFixed(2)} Mbps`
   if (num >= 1000) return `${(num / 1000).toFixed(0)} Kbps`
   return `${num} bps`
 }
@@ -40,7 +39,7 @@ function formatSampleRate(rate?: string): string {
   if (!rate) return '-'
   const num = parseInt(rate)
   if (isNaN(num)) return rate
-  return `${(num / 1000).toFixed(1)} kHz`
+  return `${num} Hz`
 }
 
 /** 格式化声道数 */
@@ -157,6 +156,35 @@ function isHDR(stream: StreamDetail): boolean {
   )
 }
 
+/** 获取HDR类型标签 */
+function getHDRLabel(stream: StreamDetail): string {
+  if (stream.color_transfer === 'smpte2084') return 'HDR10'
+  if (stream.color_transfer === 'arib-std-b67') return 'HLG'
+  if (stream.color_space === 'bt2020nc' || stream.color_space === 'bt2020c') return 'HDR'
+  return 'SDR'
+}
+
+/** 格式化色彩原色 */
+function formatColorPrimaries(primaries?: string): string {
+  if (!primaries) return '--'
+  const map: Record<string, string> = {
+    'bt709': 'BT.709',
+    'bt2020': 'BT.2020',
+    'smpte170m': 'SMPTE 170M',
+    'smpte240m': 'SMPTE 240M',
+    'bt470bg': 'BT.470 BG',
+  }
+  return map[primaries] || primaries
+}
+
+interface MediaTechSpecsProps {
+  techSpecs: TechSpecs | null
+  fileInfo: FileDetail | null
+  library: LibraryInfo | null
+  playbackStats: PlaybackStatsInfo | null
+  loading: boolean
+}
+
 export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackStats, loading }: MediaTechSpecsProps) {
   const [expanded, setExpanded] = useState(false)
 
@@ -181,6 +209,46 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
   const mainVideo = videoStreams[0]
   const mainAudio = audioStreams[0]
 
+  /** 导出技术规格为JSON */
+  const exportJSON = useCallback(() => {
+    const data = { techSpecs, fileInfo, library, playbackStats }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tech-specs-${fileInfo?.file_name || 'media'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [techSpecs, fileInfo, library, playbackStats])
+
+  /** 导出技术规格为XML */
+  const exportXML = useCallback(() => {
+    const toXML = (obj: any, rootName: string): string => {
+      const escape = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const convert = (o: any, name: string, indent: string): string => {
+        if (o === null || o === undefined) return `${indent}<${name}/>\n`
+        if (typeof o !== 'object') return `${indent}<${name}>${escape(String(o))}</${name}>\n`
+        if (Array.isArray(o)) return o.map((item, i) => convert(item, name.replace(/s$/, ''), indent)).join('')
+        let xml = `${indent}<${name}>\n`
+        for (const [k, v] of Object.entries(o)) {
+          xml += convert(v, k, indent + '  ')
+        }
+        xml += `${indent}</${name}>\n`
+        return xml
+      }
+      return `<?xml version="1.0" encoding="UTF-8"?>\n${convert(obj, rootName, '')}`
+    }
+    const data = { techSpecs, fileInfo, library, playbackStats }
+    const xml = toXML(data, 'MediaTechSpecs')
+    const blob = new Blob([xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tech-specs-${fileInfo?.file_name || 'media'}.xml`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [techSpecs, fileInfo, library, playbackStats])
+
   return (
     <section>
       {/* 标题栏 */}
@@ -189,13 +257,36 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
           <Cpu size={16} className="text-neon/60" />
           技术规格
         </h3>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-xs font-medium transition-colors hover:text-neon"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          {expanded ? <><ChevronUp size={14} />收起详情</> : <><ChevronDown size={14} />展开详情</>}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 导出按钮 */}
+          {expanded && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={exportJSON}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors hover:text-neon"
+                style={{ color: 'var(--text-muted)', background: 'var(--nav-hover-bg)' }}
+                title="导出为 JSON"
+              >
+                <FileJson size={12} /> JSON
+              </button>
+              <button
+                onClick={exportXML}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors hover:text-neon"
+                style={{ color: 'var(--text-muted)', background: 'var(--nav-hover-bg)' }}
+                title="导出为 XML"
+              >
+                <FileCode size={12} /> XML
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-xs font-medium transition-colors hover:text-neon"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {expanded ? <><ChevronUp size={14} />收起详情</> : <><ChevronDown size={14} />展开详情</>}
+          </button>
+        </div>
       </div>
 
       {/* 概览卡片 */}
@@ -208,17 +299,20 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
             </div>
             <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>视频</span>
             {mainVideo && isHDR(mainVideo) && (
-              <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#FBBF24' }}>HDR</span>
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#FBBF24' }}>{getHDRLabel(mainVideo)}</span>
+            )}
+            {mainVideo?.is_interlaced && (
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>隔行</span>
             )}
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-              {mainVideo ? formatCodecName(mainVideo.codec_name) : '-'}
+              {mainVideo ? `${mainVideo.width && mainVideo.height ? `${mainVideo.height}p` : ''} ${formatCodecName(mainVideo.codec_name)} ${getHDRLabel(mainVideo)}` : '-'}
             </p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {mainVideo ? [
                 mainVideo.width && mainVideo.height ? `${mainVideo.width}×${mainVideo.height}` : null,
-                mainVideo.frame_rate ? `${parseFloat(mainVideo.frame_rate).toFixed(mainVideo.frame_rate.includes('.') ? 3 : 0)} fps` : null,
+                mainVideo.frame_rate ? `${parseFloat(mainVideo.frame_rate).toFixed(2)} fps` : null,
                 mainVideo.bit_rate ? formatBitRate(mainVideo.bit_rate) : null,
               ].filter(Boolean).join(' · ') : '无视频流'}
             </p>
@@ -240,12 +334,12 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-              {mainAudio ? formatCodecName(mainAudio.codec_name) : '-'}
+              {mainAudio ? `${formatCodecName(mainAudio.codec_name)} ${formatChannels(mainAudio.channels, mainAudio.channel_layout)}` : '-'}
             </p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {mainAudio ? [
-                formatChannels(mainAudio.channels, mainAudio.channel_layout),
                 mainAudio.sample_rate ? formatSampleRate(mainAudio.sample_rate) : null,
+                mainAudio.bit_rate ? formatBitRate(mainAudio.bit_rate) : null,
                 mainAudio.language ? formatLanguage(mainAudio.language) : null,
               ].filter(Boolean).join(' · ') : '无音频流'}
             </p>
@@ -364,7 +458,7 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
             </div>
           )}
 
-          {/* 视频流详情 */}
+          {/* ===== 视频流详情 — 表格布局 ===== */}
           {videoStreams.length > 0 && (
             <div className="glass-panel rounded-xl p-4">
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -373,23 +467,41 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
               </h4>
               {videoStreams.map((stream, idx) => (
                 <div key={idx} className="rounded-lg p-3 mb-2 last:mb-0" style={{ background: 'var(--bg-subtle)' }}>
-                  <div className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
-                    <InfoItem label="编码格式" value={formatCodecName(stream.codec_name, stream.codec_long_name)} />
-                    {stream.profile && <InfoItem label="编码配置" value={stream.profile} />}
+                  {/* 视频流标题行 */}
+                  <div className="mb-2 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                      {stream.width && stream.height ? `${stream.height}p` : ''} {formatCodecName(stream.codec_name)} {getHDRLabel(stream)}
+                    </span>
+                    {stream.is_default && (
+                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--neon-blue-8)', color: 'var(--neon-blue)' }}>默认</span>
+                    )}
+                  </div>
+                  {/* 详细参数表格 — 3列网格 */}
+                  <div className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                    <InfoItem label="编码器" value={formatCodecName(stream.codec_name, stream.codec_long_name)} />
+                    {stream.profile && <InfoItem label="配置" value={stream.profile} />}
+                    {stream.level ? <InfoItem label="等级" value={String(stream.level)} /> : null}
                     <InfoItem label="分辨率" value={stream.width && stream.height ? `${stream.width} × ${stream.height}` : '-'} />
-                    <InfoItem label="帧率" value={stream.frame_rate ? `${parseFloat(stream.frame_rate).toFixed(3)} fps` : '-'} />
+                    <InfoItem label="帧率" value={stream.frame_rate ? `${parseFloat(stream.frame_rate).toFixed(2)} fps` : '-'} />
                     <InfoItem label="码率" value={formatBitRate(stream.bit_rate)} />
+                    {stream.bit_depth ? <InfoItem label="位深度" value={`${stream.bit_depth} bit`} /> : null}
                     <InfoItem label="像素格式" value={formatPixFmt(stream.pix_fmt)} />
+                    <InfoItem label="视频动态范围" value={getHDRLabel(stream)} />
+                    {stream.aspect_ratio && <InfoItem label="宽高比" value={stream.aspect_ratio} />}
                     {stream.color_space && <InfoItem label="色彩空间" value={stream.color_space} />}
-                    {stream.color_transfer && <InfoItem label="色彩传输" value={stream.color_transfer} />}
-                    {isHDR(stream) && <InfoItem label="HDR" value="✓ 高动态范围" highlight />}
+                    {stream.color_transfer && <InfoItem label="色彩转换" value={stream.color_transfer} />}
+                    {stream.color_primaries && <InfoItem label="色彩原色" value={formatColorPrimaries(stream.color_primaries)} />}
+                    {stream.color_range && <InfoItem label="色彩范围" value={stream.color_range === 'tv' ? 'TV (Limited)' : stream.color_range === 'pc' ? 'PC (Full)' : stream.color_range} />}
+                    <InfoItem label="隔行扫描" value={stream.is_interlaced ? '是' : '否'} />
+                    {stream.ref_frames ? <InfoItem label="参考帧" value={String(stream.ref_frames)} /> : null}
+                    {stream.nb_frames && <InfoItem label="总帧数" value={stream.nb_frames} />}
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* 音频流详情 */}
+          {/* ===== 音频流详情 — 表格布局 ===== */}
           {audioStreams.length > 0 && (
             <div className="glass-panel rounded-xl p-4">
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -398,11 +510,13 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
               </h4>
               {audioStreams.map((stream, idx) => (
                 <div key={idx} className="rounded-lg p-3 mb-2 last:mb-0" style={{ background: 'var(--bg-subtle)' }}>
-                  <div className="mb-1.5 flex items-center gap-2">
-                    <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      轨道 #{stream.index}
-                      {stream.title && ` — ${stream.title}`}
+                  <div className="mb-2 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                      {formatCodecName(stream.codec_name)} {formatChannels(stream.channels, stream.channel_layout)}
                     </span>
+                    {stream.title && (
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>— {stream.title}</span>
+                    )}
                     {stream.is_default && (
                       <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--neon-blue-8)', color: 'var(--neon-blue)' }}>默认</span>
                     )}
@@ -410,20 +524,23 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
                       <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(255,165,0,0.1)', color: '#FFA500' }}>强制</span>
                     )}
                   </div>
-                  <div className="grid gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
-                    <InfoItem label="编码格式" value={formatCodecName(stream.codec_name, stream.codec_long_name)} />
-                    <InfoItem label="声道" value={formatChannels(stream.channels, stream.channel_layout)} />
+                  <div className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                    <InfoItem label="语言" value={formatLanguage(stream.language)} />
+                    <InfoItem label="编码器" value={formatCodecName(stream.codec_name, stream.codec_long_name)} />
+                    {stream.profile && <InfoItem label="配置" value={stream.profile} />}
+                    <InfoItem label="布局" value={stream.channel_layout || '-'} />
+                    <InfoItem label="声道" value={stream.channels ? `${stream.channels} ch` : '-'} />
                     <InfoItem label="采样率" value={formatSampleRate(stream.sample_rate)} />
                     <InfoItem label="码率" value={formatBitRate(stream.bit_rate)} />
-                    <InfoItem label="语言" value={formatLanguage(stream.language)} />
                     {stream.bits_per_sample && stream.bits_per_sample > 0 && <InfoItem label="位深" value={`${stream.bits_per_sample}-bit`} />}
+                    <InfoItem label="默认" value={stream.is_default ? '是' : '否'} />
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* 字幕流详情 */}
+          {/* ===== 字幕流详情 ===== */}
           {subtitleStreams.length > 0 && (
             <div className="glass-panel rounded-xl p-4">
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -457,24 +574,52 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
             </div>
           )}
 
-          {/* 文件详情 */}
+          {/* ===== 文件详情 — 增强版 ===== */}
           {fileInfo && (
             <div className="glass-panel rounded-xl p-4">
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 <Layers size={14} className="text-neon/60" />
                 文件详情
               </h4>
-              <div className="grid gap-x-8 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
                 <InfoItem label="文件名" value={fileInfo.file_name} />
                 <InfoItem label="文件格式" value={fileInfo.file_ext?.replace('.', '').toUpperCase() || '-'} />
                 <InfoItem label="文件大小" value={formatSize(fileInfo.file_size)} />
+                {fileInfo.mime_type && <InfoItem label="MIME 类型" value={fileInfo.mime_type} />}
                 {techSpecs?.format?.duration && (
                   <InfoItem label="精确时长" value={formatDuration(parseFloat(techSpecs.format.duration))} />
                 )}
                 {techSpecs?.format?.bit_rate && (
                   <InfoItem label="总码率" value={formatBitRate(techSpecs.format.bit_rate)} />
                 )}
+                <InfoItem label="创建时间" value={fileInfo.created_at ? formatDate(fileInfo.created_at) : '-'} />
                 <InfoItem label="修改时间" value={fileInfo.modified_at ? formatDate(fileInfo.modified_at) : '-'} />
+                {fileInfo.permissions && fileInfo.permissions !== '-' && (
+                  <InfoItem label="权限" value={fileInfo.permissions} icon={<Shield size={10} />} />
+                )}
+                {fileInfo.owner && fileInfo.owner !== '-' && (
+                  <InfoItem label="所有者" value={fileInfo.owner} icon={<User size={10} />} />
+                )}
+                {fileInfo.md5 && (
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <InfoItem label="MD5" value={fileInfo.md5} icon={<Hash size={10} />} mono />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ===== 容器元数据标签 ===== */}
+          {techSpecs?.format?.tags && Object.keys(techSpecs.format.tags).length > 0 && (
+            <div className="glass-panel rounded-xl p-4">
+              <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                <Info size={14} className="text-neon/60" />
+                元数据标签
+              </h4>
+              <div className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(techSpecs.format.tags).map(([key, value]) => (
+                  <InfoItem key={key} label={key} value={String(value)} />
+                ))}
               </div>
             </div>
           )}
@@ -485,11 +630,17 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
 }
 
 /** 信息项组件 */
-function InfoItem({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function InfoItem({ label, value, highlight, icon, mono }: { label: string; value: string; highlight?: boolean; icon?: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex gap-2">
-      <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{label}：</span>
-      <span className={highlight ? 'font-semibold' : 'font-medium'} style={{ color: highlight ? '#FBBF24' : 'var(--text-primary)' }}>
+      <span className="shrink-0 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+        {icon}
+        {label}：
+      </span>
+      <span
+        className={`${highlight ? 'font-semibold' : 'font-medium'} ${mono ? 'font-mono text-[11px] break-all' : ''}`}
+        style={{ color: highlight ? '#FBBF24' : 'var(--text-primary)' }}
+      >
         {value}
       </span>
     </div>
