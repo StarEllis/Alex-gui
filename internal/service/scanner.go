@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
@@ -34,20 +36,20 @@ var supportedExts = map[string]bool{
 
 // extrasExcludeDirs Emby/Kodi 标准的非正片内容目录名（小写）
 var extrasExcludeDirs = map[string]bool{
-	"extras":             true,
-	"extra":              true,
-	"featurettes":        true,
-	"behind the scenes":  true,
-	"deleted scenes":     true,
-	"interviews":         true,
-	"trailers":           true,
-	"trailer":            true,
-	"samples":            true,
-	"sample":             true,
-	"shorts":             true,
-	"scenes":             true,
-	"bonus":              true,
-	"bonus features":     true,
+	"extras":            true,
+	"extra":             true,
+	"featurettes":       true,
+	"behind the scenes": true,
+	"deleted scenes":    true,
+	"interviews":        true,
+	"trailers":          true,
+	"trailer":           true,
+	"samples":           true,
+	"sample":            true,
+	"shorts":            true,
+	"scenes":            true,
+	"bonus":             true,
+	"bonus features":    true,
 }
 
 // extrasSuffixes Emby 标准的特典文件命名后缀（小写）
@@ -96,6 +98,18 @@ func parseIDFromName(name string) (idType string, idValue string) {
 		}
 	}
 	return "", ""
+}
+
+// stackingPatterns 多 CD/多版本堆叠检测正则（P2）
+var stackingPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)[_\-\.\s](cd|disc|disk|part|pt|dvd)\s*(\d+)`),
+	regexp.MustCompile(`(?i)[_\-\.\s](cd|disc|disk|part|pt|dvd)\s*([a-d])`),
+}
+
+// versionPatterns 多版本检测正则（P2: Director's Cut, Extended, Remastered 等）
+var versionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(director'?s?\s*cut|extended|unrated|remastered|theatrical|imax|criterion|special\s*edition)`),
+	regexp.MustCompile(`(?i)\b(remux|2160p|1080p|720p|4k|uhd|hdr|sdr|3d)\b`),
 }
 
 // extractYearFromName 从文件名/文件夹名中提取年份
@@ -169,12 +183,13 @@ func isBitmapSubtitle(codec string) bool {
 
 // ScannerService 媒体文件扫描服务
 type ScannerService struct {
-	mediaRepo  *repository.MediaRepo
-	seriesRepo *repository.SeriesRepo
-	cfg        *config.Config
-	logger     *zap.SugaredLogger
-	wsHub      *WSHub      // WebSocket事件广播
-	nfoService *NFOService // NFO 本地元数据解析服务
+	mediaRepo     *repository.MediaRepo
+	seriesRepo    *repository.SeriesRepo
+	matchRuleRepo *repository.MatchRuleRepo // P2: 自定义匹配规则
+	cfg           *config.Config
+	logger        *zap.SugaredLogger
+	wsHub         *WSHub      // WebSocket事件广播
+	nfoService    *NFOService // NFO 本地元数据解析服务
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -185,6 +200,11 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 		logger:     logger,
 		nfoService: NewNFOService(logger),
 	}
+}
+
+// SetMatchRuleRepo 设置匹配规则仓储（延迟注入）
+func (s *ScannerService) SetMatchRuleRepo(repo *repository.MatchRuleRepo) {
+	s.matchRuleRepo = repo
 }
 
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
@@ -239,13 +259,14 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	return count, err
 }
 
-// scanMovieLibrary 扫描电影库（支持增量扫描）
+// scanMovieLibrary 扫描电影库（支持增量扫描 + P2 性能优化）
 func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	var count int
 	var totalFiles int     // 遍历到的总文件数
 	var videoFiles int     // 识别到的视频文件数
 	var skippedExist int   // 已存在且未变更跳过的文件数
 	var skippedUpdated int // 已存在但已更新的文件数
+	var skippedRule int    // 被匹配规则跳过的文件数
 
 	// 增量扫描：获取上次扫描时间，仅处理新增/变更的文件
 	lastScanTime := time.Time{}
@@ -255,7 +276,28 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 
 	s.logger.Infof("电影库扫描开始: %s, 路径: %s, 上次扫描: %v", library.Name, library.Path, lastScanTime)
 
-	err := filepath.Walk(library.Path, func(path string, info os.FileInfo, err error) error {
+	// P2: 文件路径预加载到内存 Set（避免 N+1 查询）
+	existingPaths, err := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
+	if err != nil {
+		s.logger.Warnf("预加载文件路径失败，回退到逐个查询: %v", err)
+		existingPaths = nil
+	} else {
+		s.logger.Infof("预加载 %d 个已有文件路径到内存", len(existingPaths))
+	}
+
+	// P2: 预加载自定义匹配规则
+	var matchRules []model.MatchRule
+	if s.matchRuleRepo != nil {
+		matchRules, _ = s.matchRuleRepo.ListEnabled(library.ID)
+		if len(matchRules) > 0 {
+			s.logger.Infof("加载 %d 条匹配规则", len(matchRules))
+		}
+	}
+
+	// P2: 收集新发现的媒体文件，用于后续批量处理 FFprobe 和堆叠检测
+	var pendingList []pendingMedia
+
+	err = filepath.Walk(library.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			s.logger.Warnf("访问文件失败: %s, 错误: %v", path, err)
 			return nil
@@ -290,81 +332,307 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			return nil
 		}
 
-		// 检查文件是否已存在
-		existing, findErr := s.mediaRepo.FindByFilePath(path)
-		if findErr == nil {
-			// 文件已存在：增量扫描模式下，如果文件未修改则跳过
-			if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
-				skippedExist++
-				return nil // 文件未变更，跳过
-			}
-			// 文件已变更，更新文件大小和媒体信息
-			skippedUpdated++
-			existing.FileSize = info.Size()
-			s.probeMediaInfo(existing)
-			s.scanExternalSubtitles(existing)
-			s.mediaRepo.Update(existing)
-			s.logger.Debugf("更新已有媒体: %s", path)
+		// P2: 应用自定义匹配规则
+		if s.applyMatchRulesSkip(path, matchRules) {
+			skippedRule++
+			s.logger.Debugf("匹配规则跳过: %s", path)
 			return nil
+		}
+
+		// P2: 内存查重（替代逐个 DB 查询）
+		if existingPaths != nil {
+			if existingPaths[path] {
+				// 文件已存在：增量扫描模式下，如果文件未修改则跳过
+				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
+					skippedExist++
+					return nil
+				}
+				// 文件已变更，更新文件大小和媒体信息
+				skippedUpdated++
+				existing, findErr := s.mediaRepo.FindByFilePath(path)
+				if findErr == nil {
+					existing.FileSize = info.Size()
+					s.probeMediaInfo(existing)
+					s.scanExternalSubtitles(existing)
+					s.mediaRepo.Update(existing)
+					s.logger.Debugf("更新已有媒体: %s", path)
+				}
+				return nil
+			}
+		} else {
+			// 回退：逐个查询
+			existing, findErr := s.mediaRepo.FindByFilePath(path)
+			if findErr == nil {
+				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
+					skippedExist++
+					return nil
+				}
+				skippedUpdated++
+				existing.FileSize = info.Size()
+				s.probeMediaInfo(existing)
+				s.scanExternalSubtitles(existing)
+				s.mediaRepo.Update(existing)
+				s.logger.Debugf("更新已有媒体: %s", path)
+				return nil
+			}
 		}
 
 		// P0: 增强的标题提取（含年份 + ID 标签解析）
 		filename := filepath.Base(path)
 		title, year, tmdbID := s.extractTitleEnhanced(filename)
 		media := &model.Media{
-			LibraryID: library.ID,
-			Title:     title,
-			FilePath:  path,
-			FileSize:  info.Size(),
-			MediaType: "movie",
-			Year:      year,
-			TMDbID:    tmdbID,
-		}
-		s.probeMediaInfo(media)
-		s.scanExternalSubtitles(media)
-
-		// 识别本地 NFO 信息文件并解析元数据
-		if nfoPath := s.nfoService.FindNFOForMedia(path); nfoPath != "" {
-			if err := s.nfoService.ParseMovieNFO(nfoPath, media); err != nil {
-				s.logger.Debugf("解析NFO失败: %s, 错误: %v", nfoPath, err)
-			} else {
-				s.logger.Debugf("从NFO读取元数据: %s -> %s", nfoPath, media.Title)
-			}
+			LibraryID:    library.ID,
+			Title:        title,
+			FilePath:     path,
+			FileSize:     info.Size(),
+			MediaType:    "movie",
+			Year:         year,
+			TMDbID:       tmdbID,
+			ScrapeStatus: "pending",
 		}
 
-		// 识别本地海报封面图片
-		mediaDir := filepath.Dir(path)
-		if poster, backdrop := s.nfoService.FindLocalImages(mediaDir); poster != "" || backdrop != "" {
-			if poster != "" && media.PosterPath == "" {
-				media.PosterPath = poster
-				s.logger.Debugf("发现本地海报: %s", poster)
-			}
-			if backdrop != "" && media.BackdropPath == "" {
-				media.BackdropPath = backdrop
-				s.logger.Debugf("发现本地背景图: %s", backdrop)
-			}
+		// P2: 应用匹配规则的非跳过动作（set_type, set_genre 等）
+		s.applyMatchRulesAction(media, path, matchRules)
+
+		// P2: 检测多 CD 堆叠
+		stackBase, stackOrder := detectStacking(filename)
+		if stackOrder > 0 {
+			media.StackGroup = stackBase
+			media.StackOrder = stackOrder
+			s.logger.Debugf("检测到堆叠文件: %s (组=%s, 序号=%d)", filename, stackBase, stackOrder)
 		}
 
-		if err := s.mediaRepo.Create(media); err != nil {
-			s.logger.Warnf("保存媒体失败: %s, 错误: %v", path, err)
-			return nil
+		// P2: 检测多版本标识
+		if versionTag := detectVersionTag(filename); versionTag != "" {
+			media.VersionTag = versionTag
+			s.logger.Debugf("检测到版本标识: %s -> %s", filename, versionTag)
 		}
-		count++
-		s.logger.Infof("发现电影: %s [%s | %s | %s]", media.Title, media.Resolution, media.VideoCodec, media.AudioCodec)
-		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
-			LibraryID:   library.ID,
-			LibraryName: library.Name,
-			Phase:       "scanning",
-			NewFound:    count,
-			Message:     fmt.Sprintf("发现: %s [%s]", title, media.Resolution),
-		})
+
+		// 收集到待处理列表（FFprobe 后续并行处理）
+		pendingList = append(pendingList, pendingMedia{media: media, path: path, info: info})
 		return nil
 	})
 
-	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d",
-		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated)
+	// P2: 并行 FFprobe 探测 + 批量入库
+	if len(pendingList) > 0 {
+		s.logger.Infof("开始并行 FFprobe 探测 %d 个新文件", len(pendingList))
+		s.parallelProbe(pendingList)
+
+		// P2: 堆叠分组 — 为同一 StackGroup 的文件分配相同的 VersionGroup
+		stackGroups := make(map[string][]*pendingMedia)
+		for i := range pendingList {
+			if pendingList[i].media.StackGroup != "" {
+				stackGroups[pendingList[i].media.StackGroup] = append(stackGroups[pendingList[i].media.StackGroup], &pendingList[i])
+			}
+		}
+		for _, group := range stackGroups {
+			if len(group) > 1 {
+				// 使用第一个文件的标题作为组标识
+				groupID := group[0].media.Title
+				for _, pm := range group {
+					pm.media.VersionGroup = groupID
+				}
+			}
+		}
+
+		// 逐个入库（保留 NFO/图片扫描逻辑 + 事件广播）
+		for _, pm := range pendingList {
+			s.scanExternalSubtitles(pm.media)
+
+			// 识别本地 NFO 信息文件并解析元数据
+			if nfoPath := s.nfoService.FindNFOForMedia(pm.path); nfoPath != "" {
+				if err := s.nfoService.ParseMovieNFO(nfoPath, pm.media); err != nil {
+					s.logger.Debugf("解析NFO失败: %s, 错误: %v", nfoPath, err)
+				} else {
+					s.logger.Debugf("从NFO读取元数据: %s -> %s", nfoPath, pm.media.Title)
+				}
+			}
+
+			// 识别本地海报封面图片
+			mediaDir := filepath.Dir(pm.path)
+			if poster, backdrop := s.nfoService.FindLocalImages(mediaDir); poster != "" || backdrop != "" {
+				if poster != "" && pm.media.PosterPath == "" {
+					pm.media.PosterPath = poster
+					s.logger.Debugf("发现本地海报: %s", poster)
+				}
+				if backdrop != "" && pm.media.BackdropPath == "" {
+					pm.media.BackdropPath = backdrop
+					s.logger.Debugf("发现本地背景图: %s", backdrop)
+				}
+			}
+
+			if err := s.mediaRepo.Create(pm.media); err != nil {
+				s.logger.Warnf("保存媒体失败: %s, 错误: %v", pm.path, err)
+				continue
+			}
+			count++
+			s.logger.Infof("发现电影: %s [%s | %s | %s]", pm.media.Title, pm.media.Resolution, pm.media.VideoCodec, pm.media.AudioCodec)
+			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+				LibraryID:   library.ID,
+				LibraryName: library.Name,
+				Phase:       "scanning",
+				NewFound:    count,
+				Message:     fmt.Sprintf("发现: %s [%s]", pm.media.Title, pm.media.Resolution),
+			})
+		}
+	}
+
+	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d, 规则跳过: %d",
+		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated, skippedRule)
 
 	return count, err
+}
+
+// ==================== P2: 并行 FFprobe 探测 ====================
+
+// pendingMedia 待处理的媒体文件信息（P2: 用于并行 FFprobe 和批量入库）
+type pendingMedia struct {
+	media *model.Media
+	path  string
+	info  os.FileInfo
+}
+
+// parallelProbe 使用 Worker Pool 并行执行 FFprobe 探测
+func (s *ScannerService) parallelProbe(items []pendingMedia) {
+	// 并发数 = min(CPU核数, 4)，避免 FFprobe 进程过多导致系统负载过高
+	workers := runtime.NumCPU()
+	if workers > 4 {
+		workers = 4
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	type probeJob struct {
+		index int
+	}
+
+	jobs := make(chan probeJob, len(items))
+	var wg sync.WaitGroup
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				s.probeMediaInfo(items[job.index].media)
+			}
+		}()
+	}
+
+	for i := range items {
+		jobs <- probeJob{index: i}
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+// ==================== P2: 多 CD 堆叠检测 ====================
+
+// detectStacking 检测文件名中的多 CD/多分卷标识
+// 返回: (去除堆叠后缀的基础名, 堆叠序号)，序号为 0 表示非堆叠文件
+func detectStacking(filename string) (baseName string, order int) {
+	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
+	for _, pattern := range stackingPatterns {
+		if m := pattern.FindStringSubmatchIndex(nameWithoutExt); m != nil {
+			// 提取序号
+			orderStr := nameWithoutExt[m[4]:m[5]]
+			// 字母序号转数字: a=1, b=2, c=3, d=4
+			if len(orderStr) == 1 && orderStr[0] >= 'a' && orderStr[0] <= 'd' {
+				order = int(orderStr[0]-'a') + 1
+			} else {
+				order, _ = strconv.Atoi(orderStr)
+			}
+			if order > 0 {
+				// 基础名 = 去除堆叠标识的部分
+				baseName = strings.TrimSpace(nameWithoutExt[:m[0]])
+				return baseName, order
+			}
+		}
+	}
+	return "", 0
+}
+
+// detectVersionTag 检测文件名中的版本标识（Director's Cut, Extended 等）
+func detectVersionTag(filename string) string {
+	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
+	if m := versionPatterns[0].FindStringSubmatch(nameWithoutExt); len(m) >= 2 {
+		return m[1]
+	}
+	return ""
+}
+
+// ==================== P2: 自定义匹配规则集成 ====================
+
+// applyMatchRulesSkip 检查文件是否应被匹配规则跳过
+func (s *ScannerService) applyMatchRulesSkip(filePath string, rules []model.MatchRule) bool {
+	for _, rule := range rules {
+		if rule.Action != "skip" {
+			continue
+		}
+		if s.matchRule(filePath, &rule) {
+			// 更新命中计数
+			if s.matchRuleRepo != nil {
+				s.matchRuleRepo.IncrementHitCount(rule.ID)
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// applyMatchRulesAction 对媒体应用匹配规则的非跳过动作
+func (s *ScannerService) applyMatchRulesAction(media *model.Media, filePath string, rules []model.MatchRule) {
+	for _, rule := range rules {
+		if rule.Action == "skip" {
+			continue
+		}
+		if s.matchRule(filePath, &rule) {
+			switch rule.Action {
+			case "set_type":
+				media.MediaType = rule.ActionValue
+			case "set_genre":
+				if media.Genres == "" {
+					media.Genres = rule.ActionValue
+				} else {
+					media.Genres += "," + rule.ActionValue
+				}
+			}
+			// 更新命中计数
+			if s.matchRuleRepo != nil {
+				s.matchRuleRepo.IncrementHitCount(rule.ID)
+			}
+			s.logger.Debugf("匹配规则命中: %s -> %s=%s", filepath.Base(filePath), rule.Action, rule.ActionValue)
+		}
+	}
+}
+
+// matchRule 测试文件路径是否匹配指定规则
+func (s *ScannerService) matchRule(filePath string, rule *model.MatchRule) bool {
+	target := filePath
+	switch rule.RuleType {
+	case "filename":
+		target = filepath.Base(filePath)
+		return strings.Contains(strings.ToLower(target), strings.ToLower(rule.Pattern))
+	case "path":
+		return strings.Contains(strings.ToLower(target), strings.ToLower(rule.Pattern))
+	case "regex":
+		re, err := regexp.Compile(rule.Pattern)
+		if err != nil {
+			return false
+		}
+		return re.MatchString(target)
+	case "keyword":
+		lower := strings.ToLower(filepath.Base(filePath))
+		keywords := strings.Split(rule.Pattern, ",")
+		for _, kw := range keywords {
+			if strings.Contains(lower, strings.ToLower(strings.TrimSpace(kw))) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // scanMixedLibrary 扫描混合媒体库（智能区分电影和电视剧）
@@ -679,7 +947,7 @@ type seriesFolder struct {
 type EpisodeInfo struct {
 	SeasonNum     int
 	EpisodeNum    int
-	EpisodeNumEnd int    // 多集连播结束集号（0=单集），如 S01E02-E05 → Start=2, End=5
+	EpisodeNumEnd int // 多集连播结束集号（0=单集），如 S01E02-E05 → Start=2, End=5
 	EpisodeTitle  string
 	AirDate       string // 日期格式集号：2024-01-15（脱口秀/日播剧）
 	FilePath      string

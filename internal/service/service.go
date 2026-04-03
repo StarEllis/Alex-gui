@@ -79,6 +79,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 注入WSHub到各服务
 	scanner.SetWSHub(wsHub)
+	scanner.SetMatchRuleRepo(repos.MatchRule) // P2: 注入匹配规则仓储
 	transcoder.SetWSHub(wsHub)
 	metadata.SetWSHub(wsHub)
 

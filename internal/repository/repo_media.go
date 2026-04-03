@@ -486,3 +486,52 @@ func (r *MediaRepo) UpdateFilePathPrefix(oldPrefix, newPrefix string) error {
 func (r *MediaRepo) DeleteByPathPrefix(pathPrefix string) error {
 	return r.db.Where("REPLACE(file_path, '\\', '/') LIKE ?", pathPrefix+"%").Delete(&model.Media{}).Error
 }
+
+// ==================== P2/P3: 性能优化方法 ====================
+
+// GetAllFilePathsByLibrary 获取指定媒体库的所有文件路径集合（用于内存查重，避免 N+1 查询）
+func (r *MediaRepo) GetAllFilePathsByLibrary(libraryID string) (map[string]bool, error) {
+	var paths []string
+	err := r.db.Model(&model.Media{}).Where("library_id = ?", libraryID).Pluck("file_path", &paths).Error
+	if err != nil {
+		return nil, err
+	}
+	pathSet := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		pathSet[p] = true
+	}
+	return pathSet, nil
+}
+
+// BatchCreate 批量创建媒体记录（减少 SQLite 写锁竞争，每批 100 条）
+func (r *MediaRepo) BatchCreate(mediaList []*model.Media) error {
+	if len(mediaList) == 0 {
+		return nil
+	}
+	return r.db.CreateInBatches(mediaList, 100).Error
+}
+
+// UpdateFields 仅更新指定字段（减少写锁争用，提高 SQLite 并发性能）
+func (r *MediaRepo) UpdateFields(id string, fields map[string]interface{}) error {
+	return r.db.Model(&model.Media{}).Where("id = ?", id).Updates(fields).Error
+}
+
+// ListNeedScrape 获取需要刮削的媒体列表（P3: 排除最近 N 天内已失败的记录）
+func (r *MediaRepo) ListNeedScrape(libraryID string, skipRecentFailedDays int) ([]model.Media, error) {
+	var media []model.Media
+	query := r.db.Model(&model.Media{}).Where(
+		"(overview = '' OR poster_path = '') AND scrape_status != 'manual'",
+	)
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	// P3: 跳过最近 N 天内已尝试刮削但失败的记录（避免重复无效请求）
+	if skipRecentFailedDays > 0 {
+		query = query.Where(
+			"NOT (scrape_status = 'failed' AND last_scrape_at >= datetime('now', ?))",
+			fmt.Sprintf("-%d days", skipRecentFailedDays),
+		)
+	}
+	err := query.Order("created_at DESC").Find(&media).Error
+	return media, err
+}

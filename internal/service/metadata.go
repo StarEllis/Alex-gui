@@ -13,13 +13,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
-)
+))
 
 // MetadataService 元数据刮削服务
 type MetadataService struct {
@@ -284,6 +286,11 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 
 	s.logger.Infof("开始刮削元数据: %s", media.Title)
 
+	// P3: 更新刮削尝试次数和时间
+	now := time.Now()
+	media.ScrapeAttempts++
+	media.LastScrapeAt = &now
+
 	// P1: 如果扫描阶段已从文件名解析到 TMDb ID，直接用 ID 获取详情，跳过搜索步骤
 	if media.TMDbID > 0 && media.Overview == "" {
 		s.logger.Infof("检测到 TMDbID=%d（来自文件名），直接使用 ID 刮削: %s", media.TMDbID, media.Title)
@@ -294,6 +301,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 			idErr = s.scrapeTVByTMDbID(media, media.TMDbID)
 		}
 		if idErr == nil {
+			media.ScrapeStatus = "scraped" // P3: 标记刮削成功
 			if saveErr := s.mediaRepo.Update(media); saveErr != nil {
 				s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
 				return saveErr
@@ -324,6 +332,8 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 			s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
 			return saveErr
 		}
+		media.ScrapeStatus = "scraped" // P3: 标记刮削成功
+		s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{"scrape_status": "scraped"})
 		s.logger.Infof("元数据刮削完成 (多数据源): %s", media.Title)
 		randomDelay(1500, 3000) // 单次刮削完成后等待 1.5-3 秒，防止限流
 		return nil
@@ -394,15 +404,25 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 							s.logger.Debugf("AI 元数据增强也失败: %s - %v", media.Title, aiErr)
 						} else {
 							s.logger.Infof("AI 元数据增强成功: %s", media.Title)
+							updated.ScrapeStatus = "scraped" // P3: AI 增强成功
 							s.mediaRepo.Update(updated)
 							return nil
 						}
 					}
+					// P3: 所有数据源都失败，标记为 failed
+					s.mediaRepo.UpdateFields(mediaID, map[string]interface{}{
+						"scrape_status": "failed",
+					})
 					return tmdbErr
 				}
 			}
 		}
 	}
+
+	// P3: 旧版路径刮削成功，标记状态
+	s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{
+		"scrape_status": "scraped",
+	})
 
 	// 等待一下避免限流（随机 1.5-3 秒）
 	randomDelay(1500, 3000)
@@ -410,17 +430,27 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 	return nil
 }
 
-// ScrapeLibrary 为整个媒体库刮削元数据
+// ScrapeLibrary 为整个媒体库刮削元数据（P3: 并发刮削池 + 失败重试窗口）
 func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Media) (int, int) {
 	if s.cfg.Secrets.TMDbAPIKey == "" && s.providerChain == nil {
 		s.logger.Warn("TMDb API Key未配置且无可用数据源，跳过元数据刮削")
 		return 0, 0
 	}
 
-	// 计算需要刮削的总数
+	// P3: 使用增强的过滤逻辑（排除最近 7 天内已失败的记录）
 	var needScrape []model.Media
 	for _, media := range mediaList {
 		if media.Overview == "" || media.PosterPath == "" {
+			// P3: 跳过最近 7 天内已尝试刮削但失败的记录
+			if media.ScrapeStatus == "failed" && media.LastScrapeAt != nil {
+				if time.Since(*media.LastScrapeAt) < 7*24*time.Hour {
+					continue
+				}
+			}
+			// P3: 跳过手动标记为不需要刮削的记录
+			if media.ScrapeStatus == "manual" {
+				continue
+			}
 			needScrape = append(needScrape, media)
 		}
 	}
@@ -430,8 +460,8 @@ func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Medi
 	}
 
 	total := len(needScrape)
-	success := 0
-	failed := 0
+	var success int32
+	var failed int32
 
 	// 发送刮削开始事件
 	s.broadcastScrapeEvent(EventScrapeStarted, &ScrapeProgressData{
@@ -440,41 +470,76 @@ func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Medi
 		Message:   fmt.Sprintf("开始元数据刮削，共 %d 个媒体待处理", total),
 	})
 
-	for i, media := range needScrape {
-		if err := s.ScrapeMedia(media.ID); err != nil {
-			s.logger.Debugf("刮削失败 [%d/%d]: %s - %v", i+1, total, media.Title, err)
-			failed++
-		} else {
-			success++
-		}
+	// P3: 并发刮削池（默认 3 个 worker，考虑 TMDb 限速 40 req/10s）
+	workerCount := 3
+	jobs := make(chan int, total)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	processed := 0
 
-		// 发送刮削进度事件
-		s.broadcastScrapeEvent(EventScrapeProgress, &ScrapeProgressData{
-			LibraryID:  libraryID,
-			Current:    i + 1,
-			Total:      total,
-			Success:    success,
-			Failed:     failed,
-			MediaTitle: media.Title,
-			Message:    fmt.Sprintf("刮削进度: [%d/%d] %s", i+1, total, media.Title),
-		})
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				media := needScrape[idx]
+				if err := s.ScrapeMedia(media.ID); err != nil {
+					s.logger.Debugf("刮削失败: %s - %v", media.Title, err)
+					// P3: 标记刮削失败状态
+					s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{
+						"scrape_status": "failed",
+					})
+					atomic.AddInt32(&failed, 1)
+				} else {
+					atomic.AddInt32(&success, 1)
+				}
 
-		// TMDb限速保护：每次请求间隔 2-5 秒随机化，防止 IP 被封禁
-		randomDelay(2000, 5000)
+				// 发送刮削进度事件（加锁保证顺序）
+				mu.Lock()
+				processed++
+				currentProcessed := processed
+				currentSuccess := int(atomic.LoadInt32(&success))
+				currentFailed := int(atomic.LoadInt32(&failed))
+				mu.Unlock()
+
+				s.broadcastScrapeEvent(EventScrapeProgress, &ScrapeProgressData{
+					LibraryID:  libraryID,
+					Current:    currentProcessed,
+					Total:      total,
+					Success:    currentSuccess,
+					Failed:     currentFailed,
+					MediaTitle: media.Title,
+					Message:    fmt.Sprintf("刮削进度: [%d/%d] %s", currentProcessed, total, media.Title),
+				})
+
+				// TMDb限速保护：每个 worker 内部间隔 2-5 秒随机化
+				randomDelay(2000, 5000)
+			}
+		}()
 	}
+
+	// 分发任务
+	for i := range needScrape {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	finalSuccess := int(atomic.LoadInt32(&success))
+	finalFailed := int(atomic.LoadInt32(&failed))
 
 	// 发送刮削完成事件
 	s.broadcastScrapeEvent(EventScrapeCompleted, &ScrapeProgressData{
 		LibraryID: libraryID,
 		Current:   total,
 		Total:     total,
-		Success:   success,
-		Failed:    failed,
-		Message:   fmt.Sprintf("元数据刮削完成: 成功 %d, 失败 %d", success, failed),
+		Success:   finalSuccess,
+		Failed:    finalFailed,
+		Message:   fmt.Sprintf("元数据刮削完成: 成功 %d, 失败 %d", finalSuccess, finalFailed),
 	})
 
-	s.logger.Infof("元数据刮削完成: 成功 %d, 失败 %d", success, failed)
-	return success, failed
+	s.logger.Infof("元数据刮削完成: 成功 %d, 失败 %d (并发 %d workers)", finalSuccess, finalFailed, workerCount)
+	return finalSuccess, finalFailed
 }
 
 // broadcastScrapeEvent 广播刮削事件

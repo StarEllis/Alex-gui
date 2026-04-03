@@ -188,27 +188,6 @@ interface MediaTechSpecsProps {
 export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackStats, loading }: MediaTechSpecsProps) {
   const [expanded, setExpanded] = useState(false)
 
-  if (loading) {
-    return (
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <div className="skeleton h-5 w-32 rounded-lg" />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="skeleton h-24 rounded-xl" />
-          ))}
-        </div>
-      </section>
-    )
-  }
-
-  const videoStreams = techSpecs?.streams?.filter(s => s.codec_type === 'video') || []
-  const audioStreams = techSpecs?.streams?.filter(s => s.codec_type === 'audio') || []
-  const subtitleStreams = techSpecs?.streams?.filter(s => s.codec_type === 'subtitle') || []
-  const mainVideo = videoStreams[0]
-  const mainAudio = audioStreams[0]
-
   /** 导出技术规格为JSON */
   const exportJSON = useCallback(() => {
     const data = { techSpecs, fileInfo, library, playbackStats }
@@ -248,6 +227,27 @@ export default function MediaTechSpecs({ techSpecs, fileInfo, library, playbackS
     a.click()
     URL.revokeObjectURL(url)
   }, [techSpecs, fileInfo, library, playbackStats])
+
+  if (loading) {
+    return (
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="skeleton h-5 w-32 rounded-lg" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="skeleton h-24 rounded-xl" />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  const videoStreams = techSpecs?.streams?.filter(s => s.codec_type === 'video') || []
+  const audioStreams = techSpecs?.streams?.filter(s => s.codec_type === 'audio') || []
+  const subtitleStreams = techSpecs?.streams?.filter(s => s.codec_type === 'subtitle') || []
+  const mainVideo = videoStreams[0]
+  const mainAudio = audioStreams[0]
 
   return (
     <section>

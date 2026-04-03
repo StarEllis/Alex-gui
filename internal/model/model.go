@@ -113,6 +113,15 @@ type Media struct {
 	Tagline    string `json:"tagline" gorm:"type:text"`     // 标语/宣传语
 	Studio     string `json:"studio" gorm:"type:text"`      // 出品公司
 	TrailerURL string `json:"trailer_url" gorm:"type:text"` // 预告片链接（YouTube）
+	// 多CD堆叠 & 多版本聚合（P2）
+	StackGroup   string `json:"stack_group" gorm:"index;type:text"`   // 堆叠组 ID（cd1/cd2 共享同一组 ID）
+	StackOrder   int    `json:"stack_order"`                          // 堆叠顺序（1=cd1, 2=cd2...）
+	VersionTag   string `json:"version_tag" gorm:"type:text"`         // 版本标识（"4K", "Director's Cut" 等）
+	VersionGroup string `json:"version_group" gorm:"index;type:text"` // 同一内容的不同版本共享此 ID
+	// 刮削状态追踪（P3）
+	ScrapeStatus   string     `json:"scrape_status" gorm:"type:text;default:pending"` // pending / scraped / failed / manual
+	ScrapeAttempts int        `json:"scrape_attempts"`                                // 刮削尝试次数
+	LastScrapeAt   *time.Time `json:"last_scrape_at"`                                 // 最后一次刮削时间
 	// 剧集专属字段
 	SeriesID     string `json:"series_id" gorm:"index;type:text"`
 	SeasonNum    int    `json:"season_num"`
