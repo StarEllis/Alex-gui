@@ -516,6 +516,32 @@ func (r *MediaRepo) UpdateFields(id string, fields map[string]interface{}) error
 	return r.db.Model(&model.Media{}).Where("id = ?", id).Updates(fields).Error
 }
 
+// DeleteByIDs 批量删除指定 ID 的媒体记录（用于清理已删除文件）
+func (r *MediaRepo) DeleteByIDs(ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.db.Unscoped().Where("id IN ?", ids).Delete(&model.Media{})
+	return result.RowsAffected, result.Error
+}
+
+// MediaPathRecord 媒体文件路径记录（轻量结构，仅包含 ID、路径和关联的 SeriesID）
+type MediaPathRecord struct {
+	ID       string
+	FilePath string
+	SeriesID string
+}
+
+// ListIDAndPathByLibrary 获取指定媒体库的所有媒体 ID、文件路径和 SeriesID（用于清理已删除文件）
+func (r *MediaRepo) ListIDAndPathByLibrary(libraryID string) ([]MediaPathRecord, error) {
+	var records []MediaPathRecord
+	err := r.db.Model(&model.Media{}).
+		Select("id, file_path, series_id").
+		Where("library_id = ?", libraryID).
+		Scan(&records).Error
+	return records, err
+}
+
 // ListNeedScrape 获取需要刮削的媒体列表（P3: 排除最近 N 天内已失败的记录）
 func (r *MediaRepo) ListNeedScrape(libraryID string, skipRecentFailedDays int) ([]model.Media, error) {
 	var media []model.Media

@@ -255,8 +255,131 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 		})
 	}
 
-	s.logger.Infof("扫描完成: %s, 新增 %d 个媒体", library.Name, count)
+	// ==================== 增量扫描自动清理已删除文件 ====================
+	cleaned := s.cleanDeletedFiles(library)
+	if cleaned > 0 {
+		s.logger.Infof("清理已删除文件: %s, 共清理 %d 条记录", library.Name, cleaned)
+	}
+
+	s.logger.Infof("扫描完成: %s, 新增 %d 个媒体, 清理 %d 条已删除记录", library.Name, count, cleaned)
 	return count, err
+}
+
+// cleanDeletedFiles 清理数据库中记录了但磁盘上已不存在的文件
+// 遍历该媒体库所有数据库记录，检查文件是否仍存在于磁盘，不存在则删除记录
+// 同时更新受影响的 Series 合集统计信息，清理变为空的合集
+func (s *ScannerService) cleanDeletedFiles(library *model.Library) int {
+	// 获取该媒体库所有媒体的 ID、路径和关联 SeriesID
+	records, err := s.mediaRepo.ListIDAndPathByLibrary(library.ID)
+	if err != nil {
+		s.logger.Warnf("清理已删除文件失败（获取记录出错）: %v", err)
+		return 0
+	}
+
+	if len(records) == 0 {
+		return 0
+	}
+
+	s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+		LibraryID:   library.ID,
+		LibraryName: library.Name,
+		Phase:       "cleaning",
+		Total:       len(records),
+		Message:     fmt.Sprintf("正在检查 %d 个文件是否仍存在...", len(records)),
+	})
+
+	// 收集需要删除的媒体 ID 和受影响的 SeriesID
+	var deleteIDs []string
+	affectedSeries := make(map[string]bool) // 受影响的 SeriesID 集合
+
+	for _, rec := range records {
+		// 检查文件是否仍存在于磁盘
+		if _, statErr := os.Stat(rec.FilePath); os.IsNotExist(statErr) {
+			deleteIDs = append(deleteIDs, rec.ID)
+			if rec.SeriesID != "" {
+				affectedSeries[rec.SeriesID] = true
+			}
+			s.logger.Debugf("文件已不存在，标记清理: %s", rec.FilePath)
+		}
+	}
+
+	if len(deleteIDs) == 0 {
+		return 0
+	}
+
+	s.logger.Infof("发现 %d 个已删除文件需要清理（共检查 %d 条记录）", len(deleteIDs), len(records))
+
+	// 批量删除已不存在的媒体记录（每批 100 条，避免 SQL 过长）
+	totalDeleted := 0
+	batchSize := 100
+	for i := 0; i < len(deleteIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(deleteIDs) {
+			end = len(deleteIDs)
+		}
+		batch := deleteIDs[i:end]
+		deleted, delErr := s.mediaRepo.DeleteByIDs(batch)
+		if delErr != nil {
+			s.logger.Warnf("批量删除已删除文件记录失败: %v", delErr)
+			continue
+		}
+		totalDeleted += int(deleted)
+
+		// 广播清理进度
+		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+			LibraryID:   library.ID,
+			LibraryName: library.Name,
+			Phase:       "cleaning",
+			Current:     totalDeleted,
+			Total:       len(deleteIDs),
+			Cleaned:     totalDeleted,
+			Message:     fmt.Sprintf("已清理 %d/%d 条已删除文件记录", totalDeleted, len(deleteIDs)),
+		})
+	}
+
+	// 更新受影响的 Series 合集统计信息
+	for seriesID := range affectedSeries {
+		episodes, listErr := s.mediaRepo.ListBySeriesID(seriesID)
+		if listErr != nil {
+			s.logger.Warnf("更新合集统计失败（获取剧集列表出错）: seriesID=%s, %v", seriesID, listErr)
+			continue
+		}
+
+		if len(episodes) == 0 {
+			// 合集下已无剧集，删除空合集
+			if delErr := s.seriesRepo.Delete(seriesID); delErr != nil {
+				s.logger.Warnf("删除空合集失败: seriesID=%s, %v", seriesID, delErr)
+			} else {
+				s.logger.Infof("清理空合集: seriesID=%s", seriesID)
+			}
+			continue
+		}
+
+		// 重新统计季数和集数
+		series, findErr := s.seriesRepo.FindByIDOnly(seriesID)
+		if findErr != nil {
+			continue
+		}
+		seasonSet := make(map[int]bool)
+		for _, ep := range episodes {
+			seasonSet[ep.SeasonNum] = true
+		}
+		series.EpisodeCount = len(episodes)
+		series.SeasonCount = len(seasonSet)
+		s.seriesRepo.Update(series)
+		s.logger.Debugf("更新合集统计: %s, %d 季 %d 集", series.Title, series.SeasonCount, series.EpisodeCount)
+	}
+
+	// 广播清理完成事件
+	s.broadcastScanEvent(EventScanCompleted, &ScanProgressData{
+		LibraryID:   library.ID,
+		LibraryName: library.Name,
+		Phase:       "cleaning",
+		Cleaned:     totalDeleted,
+		Message:     fmt.Sprintf("清理完成: 移除 %d 条已删除文件记录", totalDeleted),
+	})
+
+	return totalDeleted
 }
 
 // scanMovieLibrary 扫描电影库（支持增量扫描 + P2 性能优化）
