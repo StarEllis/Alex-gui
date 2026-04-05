@@ -1,0 +1,282 @@
+/* ===== 基础变量与重置 ===== */
+:root {
+  --bg-color: #0f0f15;
+  --sidebar-bg: #14141e;
+  --card-bg: #1a1a25;
+  --sidebar-active-bg: #222232;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-dim: #666;
+  --accent: #4a9eff;
+  --accent-hover: #6eb1ff;
+  --border-color: rgba(255, 255, 255, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg-color);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ===== 侧边栏 (Sidebar) ===== */
+.sidebar {
+  width: 200px; /* 增加宽度以更接近参考图 */
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.sidebar-logo {
+  padding: 20px 16px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-logo i {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.sidebar-section {
+  margin-bottom: 24px;
+}
+
+.sidebar-section-title {
+  padding: 0 16px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  opacity: 0.8;
+}
+
+.sidebar-nav-item, .sidebar-lib-item {
+  padding: 8px 16px 8px 24px; /* 增加左侧缩进 */
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
+
+.sidebar-nav-item:hover, .sidebar-lib-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.sidebar-nav-item.active, .sidebar-lib-item.active {
+  background: rgba(74, 158, 255, 0.1);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sidebar-nav-item.active::before, .sidebar-lib-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+/* 媒体库列表统计数字横向显示 */
+.sidebar-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: normal;
+}
+
+.sidebar-lib-edit {
+  margin-left: 8px;
+  opacity: 0;
+  font-size: 12px;
+}
+.sidebar-lib-item:hover .sidebar-lib-edit { opacity: 0.6; }
+
+.sidebar-spacer { flex: 1; }
+
+.sidebar-bottom {
+  padding: 12px 0;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ===== 顶部栏 (TopBar) ===== */
+.topbar {
+  height: 58px; /* 参考图高度约 60px */
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-color);
+  z-index: 10;
+  flex-shrink: 0;
+  white-space: nowrap; /* 核心修复：禁止所有子项换行 */
+  overflow: hidden;
+}
+
+.topbar-hamburger {
+  font-size: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.topbar-lib-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.topbar-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 16px 0 24px;
+  flex-shrink: 0; /* 核心修复：防止被挤压 */
+}
+
+/* 胶囊按钮样式 */
+.topbar-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 20px; /* 胶囊形状 */
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.topbar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.topbar-btn-icon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+/* 右侧搜索框固定 */
+.topbar-search-container {
+  margin-left: auto; /* 核心：推向最右侧 */
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.topbar-search {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px 0 32px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 10px center;
+}
+
+.topbar-search:focus {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent);
+}
+
+/* ===== 媒体网格与卡片 ===== */
+.grid-container {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  padding: 30px;
+  overflow-y: overlay; /* 使用 overlay 避免滚动条占据宽度影响居中 */
+  overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 178px);
+  gap: 30px; /* 增加到 30px 更接近参考图间距 */
+  justify-content: center;
+  align-content: start;
+  background: var(--bg-color);
+}
+
+/* 强制隐藏任何可能干扰网格的中间空壳线条 */
+.grid-container::before, .grid-container::after { display: none !important; }
+
+/* 自定义滚动条样式 */
+.grid-container::-webkit-scrollbar { width: 10px; }
+.grid-container::-webkit-scrollbar-track { background: transparent; }
+.grid-container::-webkit-scrollbar-thumb { 
+  background: rgba(255,255,255,0.1); 
+  border-radius: 5px;
+  border: 2px solid var(--bg-color);
+}
+.grid-container::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+.media-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.media-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+}
+
+/* ===== 通用弹窗与设置页交互 ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+}
+
+/* 设置页 */
+.settings-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  background: var(--bg-color);
+}
