@@ -131,6 +131,15 @@ body {
   border-top: 1px solid var(--border-color);
 }
 
+/* ===== 主内容区容器 (Main Content) ===== */
+.main-content {
+  flex: 1;
+  min-width: 0; /* 核心：允许 flex 子项收缩到小于内容宽度 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ===== 顶部栏 (TopBar) ===== */
 .topbar {
   height: 58px; /* 参考图高度约 60px */
@@ -230,9 +239,7 @@ body {
   overflow-y: overlay; /* 使用 overlay 避免滚动条占据宽度影响居中 */
   overflow-x: hidden;
   display: grid;
-  grid-template-columns: repeat(auto-fill, 178px);
-  gap: 30px; /* 增加到 30px 更接近参考图间距 */
-  justify-content: center;
+  /* 列数和间距由 MediaGrid.tsx 动态控制 */
   align-content: start;
   background: var(--bg-color);
 }

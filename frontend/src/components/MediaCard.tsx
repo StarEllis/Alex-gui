@@ -19,7 +19,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ media, onClick }) => {
 
     return (
         <div className="media-card" onClick={onClick}>
-            <div className="media-poster-wrapper" style={{ width: '178px', height: '255px', position: 'relative', overflow: 'hidden', borderRadius: '4px', background: '#1a1a25' }}>
+            <div className="media-poster-wrapper" style={{ width: '100%', aspectRatio: '178 / 255', position: 'relative', overflow: 'hidden', borderRadius: '4px', background: '#1a1a25' }}>
                 {coverUrl ? (
                     <img 
                         src={coverUrl} 

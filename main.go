@@ -35,8 +35,10 @@ func main() {
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:  "alex-desktop",
-		Width:  1024,
-		Height: 768,
+		Width:            1090,
+		Height:           770,
+		MinWidth:         1090,
+		MinHeight:        770,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: &LocalFileHandler{},
