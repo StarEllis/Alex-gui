@@ -15,6 +15,8 @@ import {
     ArrowLeft,
     Check,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Eye,
     EyeOff,
     FileEdit,
@@ -39,6 +41,7 @@ interface DetailActor {
 type DetailImageRole = 'poster' | 'backdrop';
 
 const imageTokenPattern = /[-_.\s]+/;
+const coverTokens = ['cover', 'folder', 'thumb', 'movie', 'show'];
 
 const getImageTokens = (path: string) => {
     const filename = path.split(/[\\/]/).pop()?.toLowerCase() || '';
@@ -47,9 +50,11 @@ const getImageTokens = (path: string) => {
 };
 
 const hasImageToken = (path: string, token: string) => getImageTokens(path).includes(token);
+const isImagePath = (path: unknown): path is string => typeof path === 'string' && path.trim().length > 0;
+const isPosterLikeImage = (path: string) => hasImageToken(path, 'poster') || coverTokens.some((token) => hasImageToken(path, token));
+const toLocalAssetUrl = (path: string) => `/local/${encodeURIComponent(path)}`;
 
 const pickDetailImagePath = (detail: any, previews: string[], role: DetailImageRole) => {
-    const coverTokens = ['cover', 'folder', 'thumb', 'movie', 'show'];
     const backgroundTokens = ['fanart', 'backdrop', 'background', 'banner', 'clearart', 'landscape'];
     const candidates = Array.from(new Set(
         [detail.poster_path, detail.backdrop_path, detail.fanart_path, ...previews]
@@ -81,6 +86,22 @@ const pickDetailImagePath = (detail: any, previews: string[], role: DetailImageR
         .sort((left, right) => left.priority - right.priority || left.index - right.index);
 
     return ranked[0]?.path || '';
+};
+
+const pickPosterImagePath = (detail: any, previews: string[]) => {
+    if (isImagePath(detail.poster_path)) {
+        return detail.poster_path.trim();
+    }
+    return pickDetailImagePath(detail, previews, 'poster');
+};
+
+const pickBackdropImagePath = (detail: any) => {
+    const posterPath = isImagePath(detail.poster_path) ? detail.poster_path.trim() : '';
+
+    return [detail.fanart_path, detail.backdrop_path]
+        .filter(isImagePath)
+        .map((path) => path.trim())
+        .find((path) => path !== posterPath && !isPosterLikeImage(path)) || '';
 };
 
 const formatError = (error: unknown) => {
@@ -206,6 +227,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
     const [nfoEditorData, setNfoEditorData] = useState<any>(null);
     const [nfoLoading, setNfoLoading] = useState(false);
     const [nfoSaving, setNfoSaving] = useState(false);
+    const [previewViewerIndex, setPreviewViewerIndex] = useState<number | null>(null);
     const fileDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const showMsg = (message: string) => {
@@ -258,6 +280,49 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
             document.removeEventListener('keydown', onEscape);
         };
     }, []);
+
+    useEffect(() => {
+        if (previewViewerIndex === null) {
+            return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setPreviewViewerIndex(null);
+                return;
+            }
+
+            if (event.key === 'ArrowLeft') {
+                setPreviewViewerIndex((currentIndex) => {
+                    if (currentIndex === null || currentIndex <= 0) {
+                        return currentIndex;
+                    }
+                    return currentIndex - 1;
+                });
+                return;
+            }
+
+            if (event.key === 'ArrowRight') {
+                setPreviewViewerIndex((currentIndex) => {
+                    if (currentIndex === null || currentIndex >= previews.length - 1) {
+                        return currentIndex;
+                    }
+                    return currentIndex + 1;
+                });
+            }
+        };
+
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [previewViewerIndex, previews.length]);
+
+    useEffect(() => {
+        if (previewViewerIndex !== null && previewViewerIndex >= previews.length) {
+            setPreviewViewerIndex(previews.length > 0 ? previews.length - 1 : null);
+        }
+    }, [previewViewerIndex, previews.length]);
 
     const refreshDetail = async () => {
         const nextDetail = await GetMediaDetail(media.id);
@@ -372,26 +437,74 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
         event.preventDefault();
     };
 
-    const posterPath = pickDetailImagePath(detail, previews, 'poster');
-    const backdropPath = pickDetailImagePath(detail, previews, 'backdrop') || posterPath;
-    const posterUrl = posterPath ? `/local/${posterPath}` : '';
-    const backdropUrl = backdropPath ? `/local/${backdropPath}` : '';
+    const handlePreviewStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+        const container = event.currentTarget;
+        if (container.scrollWidth <= container.clientWidth) {
+            return;
+        }
+
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (delta === 0) {
+            return;
+        }
+
+        container.scrollLeft += delta;
+        event.preventDefault();
+    };
+
+    const handleOpenPreviewViewer = (index: number) => {
+        setPreviewViewerIndex(index);
+    };
+
+    const handleClosePreviewViewer = () => {
+        setPreviewViewerIndex(null);
+    };
+
+    const handlePreviewViewerPrev = () => {
+        setPreviewViewerIndex((currentIndex) => {
+            if (currentIndex === null || currentIndex <= 0) {
+                return currentIndex;
+            }
+            return currentIndex - 1;
+        });
+    };
+
+    const handlePreviewViewerNext = () => {
+        setPreviewViewerIndex((currentIndex) => {
+            if (currentIndex === null || currentIndex >= previews.length - 1) {
+                return currentIndex;
+            }
+            return currentIndex + 1;
+        });
+    };
+
+    const posterPath = pickPosterImagePath(detail, previews);
+    const backdropPath = pickBackdropImagePath(detail);
+    const posterUrl = posterPath ? toLocalAssetUrl(posterPath) : '';
+    const backdropUrl = backdropPath ? toLocalAssetUrl(backdropPath) : '';
     const actors = normalizeActors(detail);
     const tags = normalizeTags(detail);
     const filename = currFilePath?.split(/[\\/]/).pop() || '未知文件';
+
+    const isPreviewViewerOpen = previewViewerIndex !== null;
+    const currentPreviewPath = previewViewerIndex !== null ? previews[previewViewerIndex] : '';
+    const hasPreviewNavigation = previews.length > 1;
+    const canViewPrevPreview = previewViewerIndex !== null && previewViewerIndex > 0;
+    const canViewNextPreview = previewViewerIndex !== null && previewViewerIndex < previews.length - 1;
 
     return (
         <>
             <div className="detail-workspace">
                 <div className="detail-backdrop-layer" aria-hidden="true">
                     {backdropUrl && (
-                        <img
-                            src={backdropUrl}
-                            className="detail-backdrop-image"
-                            alt=""
-                        />
+                        <>
+                            <div
+                                className="detail-backdrop-image"
+                                style={{ backgroundImage: `url("${backdropUrl}")` }}
+                            />
+                            <div className="detail-backdrop-overlay" />
+                        </>
                     )}
-                    <div className="detail-backdrop-overlay" />
                 </div>
 
                 <div className="detail-main">
@@ -404,6 +517,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
                     </div>
 
                     <div className="detail-info-section">
+                        <div className="detail-info-surface">
                         <div className="detail-header-row">
                             <div className="detail-title">{detail.title}</div>
                             {msg && <span className="detail-status-msg">{msg}</span>}
@@ -529,17 +643,69 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
                         {previews.length > 0 && (
                             <div className="detail-previews-container">
                                 <div className="previews-label">预览剧照 ({previews.length})</div>
-                                <div className="preview-strip">
+                                <div
+                                    className={`preview-strip ${previews.length > 1 ? 'has-scrollbar' : 'no-scrollbar'}`}
+                                    onWheel={handlePreviewStripWheel}
+                                >
                                     {previews.map((preview, index) => (
-                                        <div key={`${preview}-${index}`} className="preview-item">
-                                            <img src={`/local/${preview}`} className="preview-img" alt="preview" loading="lazy" />
-                                        </div>
+                                        <button
+                                            key={`${preview}-${index}`}
+                                            type="button"
+                                            className="preview-item"
+                                            onClick={() => handleOpenPreviewViewer(index)}
+                                        >
+                                            <img src={toLocalAssetUrl(preview)} className="preview-img" alt="preview" loading="lazy" />
+                                        </button>
                                     ))}
                                 </div>
                             </div>
                         )}
+                        </div>
                     </div>
                 </div>
+
+                {isPreviewViewerOpen && currentPreviewPath && (
+                    <div className="detail-preview-viewer" onClick={handleClosePreviewViewer}>
+                        <div className="detail-preview-viewer-overlay" />
+                        {hasPreviewNavigation && (
+                            <button
+                                type="button"
+                                className="detail-preview-viewer-nav prev"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    handlePreviewViewerPrev();
+                                }}
+                                disabled={!canViewPrevPreview}
+                                aria-label="Previous preview"
+                            >
+                                <ChevronLeft size={18} />
+                            </button>
+                        )}
+                        <div className="detail-preview-viewer-content">
+                            <div className="detail-preview-viewer-image-shell" onClick={(event) => event.stopPropagation()}>
+                                <img
+                                    src={toLocalAssetUrl(currentPreviewPath)}
+                                    className="detail-preview-viewer-image"
+                                    alt="preview enlarged"
+                                />
+                            </div>
+                        </div>
+                        {hasPreviewNavigation && (
+                            <button
+                                type="button"
+                                className="detail-preview-viewer-nav next"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    handlePreviewViewerNext();
+                                }}
+                                disabled={!canViewNextPreview}
+                                aria-label="Next preview"
+                            >
+                                <ChevronRight size={18} />
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {showNFOEditor && (

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GetMediaList } from "../../wailsjs/go/main/App";
 import MediaCard from './MediaCard';
 
@@ -11,77 +11,140 @@ interface MediaGridProps {
     onSelectMedia: (media: any) => void;
     onCountChange?: (count: number) => void;
     onQuickPlayStatus?: (message: string) => void;
+    initialScrollTop?: number;
+    onScrollPositionChange?: (scrollTop: number) => void;
 }
 
-const MediaGrid: React.FC<MediaGridProps> = ({ libraryId, keyword, sortField, sortOrder, filter, onSelectMedia, onCountChange, onQuickPlayStatus }) => {
+const MediaGrid: React.FC<MediaGridProps> = ({
+    libraryId,
+    keyword,
+    sortField,
+    sortOrder,
+    filter,
+    onSelectMedia,
+    onCountChange,
+    onQuickPlayStatus,
+    initialScrollTop = 0,
+    onScrollPositionChange,
+}) => {
     const [mediaItems, setMediaItems] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    
-    // 布局相关的状态
     const containerRef = useRef<HTMLDivElement>(null);
+    const latestScrollTopRef = useRef(0);
+    const pendingRestoreRef = useRef<number | null>(initialScrollTop);
     const [layout, setLayout] = useState({ columns: 4, gap: 30, justify: 'start' });
 
-    // 核心计算逻辑：优先列数，约束间距
     const updateLayout = () => {
         if (!containerRef.current) return;
-        const containerWidth = containerRef.current.clientWidth - 60; // 减去 padding (30*2)
+        const containerWidth = containerRef.current.clientWidth - 60;
         const cardWidth = 178;
-        const minGap = 12; // 最小允许间距：决定过快“跨越”到下一列的关键
-        const maxGap = 32; // 视觉最大间隙
+        const minGap = 12;
+        const maxGap = 32;
 
-        // 1. 根据最小间距，计算当前空间最多能放下多少列
         let cols = Math.floor((containerWidth + minGap) / (cardWidth + minGap));
         cols = Math.max(1, cols);
 
-        // 2. 计算在这种列数下，平摊后的实际间距
-        let currentGap = cols > 1 ? (containerWidth - cols * cardWidth) / (cols - 1) : 0;
-        
-        // 3. 结果应用策略：如果间距过大，则改为居中（或者保持 space-between 但限制上限）
-        // 这里采用 space-between 以铺满宽度，但因为我们使用了足够小的 minGap，它会尽早触发新增列。
-        setLayout({ columns: cols, gap: currentGap, justify: 'space-between' });
+        const currentGap = cols > 1 ? (containerWidth - cols * cardWidth) / (cols - 1) : 0;
+        const gap = Math.min(Math.max(currentGap, minGap), maxGap);
+
+        setLayout({ columns: cols, gap, justify: cols > 1 ? 'space-between' : 'start' });
     };
 
     useEffect(() => {
         const observer = new ResizeObserver(() => updateLayout());
         if (containerRef.current) observer.observe(containerRef.current);
-        updateLayout(); 
+        updateLayout();
         return () => observer.disconnect();
     }, []);
 
     useEffect(() => {
+        pendingRestoreRef.current = initialScrollTop;
+        latestScrollTopRef.current = initialScrollTop;
+    }, [initialScrollTop, libraryId, keyword, sortField, sortOrder, filter]);
+
+    useLayoutEffect(() => {
+        if (isLoading || mediaItems.length === 0 || pendingRestoreRef.current === null || !containerRef.current) {
+            return;
+        }
+
+        const targetScrollTop = pendingRestoreRef.current;
+        let frameId = 0;
+        let nestedFrameId = 0;
+
+        frameId = window.requestAnimationFrame(() => {
+            nestedFrameId = window.requestAnimationFrame(() => {
+                if (!containerRef.current) {
+                    return;
+                }
+                containerRef.current.scrollTop = targetScrollTop;
+                latestScrollTopRef.current = containerRef.current.scrollTop;
+                onScrollPositionChange?.(latestScrollTopRef.current);
+                pendingRestoreRef.current = null;
+            });
+        });
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.cancelAnimationFrame(nestedFrameId);
+        };
+    }, [isLoading, mediaItems.length, layout.columns, layout.gap, onScrollPositionChange]);
+
+    useEffect(() => {
         setIsLoading(true);
         let active = true;
-        const filterType = filter?.type || "";
-        const filterValue = filter?.value || "";
+        const filterType = filter?.type || '';
+        const filterValue = filter?.value || '';
 
         GetMediaList(libraryId, 1, 100, sortField, sortOrder, keyword, filterType, filterValue)
             .then((res: any) => {
-                if (active) {
-                    setMediaItems(res.items || []);
-                    if (onCountChange) onCountChange(res.total || 0);
-                    setIsLoading(false);
-                }
+                if (!active) return;
+                setMediaItems(res.items || []);
+                onCountChange?.(res.total || 0);
+                setIsLoading(false);
             })
-            .catch(err => {
+            .catch((err) => {
                 console.error(err);
                 if (active) setIsLoading(false);
             });
-        return () => { active = false; };
-    }, [libraryId, keyword, sortField, sortOrder, filter]);
+
+        return () => {
+            active = false;
+        };
+    }, [libraryId, keyword, sortField, sortOrder, filter, onCountChange]);
+
+    useEffect(() => {
+        return () => {
+            onScrollPositionChange?.(latestScrollTopRef.current);
+        };
+    }, [onScrollPositionChange]);
+
+    const handleSelectMedia = (media: any) => {
+        onScrollPositionChange?.(latestScrollTopRef.current);
+        onSelectMedia(media);
+    };
 
     return (
-        <div 
-            ref={containerRef} 
-            className="grid-container" 
-            style={{ 
-                gridTemplateColumns: `repeat(${layout.columns}, 178px)`, 
+        <div
+            ref={containerRef}
+            className="grid-container"
+            onScroll={(event) => {
+                latestScrollTopRef.current = event.currentTarget.scrollTop;
+                onScrollPositionChange?.(latestScrollTopRef.current);
+            }}
+            style={{
+                gridTemplateColumns: `repeat(${layout.columns}, 178px)`,
                 columnGap: `${layout.gap}px`,
                 justifyContent: layout.justify,
-                rowGap: '30px'
+                rowGap: '30px',
             }}
         >
-            {mediaItems.map(item => (
-                <MediaCard key={item.id} media={item} onClick={() => onSelectMedia(item)} onQuickPlayStatus={onQuickPlayStatus} />
+            {mediaItems.map((item) => (
+                <MediaCard
+                    key={item.id}
+                    media={item}
+                    onClick={() => handleSelectMedia(item)}
+                    onQuickPlayStatus={onQuickPlayStatus}
+                />
             ))}
             {!isLoading && mediaItems.length === 0 && (
                 <div style={{ color: 'var(--text-dim)', padding: '40px', gridColumn: '1 / -1', textAlign: 'center', fontSize: '14px' }}>

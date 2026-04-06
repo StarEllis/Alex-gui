@@ -61,6 +61,7 @@ function App() {
     const [filterReturnContext, setFilterReturnContext] = useState<FilterReturnContext>(null);
     const [sortField, setSortField] = useState<SortField>('created_at');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+    const [gridScrollTop, setGridScrollTop] = useState(0);
     const scanStartedAtRef = useRef<number | null>(null);
     const resetTitleTimerRef = useRef<number | null>(null);
 
@@ -203,6 +204,7 @@ function App() {
         setCurrentLib(lib);
         setView('libs');
         setSelectedMedia(null);
+        setGridScrollTop(0);
         setActiveFilter(null);
         setFilterReturnContext(null);
         setSearchKeyword('');
@@ -210,6 +212,7 @@ function App() {
 
     const handleOpenSettings = () => {
         setSelectedMedia(null);
+        setGridScrollTop(0);
         setActiveFilter(null);
         setFilterReturnContext(null);
         setSearchKeyword('');
@@ -218,6 +221,7 @@ function App() {
 
     const handleSelectView = (nextView: ViewName) => {
         setSelectedMedia(null);
+        setGridScrollTop(0);
         setView(nextView);
         setActiveFilter(null);
         setFilterReturnContext(null);
@@ -306,15 +310,9 @@ function App() {
                 onEditLib={(lib: any) => setEditingLib(lib)}
             />
 
-            <div className="main-content">
+            <div className="main-content" style={{ position: 'relative' }}>
                 {view === 'settings' ? (
                     <SettingsPage onClose={() => setView('libs')} />
-                ) : selectedMedia ? (
-                    <MediaDetail
-                        media={selectedMedia}
-                        onClose={() => setSelectedMedia(null)}
-                        onSelectFilter={applyFilterFromDetail}
-                    />
                 ) : (
                     <>
                         {view === 'libs' && currentLib && (
@@ -335,6 +333,8 @@ function App() {
                                     onSelectMedia={setSelectedMedia}
                                     onCountChange={setMediaCount}
                                     onQuickPlayStatus={showStatus}
+                                    initialScrollTop={gridScrollTop}
+                                    onScrollPositionChange={setGridScrollTop}
                                 />
                             </>
                         )}
@@ -354,6 +354,8 @@ function App() {
                                     filter={{ type: 'watched', value: 'true', label: '已看' }}
                                     onSelectMedia={setSelectedMedia}
                                     onCountChange={setMediaCount}
+                                    initialScrollTop={gridScrollTop}
+                                    onScrollPositionChange={setGridScrollTop}
                                 />
                             </>
                         )}
@@ -373,6 +375,8 @@ function App() {
                                     filter={{ type: 'favorite', value: 'true', label: '收藏' }}
                                     onSelectMedia={setSelectedMedia}
                                     onCountChange={setMediaCount}
+                                    initialScrollTop={gridScrollTop}
+                                    onScrollPositionChange={setGridScrollTop}
                                 />
                             </>
                         )}
@@ -428,6 +432,15 @@ function App() {
                         {view === 'libs' && !currentLib && (
                             <div className="empty-state">
                                 请先新建媒体库
+                            </div>
+                        )}
+                        {selectedMedia && (
+                            <div className="detail-overlay" style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'flex' }}>
+                                <MediaDetail
+                                    media={selectedMedia}
+                                    onClose={() => setSelectedMedia(null)}
+                                    onSelectFilter={applyFilterFromDetail}
+                                />
                             </div>
                         )}
                     </>
