@@ -1,176 +1,240 @@
-import React, { useState, useEffect } from 'react';
-import { GetDesktopSettings, UpdateDesktopSettings, RestartApp } from "../../wailsjs/go/main/App";
+import React, { useEffect, useState } from 'react';
+import { GetDesktopSettings, SelectProgram, UpdateDesktopSettings } from "../../wailsjs/go/main/App";
 
 interface SettingsPageProps {
     onClose: () => void;
 }
 
+const TEXT = {
+    unknownError: '\u672a\u77e5\u9519\u8bef',
+    loadFailed: '\u52a0\u8f7d\u8bbe\u7f6e\u5931\u8d25',
+    saveSuccess: '\u8bbe\u7f6e\u5df2\u4fdd\u5b58',
+    saveFailed: '\u4fdd\u5b58\u5931\u8d25',
+    selectProgramFailed: '\u9009\u62e9\u7a0b\u5e8f\u5931\u8d25',
+    loading: '\u52a0\u8f7d\u4e2d...',
+    settings: '\u8bbe\u7f6e',
+    general: '\u5e38\u89c4\u8bbe\u7f6e',
+    scan: '\u626b\u63cf',
+    about: '\u5173\u4e8e',
+    back: '\u8fd4\u56de',
+    startup: '\u5f00\u673a\u542f\u52a8',
+    startupDesc: '\u542f\u52a8\u7cfb\u7edf\u540e\u81ea\u52a8\u8fd0\u884c ALEX\u3002',
+    tray: '\u6700\u5c0f\u5316\u5230\u6258\u76d8',
+    trayDesc: '\u5173\u95ed\u4e3b\u7a97\u53e3\u65f6\u4fdd\u7559\u5728\u7cfb\u7edf\u6258\u76d8\u4e2d\u3002',
+    externalPlayer: '\u4f7f\u7528\u5916\u90e8\u64ad\u653e\u5668',
+    externalPlayerDesc: '\u64ad\u653e\u89c6\u9891\u65f6\u4f18\u5148\u4f7f\u7528\u4f60\u6307\u5b9a\u7684\u672c\u5730\u64ad\u653e\u5668\u3002',
+    externalPlayerName: '\u5916\u90e8\u64ad\u653e\u5668',
+    externalPlayerHint: '\u672a\u9009\u62e9\u65f6\uff0c\u5c06\u4f7f\u7528\u7cfb\u7edf\u9ed8\u8ba4\u64ad\u653e\u5668\u6253\u5f00\u3002',
+    chooseProgram: '\u9009\u62e9\u7a0b\u5e8f',
+    clear: '\u6e05\u7a7a',
+    save: '\u4fdd\u5b58',
+    placeholderNote: '\u8fd9\u4e00\u9875\u6682\u65f6\u4fdd\u6301\u539f\u6837\uff0c\u4e0d\u5f71\u54cd\u672c\u6b21\u8bbe\u7f6e\u6536\u655b\u3002',
+    scanSettings: '\u626b\u63cf\u8bbe\u7f6e',
+    embySettings: 'Emby \u8bbe\u7f6e',
+} as const;
+
+const cloneSettings = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
+const formatError = (error: unknown) => {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    if (typeof error === 'string') {
+        return error;
+    }
+    return TEXT.unknownError;
+};
+
+const getProgramName = (programPath: string) => {
+    if (!programPath) {
+        return '';
+    }
+    const normalized = programPath.replace(/\\/g, '/');
+    return normalized.split('/').pop() || programPath;
+};
+
 const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     const [settings, setSettings] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<'appearance' | 'scan' | 'emby' | 'about'>('appearance');
+    const [savedSettings, setSavedSettings] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState<'general' | 'scan' | 'emby' | 'about'>('general');
     const [msg, setMsg] = useState('');
 
     useEffect(() => {
-        GetDesktopSettings().then((res: any) => {
-            if (res) setSettings(res);
-        }).catch(console.error);
+        GetDesktopSettings()
+            .then((res: any) => {
+                if (!res) {
+                    return;
+                }
+                const nextSettings = cloneSettings(res);
+                setSettings(nextSettings);
+                setSavedSettings(cloneSettings(nextSettings));
+            })
+            .catch((error) => {
+                setMsg(`${TEXT.loadFailed}\uff1a${formatError(error)}`);
+            });
     }, []);
 
+    const hasChanges = !!settings && !!savedSettings && JSON.stringify(settings) !== JSON.stringify(savedSettings);
+
+    const updateSettings = (patch: Record<string, unknown>) => {
+        setSettings((prev: any) => (prev ? { ...prev, ...patch } : prev));
+        setMsg('');
+    };
+
     const handleSave = async () => {
+        if (!settings) {
+            return;
+        }
         try {
             await UpdateDesktopSettings(settings);
-            setMsg("设置已保存，部分项目需重启生效。");
-            setTimeout(() => setMsg(''), 3000);
-        } catch (e: any) {
-            setMsg("保存失败: " + e);
+            const nextSaved = cloneSettings(settings);
+            setSavedSettings(nextSaved);
+            setSettings(cloneSettings(nextSaved));
+            setMsg(TEXT.saveSuccess);
+            window.setTimeout(() => setMsg(''), 2500);
+        } catch (error) {
+            setMsg(`${TEXT.saveFailed}\uff1a${formatError(error)}`);
         }
     };
 
-    const handleRestart = () => {
-        if (window.confirm("确定要重启软件吗？")) {
-            RestartApp();
+    const handleSelectProgram = async () => {
+        try {
+            const programPath = await SelectProgram();
+            if (!programPath) {
+                return;
+            }
+            updateSettings({ player_path: programPath });
+        } catch (error) {
+            setMsg(`${TEXT.selectProgramFailed}\uff1a${formatError(error)}`);
         }
     };
 
-    if (!settings) return <div style={{ padding: '20px', color: 'var(--text-dim)' }}>加载中...</div>;
+    const handleClearProgram = () => {
+        updateSettings({ player_path: '' });
+    };
 
-    const renderAppearance = () => (
-        <>
-            <div className="settings-section">
-                <div className="settings-section-title">外观</div>
+    if (!settings) {
+        return <div style={{ padding: '20px', color: 'var(--text-dim)' }}>{TEXT.loading}</div>;
+    }
 
-                <div style={{ display: 'flex', gap: '40px' }}>
-                    <div style={{ flex: 1 }}>
-                        <div className="settings-row">
-                            <div className="settings-label">程序皮肤颜色</div>
-                            <div className="settings-control">
-                                <select className="settings-select" value={settings.theme} onChange={e => setSettings({ ...settings, theme: e.target.value })}>
-                                    <option value="dark">黑色</option>
-                                    <option value="light">白色</option>
-                                </select>
-                            </div>
-                        </div>
+    const renderGeneral = () => (
+        <div className="settings-section">
+            <div className="settings-section-title">{TEXT.general}</div>
 
-                        <div className="settings-row">
-                            <div className="settings-label">封面圆角度</div>
-                            <div className="settings-control">
-                                <select className="settings-select" value={settings.poster_radius} onChange={e => setSettings({ ...settings, poster_radius: parseInt(e.target.value) || 0 })}>
-                                    <option value="0">0</option>
-                                    <option value="4">4</option>
-                                    <option value="10">10</option>
-                                </select>
-                            </div>
-                        </div>
+            <div className="settings-card">
+                <label className="settings-toggle-row">
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.startup}</div>
+                        <div className="settings-description">{TEXT.startupDesc}</div>
+                    </div>
+                    <input
+                        type="checkbox"
+                        checked={!!settings.start_with_os}
+                        onChange={(e) => updateSettings({ start_with_os: e.target.checked })}
+                    />
+                </label>
 
-                        <div className="settings-row">
-                            <div className="settings-label">背景模糊度</div>
-                            <div className="settings-control">
-                                <select className="settings-select" value={settings.backdrop_blur} onChange={e => setSettings({ ...settings, backdrop_blur: parseInt(e.target.value) || 0 })}>
-                                    <option value="0">0</option>
-                                    <option value="5">5</option>
-                                    <option value="10">10</option>
-                                </select>
-                            </div>
-                        </div>
+                <label className="settings-toggle-row">
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.tray}</div>
+                        <div className="settings-description">{TEXT.trayDesc}</div>
+                    </div>
+                    <input
+                        type="checkbox"
+                        checked={!!settings.min_to_tray}
+                        onChange={(e) => updateSettings({ min_to_tray: e.target.checked })}
+                    />
+                </label>
 
-                        <div className="settings-row" style={{ marginTop: '16px' }}>
-                            <label className="settings-checkbox-row">
-                                <input type="checkbox" checked={settings.min_window_width > 0} onChange={e => setSettings({ ...settings, min_window_width: e.target.checked ? 740 : 0 })} />
-                                <span className="settings-checkbox-label">窗口最小宽度</span>
-                            </label>
-                            {settings.min_window_width > 0 && (
-                                <div className="settings-control" style={{ width: '60px', marginLeft: '10px' }}>
-                                    <input className="settings-input" type="number" value={settings.min_window_width || 740} onChange={e => setSettings({ ...settings, min_window_width: parseInt(e.target.value) || 740 })} />
-                                </div>
-                            )}
+                <label className="settings-toggle-row">
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.externalPlayer}</div>
+                        <div className="settings-description">{TEXT.externalPlayerDesc}</div>
+                    </div>
+                    <input
+                        type="checkbox"
+                        checked={!!settings.use_external_player}
+                        onChange={(e) => updateSettings({ use_external_player: e.target.checked })}
+                    />
+                </label>
+
+                <div className={`settings-program-block ${settings.use_external_player ? '' : 'is-disabled'}`}>
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.externalPlayerName}</div>
+                        <div className="settings-description">{TEXT.externalPlayerHint}</div>
+                    </div>
+
+                    <div className="settings-program-controls">
+                        <input
+                            className="settings-input settings-program-input"
+                            type="text"
+                            value={getProgramName(settings.player_path || '')}
+                            placeholder={TEXT.externalPlayerHint}
+                            title={settings.player_path || ''}
+                            readOnly
+                            disabled={!settings.use_external_player}
+                        />
+
+                        <div className="settings-inline-actions">
+                            <button
+                                className="settings-btn settings-btn-primary"
+                                type="button"
+                                onClick={handleSelectProgram}
+                                disabled={!settings.use_external_player}
+                            >
+                                {TEXT.chooseProgram}
+                            </button>
+                            <button
+                                className="settings-btn"
+                                type="button"
+                                onClick={handleClearProgram}
+                                disabled={!settings.use_external_player || !settings.player_path}
+                            >
+                                {TEXT.clear}
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="settings-section">
-                <div className="settings-section-title">播放</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-                    <label className="settings-checkbox-row" style={{ marginBottom: 0 }}>
-                        <input type="checkbox" checked={settings.use_external_player} onChange={e => setSettings({ ...settings, use_external_player: e.target.checked })} />
-                        <span className="settings-checkbox-label" style={{ fontWeight: 600 }}>调用本地播放器</span>
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '300px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>路径:</span>
-                        <input className="settings-input" type="text" value={settings.player_path || ''} onChange={e => setSettings({ ...settings, player_path: e.target.value })} disabled={!settings.use_external_player} />
-                    </div>
-                </div>
+            <div className="settings-footer">
+                <button
+                    className="settings-btn settings-btn-primary"
+                    type="button"
+                    onClick={handleSave}
+                    disabled={!hasChanges}
+                >
+                    {TEXT.save}
+                </button>
+                {msg && <span className="settings-feedback">{msg}</span>}
             </div>
-
-            <div className="settings-section">
-                <div className="settings-section-title">快捷</div>
-
-                <div className="settings-row" style={{ marginBottom: '20px' }}>
-                    <div className="settings-label">热键注册失败</div>
-                    <div className="settings-control">
-                        <select className="settings-select" value={settings.hotkey || 'F1'} onChange={e => setSettings({ ...settings, hotkey: e.target.value })}>
-                            <option value="F1">F1</option>
-                            <option value="F2">F2</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div className="settings-checkbox-group" style={{ gap: '30px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.min_to_tray} onChange={e => setSettings({ ...settings, min_to_tray: e.target.checked })} />
-                            <span className="settings-checkbox-label">最小化到托盘</span>
-                        </label>
-                        <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.show_prompt} onChange={e => setSettings({ ...settings, show_prompt: e.target.checked })} />
-                            <span className="settings-checkbox-label">打开提示</span>
-                        </label>
-                        <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.start_with_os} onChange={e => setSettings({ ...settings, start_with_os: e.target.checked })} />
-                            <span className="settings-checkbox-label">开机启动</span>
-                        </label>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.max_no_taskbar} onChange={e => setSettings({ ...settings, max_no_taskbar: e.target.checked })} />
-                            <span className="settings-checkbox-label">最大化不遮任务栏</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div className="settings-footer" style={{ marginTop: '20px', borderTop: 'none', paddingTop: 0 }}>
-                    <button className="settings-btn settings-btn-primary" onClick={handleRestart}>软件重启</button>
-                    <button className="settings-btn" onClick={handleSave}>立即保存设置</button>
-                    {msg && <span style={{ fontSize: '11px', color: 'var(--accent)' }}>{msg}</span>}
-                </div>
-            </div>
-        </>
+        </div>
     );
 
     const renderPlaceholder = (title: string) => (
         <div className="settings-section">
-            <div className="settings-section-title">{title} (UI Mock)</div>
-            <div style={{ color: 'var(--text-dim)', fontSize: '13px' }}>该页面的重组不在本轮目标中。</div>
+            <div className="settings-section-title">{title}</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '13px' }}>{TEXT.placeholderNote}</div>
         </div>
     );
 
     return (
         <div className="settings-container">
             <div className="settings-sidebar">
-                <div className="settings-sidebar-header">设置</div>
-                <div className={`settings-nav-item ${activeTab === 'appearance' ? 'active' : ''}`} onClick={() => setActiveTab('appearance')}>常规设置</div>
-                <div className={`settings-nav-item ${activeTab === 'scan' ? 'active' : ''}`} onClick={() => setActiveTab('scan')}>扫描</div>
-                <div className={`settings-nav-item ${activeTab === 'emby' ? 'active' : ''}`} onClick={() => setActiveTab('emby')}>emby</div>
-                <div className={`settings-nav-item ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>关于</div>
+                <div className="settings-sidebar-header">{TEXT.settings}</div>
+                <div className={`settings-nav-item ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>{TEXT.general}</div>
+                <div className={`settings-nav-item ${activeTab === 'scan' ? 'active' : ''}`} onClick={() => setActiveTab('scan')}>{TEXT.scan}</div>
+                <div className={`settings-nav-item ${activeTab === 'emby' ? 'active' : ''}`} onClick={() => setActiveTab('emby')}>Emby</div>
+                <div className={`settings-nav-item ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>{TEXT.about}</div>
                 <div className="sidebar-spacer"></div>
-                <div className="settings-return-btn" onClick={onClose}>返回</div>
+                <div className="settings-return-btn" onClick={onClose}>{TEXT.back}</div>
             </div>
 
             <div className="settings-main">
-                {activeTab === 'appearance' && renderAppearance()}
-                {activeTab === 'scan' && renderPlaceholder('扫描设置')}
-                {activeTab === 'emby' && renderPlaceholder('Emby 设置')}
-                {activeTab === 'about' && renderPlaceholder('关于')}
+                {activeTab === 'general' && renderGeneral()}
+                {activeTab === 'scan' && renderPlaceholder(TEXT.scanSettings)}
+                {activeTab === 'emby' && renderPlaceholder(TEXT.embySettings)}
+                {activeTab === 'about' && renderPlaceholder(TEXT.about)}
             </div>
         </div>
     );

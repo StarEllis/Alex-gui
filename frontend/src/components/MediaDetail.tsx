@@ -417,7 +417,6 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
         try {
             await ToggleFavorite(detail.id);
             setDetail((prev: any) => ({ ...prev, is_favorite: !prev.is_favorite }));
-            showMsg('收藏状态已更新');
         } catch (error) {
             console.error(error);
             showMsg(`收藏失败：${formatError(error)}`);
@@ -428,7 +427,6 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
         try {
             await ToggleWatched(detail.id);
             setDetail((prev: any) => ({ ...prev, is_watched: !prev.is_watched }));
-            showMsg('观看状态已更新');
         } catch (error) {
             console.error(error);
             showMsg(`更新观看状态失败：${formatError(error)}`);

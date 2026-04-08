@@ -20,8 +20,11 @@ import LibraryEditModal from './components/LibraryEditModal';
 import MediaDetail from './components/MediaDetail';
 
 type ViewName = 'libs' | 'settings' | 'actor' | 'genre' | 'watched' | 'favorite';
-type SortField = 'created_at' | 'release_date' | 'video_codec' | 'last_watched';
 type SortOrder = 'asc' | 'desc';
+type SortField = 'created_at' | 'release_date' | 'video_codec' | 'last_watched' | 'favorite_at' | 'rating';
+type SortViewName = 'libs' | 'watched' | 'favorite';
+type SortConfig = { field: SortField; order: SortOrder };
+type SortOption = { field: SortField; label: string };
 type FilterState = { type: string; value: string; label: string } | null;
 type FilterReturnContext = {
     view: ViewName;
@@ -49,6 +52,31 @@ const VIEW_LABELS: Record<Exclude<ViewName, 'libs'>, string> = {
 
 const SEARCHABLE_VIEWS = new Set<ViewName>(['libs', 'watched', 'favorite']);
 
+const LIBRARY_SORT_OPTIONS: SortOption[] = [
+    { field: 'created_at', label: '加入日期' },
+    { field: 'release_date', label: '发行日期' },
+    { field: 'video_codec', label: '视频编码' },
+    { field: 'last_watched', label: '观看时间' },
+];
+
+const WATCHED_SORT_OPTIONS: SortOption[] = [
+    { field: 'last_watched', label: '观看时间' },
+    { field: 'created_at', label: '加入日期' },
+    { field: 'rating', label: '评分' },
+];
+
+const FAVORITE_SORT_OPTIONS: SortOption[] = [
+    { field: 'favorite_at', label: '收藏时间' },
+    { field: 'created_at', label: '加入日期' },
+    { field: 'rating', label: '评分' },
+];
+
+const DEFAULT_SORTS: Record<SortViewName, SortConfig> = {
+    libs: { field: 'created_at', order: 'desc' },
+    watched: { field: 'last_watched', order: 'desc' },
+    favorite: { field: 'favorite_at', order: 'desc' },
+};
+
 const formatError = (error: unknown) => {
     if (error instanceof Error && error.message) {
         return error.message;
@@ -74,8 +102,7 @@ function App() {
     const [mediaCount, setMediaCount] = useState(0);
     const [activeFilter, setActiveFilter] = useState<FilterState>(null);
     const [filterReturnContext, setFilterReturnContext] = useState<FilterReturnContext>(null);
-    const [sortField, setSortField] = useState<SortField>('created_at');
-    const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+    const [sortStateByView, setSortStateByView] = useState<Record<SortViewName, SortConfig>>(DEFAULT_SORTS);
     const [gridScrollTop, setGridScrollTop] = useState(0);
     const scanStartedAtRef = useRef<number | null>(null);
     const scanModeRef = useRef<string>('');
@@ -84,6 +111,14 @@ function App() {
     const setAppTitle = (title: string) => {
         WindowSetTitle(title);
     };
+
+    const currentSortView: SortViewName = view === 'watched' || view === 'favorite' ? view : 'libs';
+    const { field: sortField, order: sortOrder } = sortStateByView[currentSortView];
+    const currentSortOptions = currentSortView === 'watched'
+        ? WATCHED_SORT_OPTIONS
+        : currentSortView === 'favorite'
+            ? FAVORITE_SORT_OPTIONS
+            : LIBRARY_SORT_OPTIONS;
 
     const scheduleTitleReset = (delay = 3500) => {
         if (resetTitleTimerRef.current) {
@@ -357,12 +392,26 @@ function App() {
 
     const handleSortSelect = (field: string) => {
         const nextField = field as SortField;
-        if (nextField === sortField) {
-            setSortOrder((prev) => prev === 'desc' ? 'asc' : 'desc');
-            return;
-        }
-        setSortField(nextField);
-        setSortOrder('desc');
+        setSortStateByView((prev) => {
+            const currentSort = prev[currentSortView];
+            if (nextField === currentSort.field) {
+                return {
+                    ...prev,
+                    [currentSortView]: {
+                        field: currentSort.field,
+                        order: currentSort.order === 'desc' ? 'asc' : 'desc',
+                    },
+                };
+            }
+
+            return {
+                ...prev,
+                [currentSortView]: {
+                    field: nextField,
+                    order: 'desc',
+                },
+            };
+        });
     };
 
     const currentLibraryName = currentLib?.name || '未选择媒体库';
@@ -371,7 +420,6 @@ function App() {
     const searchEnabled = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
     const showLibraryActions = Boolean(currentLib && view === 'libs');
     const showListActions = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
-    const viewLabel = view === 'libs' ? undefined : VIEW_LABELS[view as Exclude<ViewName, 'libs'>];
     const isDetailOpen = Boolean(selectedMedia);
     const showScanProgressPanel = Boolean(scanProgress && !statusMsg);
     const scanProgressText = scanProgress
@@ -493,7 +541,6 @@ function App() {
                             <TopBar
                                 currentLibraryName={currentLibraryName}
                                 mediaCount={headerCount || 0}
-                                viewLabel={viewLabel}
                                 filterLabel={activeFilter?.label}
                                 searchValue={searchKeyword}
                                 onSearch={setSearchKeyword}
@@ -504,6 +551,7 @@ function App() {
                                 onSortSelect={showListActions ? handleSortSelect : undefined}
                                 sortField={sortField}
                                 sortOrder={sortOrder}
+                                sortOptions={showListActions ? currentSortOptions : undefined}
                                 onBackButtonClick={view !== 'libs' ? handleNavigateHome : undefined}
                                 onClearFilter={activeFilter ? clearFilter : undefined}
                             />

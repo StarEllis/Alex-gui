@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     ArrowDown,
     ArrowLeft,
+    ArrowUp,
     ChevronDown,
     Edit3,
     RefreshCw,
@@ -12,10 +13,14 @@ import { WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
 
 type MenuType = 'scan' | 'sort' | null;
 
+type SortOption = {
+    field: string;
+    label: string;
+};
+
 interface TopBarProps {
     currentLibraryName: string;
     mediaCount: number;
-    viewLabel?: string;
     filterLabel?: string;
     searchValue: string;
     onSearch: (keyword: string) => void;
@@ -26,15 +31,16 @@ interface TopBarProps {
     onSortSelect?: (field: string) => void;
     sortField?: string;
     sortOrder?: 'asc' | 'desc';
+    sortOptions?: SortOption[];
     onBackButtonClick?: () => void;
     onClearFilter?: () => void;
 }
 
-const sortOptions = [
+const DEFAULT_SORT_OPTIONS: SortOption[] = [
     { field: 'created_at', label: '加入日期' },
     { field: 'release_date', label: '发行日期' },
     { field: 'video_codec', label: '视频编码' },
-    { field: 'last_watched', label: '最近观看' },
+    { field: 'last_watched', label: '观看时间' },
 ];
 
 const scanOptions = [
@@ -43,18 +49,8 @@ const scanOptions = [
     { mode: 'incremental', label: '\u626b\u63cf' },
 ];
 
-const getSortLabel = (field: string) => {
-    switch (field) {
-        case 'release_date':
-            return '发行日期';
-        case 'video_codec':
-            return '视频编码';
-        case 'last_watched':
-            return '最近观看';
-        case 'created_at':
-        default:
-            return '加入日期';
-    }
+const getSortLabel = (field: string, sortOptions: SortOption[]) => {
+    return sortOptions.find((option) => option.field === field)?.label || sortOptions[0]?.label || '加入日期';
 };
 
 const shouldIgnoreHeaderDoubleClick = (target: EventTarget | null) => {
@@ -72,7 +68,6 @@ const shouldIgnoreHeaderDoubleClick = (target: EventTarget | null) => {
 const TopBar: React.FC<TopBarProps> = ({
     currentLibraryName,
     mediaCount,
-    viewLabel,
     filterLabel,
     searchValue,
     onSearch,
@@ -83,6 +78,7 @@ const TopBar: React.FC<TopBarProps> = ({
     onSortSelect,
     sortField = 'created_at',
     sortOrder = 'desc',
+    sortOptions = DEFAULT_SORT_OPTIONS,
     onBackButtonClick,
     onClearFilter,
 }) => {
@@ -131,7 +127,8 @@ const TopBar: React.FC<TopBarProps> = ({
     };
 
     const countLabel = `${mediaCount.toLocaleString()} 个项目`;
-    const headerHint = filterLabel || viewLabel || '';
+    const headerHint = filterLabel || '';
+    const currentSortLabel = getSortLabel(sortField, sortOptions);
 
     return (
         <>
@@ -166,99 +163,104 @@ const TopBar: React.FC<TopBarProps> = ({
                     </div>
 
                     <div className="workspace-header-actions no-drag">
-                            {onClearFilter && (
-                                <button type="button" className="workspace-action-btn subtle" onClick={onClearFilter}>
-                                    清除筛选
+                        {onClearFilter && (
+                            <button type="button" className="workspace-action-btn subtle" onClick={onClearFilter}>
+                                清除筛选
+                            </button>
+                        )}
+
+                        {onBackButtonClick && (
+                            <button type="button" className="workspace-action-btn subtle" onClick={onBackButtonClick}>
+                                <ArrowLeft size={14} />
+                                <span>返回主页</span>
+                            </button>
+                        )}
+
+                        {onRandomPlay && (
+                            <button type="button" className="workspace-action-btn" onClick={onRandomPlay}>
+                                <Shuffle size={15} />
+                                <span>随机玩玩</span>
+                            </button>
+                        )}
+
+                        {onSortSelect && (
+                            <div className={`workspace-menu-shell ${openMenu === 'sort' ? 'open' : ''}`}>
+                                <button
+                                    type="button"
+                                    className="workspace-action-btn"
+                                    onClick={() => setOpenMenu((prev) => (prev === 'sort' ? null : 'sort'))}
+                                >
+                                    {sortOrder === 'asc' ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+                                    <span>按{currentSortLabel}排序</span>
                                 </button>
-                            )}
 
-                            {onBackButtonClick && (
-                                <button type="button" className="workspace-action-btn subtle" onClick={onBackButtonClick}>
-                                    <ArrowLeft size={14} />
-                                    <span>返回主页</span>
-                                </button>
-                            )}
-
-                            {onRandomPlay && (
-                                <button type="button" className="workspace-action-btn" onClick={onRandomPlay}>
-                                    <Shuffle size={15} />
-                                    <span>随机玩玩</span>
-                                </button>
-                            )}
-
-                            {onSortSelect && (
-                                <div className={`workspace-menu-shell ${openMenu === 'sort' ? 'open' : ''}`}>
-                                    <button
-                                        type="button"
-                                        className="workspace-action-btn"
-                                        onClick={() => setOpenMenu((prev) => (prev === 'sort' ? null : 'sort'))}
-                                    >
-                                        <ArrowDown size={15} />
-                                        <span>按{getSortLabel(sortField)}排序</span>
-                                    </button>
-
-                                    {openMenu === 'sort' && (
-                                        <div className="workspace-dropdown-menu">
-                                            {sortOptions.map((option) => {
-                                                const isActive = sortField === option.field;
-                                                return (
-                                                    <button
-                                                        key={option.field}
-                                                        type="button"
-                                                        className={`workspace-dropdown-item ${isActive ? 'active' : ''}`}
-                                                        onClick={() => {
-                                                            onSortSelect(option.field);
-                                                            setOpenMenu(null);
-                                                        }}
-                                                    >
-                                                        <span>{option.label}</span>
-                                                        {isActive && (
-                                                            <span className="workspace-dropdown-meta">
-                                                                {sortOrder === 'desc' ? '降序' : '升序'}
-                                                            </span>
-                                                        )}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {onScanWithMode && (
-                                <div className={`workspace-menu-shell ${openMenu === 'scan' ? 'open' : ''}`}>
-                                    <button
-                                        type="button"
-                                        className="workspace-action-btn compact"
-                                        onClick={() => setOpenMenu((prev) => (prev === 'scan' ? null : 'scan'))}
-                                    >
-                                        <RefreshCw size={15} />
-                                        <span>刷新</span>
-                                        <ChevronDown size={13} />
-                                    </button>
-
-                                    {openMenu === 'scan' && (
-                                        <div className="workspace-dropdown-menu">
-                                            {scanOptions.map((option) => (
+                                {openMenu === 'sort' && (
+                                    <div className="workspace-dropdown-menu">
+                                        {sortOptions.map((option) => {
+                                            const isActive = sortField === option.field;
+                                            return (
                                                 <button
-                                                    key={option.mode}
+                                                    key={option.field}
                                                     type="button"
-                                                    className="workspace-dropdown-item"
-                                                    onClick={() => handleScanModeClick(option.mode)}
+                                                    className={`workspace-dropdown-item ${isActive ? 'active' : ''}`}
+                                                    onClick={() => {
+                                                        onSortSelect(option.field);
+                                                        setOpenMenu(null);
+                                                    }}
                                                 >
                                                     <span>{option.label}</span>
+                                                    {isActive && (
+                                                        <span className="workspace-dropdown-meta">
+                                                            {sortOrder === 'desc' ? '降序' : '升序'}
+                                                        </span>
+                                                    )}
                                                 </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                            {onEditLibrary && (
-                                <button type="button" className="workspace-icon-btn" onClick={onEditLibrary} title="编辑当前媒体库">
-                                    <Edit3 size={15} />
+                        {onScanWithMode && (
+                            <div className={`workspace-menu-shell ${openMenu === 'scan' ? 'open' : ''}`}>
+                                <button
+                                    type="button"
+                                    className="workspace-action-btn compact"
+                                    onClick={() => setOpenMenu((prev) => (prev === 'scan' ? null : 'scan'))}
+                                >
+                                    <RefreshCw size={15} />
+                                    <span>刷新</span>
+                                    <ChevronDown size={13} />
                                 </button>
-                            )}
+
+                                {openMenu === 'scan' && (
+                                    <div className="workspace-dropdown-menu">
+                                        {scanOptions.map((option) => (
+                                            <button
+                                                key={option.mode}
+                                                type="button"
+                                                className="workspace-dropdown-item"
+                                                onClick={() => handleScanModeClick(option.mode)}
+                                            >
+                                                <span>{option.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {onEditLibrary && (
+                            <button
+                                type="button"
+                                className="workspace-icon-btn"
+                                onClick={onEditLibrary}
+                                title="编辑当前媒体库"
+                            >
+                                <Edit3 size={15} />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -269,7 +271,7 @@ const TopBar: React.FC<TopBarProps> = ({
                         <div className="confirm-modal-header">
                             <span>提示</span>
                             <button type="button" className="confirm-modal-close" onClick={() => setConfirmScanMode(null)}>
-                                ×
+                                脳
                             </button>
                         </div>
 

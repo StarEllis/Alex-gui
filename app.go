@@ -682,6 +682,16 @@ func buildOpenFileCommand(filePath string, playerPath string) *exec.Cmd {
 	}
 }
 
+func preferredPlayerPath(settings *DesktopSettings, forceExternal bool) string {
+	if settings == nil {
+		return ""
+	}
+	if forceExternal || settings.UseExternalPlayer {
+		return strings.TrimSpace(settings.PlayerPath)
+	}
+	return ""
+}
+
 func (a *App) ensureWatched(mediaID string) error {
 	if strings.TrimSpace(mediaID) == "" {
 		return nil
@@ -730,7 +740,7 @@ func (a *App) PlayWithExternalPlayer(mediaID string) error {
 		return err
 	}
 	settings, _ := a.GetDesktopSettings()
-	if err := startDetachedCommand(buildOpenFileCommand(media.FilePath, settings.PlayerPath)); err != nil {
+	if err := startDetachedCommand(buildOpenFileCommand(media.FilePath, preferredPlayerPath(settings, true))); err != nil {
 		return err
 	}
 	if err := a.ensureWatched(media.ID); err != nil {
@@ -1292,7 +1302,7 @@ func (a *App) PlayFile(filePath string) error {
 	if strings.TrimSpace(filePath) == "" {
 		return fmt.Errorf("empty file path")
 	}
-	if err := startDetachedCommand(buildOpenFileCommand(filePath, settings.PlayerPath)); err != nil {
+	if err := startDetachedCommand(buildOpenFileCommand(filePath, preferredPlayerPath(settings, false))); err != nil {
 		return err
 	}
 	a.markWatchedByFilePath(filePath)
@@ -1361,5 +1371,38 @@ func (a *App) ScanLibraryWithMode(libraryID string, mode string) error {
 func (a *App) SelectDirectory() (string, error) {
 	return wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "请选择库文件夹",
+	})
+}
+
+func (a *App) SelectProgram() (string, error) {
+	defaultDirectory := ""
+	if settings, err := a.GetDesktopSettings(); err == nil {
+		if currentPath := strings.TrimSpace(settings.PlayerPath); currentPath != "" {
+			candidateDir := filepath.Dir(currentPath)
+			if info, statErr := os.Stat(candidateDir); statErr == nil && info.IsDir() {
+				defaultDirectory = candidateDir
+			}
+		}
+	}
+
+	filters := []wailsRuntime.FileFilter{
+		{
+			DisplayName: "All Files (*.*)",
+			Pattern:     "*.*",
+		},
+	}
+	if runtime.GOOS == "windows" {
+		filters = append([]wailsRuntime.FileFilter{
+			{
+				DisplayName: "Programs (*.exe)",
+				Pattern:     "*.exe",
+			},
+		}, filters...)
+	}
+
+	return wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title:            "Select Player Program",
+		DefaultDirectory: defaultDirectory,
+		Filters:          filters,
 	})
 }

@@ -52,6 +52,8 @@ export function ScanLibraryWithMode(arg1:string,arg2:string):Promise<void>;
 
 export function SelectDirectory():Promise<string>;
 
+export function SelectProgram():Promise<string>;
+
 export function ToggleFavorite(arg1:string):Promise<void>;
 
 export function ToggleWatched(arg1:string):Promise<void>;
