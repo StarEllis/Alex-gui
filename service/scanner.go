@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -1347,6 +1348,22 @@ type pendingMedia struct {
 	path    string
 	info    os.FileInfo
 	message string
+}
+
+const mediaProbeTimeout = 30 * time.Second
+const mediaTranscodeTimeout = 2 * time.Minute
+
+func newBackgroundCommand(timeout time.Duration, executable string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	if timeout <= 0 {
+		cmd := exec.Command(executable, args...)
+		configureBackgroundCommand(cmd)
+		return cmd, func() {}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	cmd := exec.CommandContext(ctx, executable, args...)
+	configureBackgroundCommand(cmd)
+	return cmd, cancel
 }
 
 // parallelProbe 使用 Worker Pool 并行执行 FFprobe 探测
@@ -3056,13 +3073,14 @@ func (s *ScannerService) probeMediaInfo(media *model.Media) {
 		return
 	}
 
-	cmd := exec.Command(s.cfg.App.FFprobePath,
+	cmd, cancel := newBackgroundCommand(mediaProbeTimeout, s.cfg.App.FFprobePath,
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
 		media.FilePath,
 	)
+	defer cancel()
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -3101,12 +3119,13 @@ func (s *ScannerService) probeMediaInfo(media *model.Media) {
 
 // GetSubtitleTracks 获取媒体文件的内嵌字幕轨道列表
 func (s *ScannerService) GetSubtitleTracks(filePath string) ([]SubtitleTrack, error) {
-	cmd := exec.Command(s.cfg.App.FFprobePath,
+	cmd, cancel := newBackgroundCommand(mediaProbeTimeout, s.cfg.App.FFprobePath,
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",
 		"-select_streams", "s", filePath,
 	)
+	defer cancel()
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -3155,13 +3174,14 @@ func (s *ScannerService) ExtractSubtitle(filePath string, streamIndex int, outpu
 		return outputPath, nil
 	}
 
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
+	cmd, cancel := newBackgroundCommand(mediaTranscodeTimeout, s.cfg.App.FFmpegPath,
 		"-y",
 		"-i", filePath,
 		"-map", fmt.Sprintf("0:%d", streamIndex),
 		"-c:s", s.getSubtitleCodec(outputFormat),
 		outputPath,
 	)
+	defer cancel()
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("提取字幕失败: %w", err)
@@ -3454,12 +3474,13 @@ func (s *ScannerService) ConvertSubtitleToVTT(subtitlePath string) (string, erro
 	}
 
 	// 使用FFmpeg将字幕转换为WebVTT
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
+	cmd, cancel := newBackgroundCommand(mediaTranscodeTimeout, s.cfg.App.FFmpegPath,
 		"-y",
 		"-i", subtitlePath,
 		"-c:s", "webvtt",
 		outputPath,
 	)
+	defer cancel()
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("FFmpeg字幕转换失败: %w, 输出: %s", err, string(output))

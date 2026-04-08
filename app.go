@@ -653,6 +653,7 @@ func startDetachedCommand(cmd *exec.Cmd) error {
 	if cmd == nil {
 		return fmt.Errorf("launch command is nil")
 	}
+	configureDetachedCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -671,7 +672,7 @@ func buildOpenFileCommand(filePath string, playerPath string) *exec.Cmd {
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", "", filepath.Clean(filePath))
+		cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", filepath.Clean(filePath))
 		cmd.Dir = filepath.Dir(filePath)
 		return cmd
 	case "darwin":
