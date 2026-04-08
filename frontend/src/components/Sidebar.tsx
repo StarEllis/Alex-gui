@@ -1,19 +1,56 @@
-import React, { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+    ChevronDown,
+    ChevronRight,
+    Copy,
+    Eye,
+    FolderPlus,
+    Heart,
+    Minus,
+    Pencil,
+    Play,
+    Settings,
+    Shapes,
+    Square,
+    UserRound,
+    X,
+} from 'lucide-react';
+import { Quit, WindowIsMaximised, WindowMinimise, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
 import { formatLibraryPathLabel, getLibraryConfig } from '../utils/library';
 
 interface SidebarProps {
+    appName: string;
     libraries: any[];
     currentLib: any;
     currentView: string;
     onSelectLib: (lib: any) => void;
     onOpenSettings: () => void;
-    onSelectView: (view: 'libs' | 'directory' | 'actor' | 'genre' | 'series' | 'watched' | 'favorite') => void;
+    onSelectView: (view: 'libs' | 'actor' | 'genre' | 'watched' | 'favorite') => void;
     onAddLib: () => void;
     onEditLib: (lib: any) => void;
 }
 
+const navItems = [
+    { key: 'watched', label: '已看', icon: Eye },
+    { key: 'favorite', label: '收藏', icon: Heart },
+    { key: 'actor', label: '演员', icon: UserRound },
+    { key: 'genre', label: '类别', icon: Shapes },
+] as const;
+
+const shouldIgnoreHeaderDoubleClick = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return Boolean(
+        target.closest(
+            '.no-drag, button, input, select, textarea, a, [role="button"], [data-no-window-toggle="true"]',
+        ),
+    );
+};
+
 const Sidebar: React.FC<SidebarProps> = ({
+    appName,
     libraries,
     currentLib,
     currentView,
@@ -24,131 +61,174 @@ const Sidebar: React.FC<SidebarProps> = ({
     onEditLib,
 }) => {
     const [expandedLibId, setExpandedLibId] = useState<string | null>(null);
+    const [isMaximised, setIsMaximised] = useState(false);
+
+    useEffect(() => {
+        const syncWindowState = () => {
+            WindowIsMaximised().then(setIsMaximised).catch(() => undefined);
+        };
+
+        syncWindowState();
+        window.addEventListener('resize', syncWindowState);
+
+        return () => {
+            window.removeEventListener('resize', syncWindowState);
+        };
+    }, []);
 
     const toggleLibraryFolders = (libraryId: string) => {
         setExpandedLibId((prev) => (prev === libraryId ? null : libraryId));
     };
 
+    const handleWindowToggle = () => {
+        WindowToggleMaximise();
+        window.setTimeout(() => {
+            WindowIsMaximised().then(setIsMaximised).catch(() => undefined);
+        }, 80);
+    };
+
+    const handleHeaderDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (shouldIgnoreHeaderDoubleClick(event.target)) {
+            return;
+        }
+
+        handleWindowToggle();
+    };
+
     return (
-        <div className="sidebar">
-            <div className="sidebar-logo">
-                <i>▶</i>
-                <span>ALEX</span>
-            </div>
-
-            <div className="sidebar-nav-item sidebar-create-lib" onClick={onAddLib}>
-                <span>新建媒体库</span>
-                <span className="sidebar-create-lib-icon">•</span>
-            </div>
-
-            <div className="sidebar-section">
-                <div className="sidebar-section-title">
-                    <span>我的媒体</span>
-                    <span className="sidebar-section-arrow">▾</span>
+        <aside className="sidebar">
+            <div className="sidebar-header" onDoubleClick={handleHeaderDoubleClick}>
+                <div className="sidebar-window-controls">
+                    <button type="button" className="sidebar-window-btn close" onClick={Quit} aria-label="关闭">
+                        <X size={13} />
+                    </button>
+                    <button type="button" className="sidebar-window-btn" onClick={WindowMinimise} aria-label="最小化">
+                        <Minus size={13} />
+                    </button>
+                    <button type="button" className="sidebar-window-btn" onClick={handleWindowToggle} aria-label="最大化">
+                        {isMaximised ? <Copy size={12} /> : <Square size={12} />}
+                    </button>
                 </div>
 
-                {libraries.map((lib) => {
-                    const isActive = currentLib?.id === lib.id && currentView === 'libs';
-                    const isExpanded = expandedLibId === lib.id;
-                    const { folderPaths } = getLibraryConfig(lib);
+                <div className="sidebar-brand">
+                    <div className="sidebar-brand-mark" aria-hidden="true">
+                        <Play size={14} fill="currentColor" strokeWidth={1.8} />
+                    </div>
+                    <div className="sidebar-brand-copy">
+                        <span className="sidebar-brand-name">{appName}</span>
+                        <span className="sidebar-brand-subtitle">媒体库</span>
+                    </div>
+                </div>
+            </div>
 
-                    return (
-                        <div key={lib.id} className={`sidebar-lib-group ${isExpanded ? 'expanded' : ''}`}>
-                            <div className={`sidebar-lib-row ${isActive ? 'active' : ''}`}>
-                                <button
-                                    type="button"
-                                    className={`sidebar-lib-toggle ${isExpanded ? 'expanded' : ''}`}
-                                    onClick={() => toggleLibraryFolders(lib.id)}
-                                    aria-label={isExpanded ? '折叠文件夹' : '展开文件夹'}
-                                >
-                                    <ChevronRight size={14} className="sidebar-lib-toggle-icon" />
-                                </button>
+            <div className="sidebar-main">
+                <button type="button" className="sidebar-create-lib" onClick={onAddLib}>
+                    <FolderPlus size={15} strokeWidth={1.9} />
+                    <span>新建媒体库</span>
+                </button>
 
-                                <button
-                                    type="button"
-                                    className="sidebar-lib-main"
-                                    onClick={() => onSelectLib(lib)}
-                                >
-                                    <span className="sidebar-lib-name" title={lib.name}>
-                                        {lib.name}
-                                    </span>
-                                    <span className="sidebar-count">{lib.media_count?.toLocaleString() || 0}</span>
-                                </button>
+                <div className="sidebar-group">
+                    <div className="sidebar-group-title">
+                        <span>我的媒体</span>
+                        <ChevronDown size={13} />
+                    </div>
 
-                                <button
-                                    type="button"
-                                    className="sidebar-lib-edit"
-                                    title="编辑媒体库"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        onEditLib(lib);
-                                    }}
-                                >
-                                    ⋯
-                                </button>
-                            </div>
+                    <div className="sidebar-library-list">
+                        {libraries.map((lib) => {
+                            const isExpanded = expandedLibId === lib.id;
+                            const isActive = currentLib?.id === lib.id;
+                            const { folderPaths } = getLibraryConfig(lib);
 
-                            {isExpanded && (
-                                <div className="sidebar-lib-paths">
-                                    {folderPaths.length > 0 ? (
-                                        folderPaths.map((path) => (
-                                            <div key={path} className="sidebar-lib-path" title={path}>
-                                                <span className="sidebar-lib-path-label">
-                                                    {formatLibraryPathLabel(path, folderPaths)}
-                                                </span>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="sidebar-lib-path empty">未配置文件夹</div>
+                            return (
+                                <div key={lib.id} className={`sidebar-library-item ${isExpanded ? 'expanded' : ''}`}>
+                                    <div className={`sidebar-library-row ${isActive ? 'active' : ''}`}>
+                                        <button
+                                            type="button"
+                                            className={`sidebar-library-toggle ${isExpanded ? 'expanded' : ''}`}
+                                            onClick={() => toggleLibraryFolders(lib.id)}
+                                            aria-label={isExpanded ? '收起媒体库目录' : '展开媒体库目录'}
+                                        >
+                                            <ChevronRight size={13} />
+                                        </button>
+
+                                        <button type="button" className="sidebar-library-main" onClick={() => onSelectLib(lib)}>
+                                            <span className="sidebar-library-name" title={lib.name}>
+                                                {lib.name}
+                                            </span>
+                                            <span className="sidebar-library-count">
+                                                {(lib.media_count || 0).toLocaleString()}
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className="sidebar-library-edit"
+                                            title="编辑媒体库"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onEditLib(lib);
+                                            }}
+                                        >
+                                            <Pencil size={13} />
+                                        </button>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="sidebar-library-paths">
+                                            {folderPaths.length > 0 ? (
+                                                folderPaths.map((path) => (
+                                                    <div key={path} className="sidebar-library-path" title={path}>
+                                                        {formatLibraryPathLabel(path, folderPaths)}
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="sidebar-library-path empty">未配置文件夹</div>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    );
-                })}
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className="sidebar-group">
+                    <div className="sidebar-group-title">
+                        <span>信息统计</span>
+                        <ChevronDown size={13} />
+                    </div>
+
+                    <div className="sidebar-nav-list">
+                        {navItems.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = currentView === item.key;
+                            return (
+                                <button
+                                    key={item.key}
+                                    type="button"
+                                    className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                                    onClick={() => onSelectView(item.key)}
+                                >
+                                    <Icon size={16} strokeWidth={1.85} />
+                                    <span>{item.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
-            <div className="sidebar-section">
-                <div className="sidebar-section-title">
-                    <span>信息统计</span>
-                    <span className="sidebar-section-arrow">▾</span>
-                </div>
-                <div className={`sidebar-nav-item ${currentView === 'watched' ? 'active' : ''}`} onClick={() => onSelectView('watched')}>
-                    已看
-                </div>
-                <div className={`sidebar-nav-item ${currentView === 'favorite' ? 'active' : ''}`} onClick={() => onSelectView('favorite')}>
-                    收藏
-                </div>
-                <div className={`sidebar-nav-item ${currentView === 'actor' ? 'active' : ''}`} onClick={() => onSelectView('actor')}>
-                    演员
-                </div>
-                <div className={`sidebar-nav-item ${currentView === 'genre' ? 'active' : ''}`} onClick={() => onSelectView('genre')}>
-                    类别
-                </div>
-            </div>
-
-            <div className="sidebar-section">
-                <div className="sidebar-section-title">
-                    <span>服务选项</span>
-                    <span className="sidebar-section-arrow">▾</span>
-                </div>
-            </div>
-
-            <div className="sidebar-spacer" />
-
-            <div className="sidebar-bottom">
-                <div
-                    className={`sidebar-nav-item ${currentView === 'settings' ? 'active' : ''}`}
-                    style={{
-                        background: currentView === 'settings' ? 'var(--accent)' : 'transparent',
-                        color: currentView === 'settings' ? '#fff' : 'var(--text-secondary)',
-                    }}
+            <div className="sidebar-footer">
+                <button
+                    type="button"
+                    className={`sidebar-nav-item sidebar-settings-item ${currentView === 'settings' ? 'active' : ''}`}
                     onClick={onOpenSettings}
                 >
-                    设置
-                </div>
+                    <Settings size={16} strokeWidth={1.85} />
+                    <span>设置</span>
+                </button>
             </div>
-        </div>
+        </aside>
     );
 };
 

@@ -7,6 +7,7 @@ interface MediaGridProps {
     keyword: string;
     sortField: string;
     sortOrder: 'asc' | 'desc';
+    layoutVersion?: number;
     filter?: { type: string; value: string; label: string } | null;
     onSelectMedia: (media: any) => void;
     onCountChange?: (count: number) => void;
@@ -20,6 +21,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     keyword,
     sortField,
     sortOrder,
+    layoutVersion = 0,
     filter,
     onSelectMedia,
     onCountChange,
@@ -32,14 +34,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const latestScrollTopRef = useRef(0);
     const pendingRestoreRef = useRef<number | null>(initialScrollTop);
-    const [layout, setLayout] = useState({ columns: 4, gap: 30, justify: 'start' });
+    const [layout, setLayout] = useState({ columns: 4, gap: 20, justify: 'start' });
 
     const updateLayout = () => {
         if (!containerRef.current) return;
-        const containerWidth = containerRef.current.clientWidth - 60;
+        const containerWidth = containerRef.current.clientWidth - 48;
         const cardWidth = 178;
-        const minGap = 12;
-        const maxGap = 32;
+        const minGap = 18;
+        const maxGap = 24;
 
         let cols = Math.floor((containerWidth + minGap) / (cardWidth + minGap));
         cols = Math.max(1, cols);
@@ -51,11 +53,37 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     };
 
     useEffect(() => {
-        const observer = new ResizeObserver(() => updateLayout());
-        if (containerRef.current) observer.observe(containerRef.current);
-        updateLayout();
-        return () => observer.disconnect();
+        let frameId = 0;
+        const scheduleLayoutUpdate = () => {
+            window.cancelAnimationFrame(frameId);
+            frameId = window.requestAnimationFrame(() => updateLayout());
+        };
+
+        const observer = new ResizeObserver(() => scheduleLayoutUpdate());
+        if (containerRef.current) {
+            observer.observe(containerRef.current);
+            if (containerRef.current.parentElement) {
+                observer.observe(containerRef.current.parentElement);
+            }
+        }
+
+        window.addEventListener('resize', scheduleLayoutUpdate);
+        scheduleLayoutUpdate();
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', scheduleLayoutUpdate);
+            window.cancelAnimationFrame(frameId);
+        };
     }, []);
+
+    useLayoutEffect(() => {
+        let frameId = 0;
+        frameId = window.requestAnimationFrame(() => updateLayout());
+        return () => {
+            window.cancelAnimationFrame(frameId);
+        };
+    }, [layoutVersion]);
 
     useEffect(() => {
         pendingRestoreRef.current = initialScrollTop;
@@ -135,7 +163,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
                 gridTemplateColumns: `repeat(${layout.columns}, 178px)`,
                 columnGap: `${layout.gap}px`,
                 justifyContent: layout.justify,
-                rowGap: '30px',
+                rowGap: '24px',
             }}
         >
             {mediaItems.map((item) => (
@@ -146,14 +174,16 @@ const MediaGrid: React.FC<MediaGridProps> = ({
                     onQuickPlayStatus={onQuickPlayStatus}
                 />
             ))}
+
             {!isLoading && mediaItems.length === 0 && (
-                <div style={{ color: 'var(--text-dim)', padding: '40px', gridColumn: '1 / -1', textAlign: 'center', fontSize: '14px' }}>
-                    没有找到符合条件的媒体文件
+                <div className="grid-feedback">
+                    没有找到符合条件的媒体内容
                 </div>
             )}
+
             {isLoading && mediaItems.length === 0 && (
-                <div style={{ color: 'var(--accent)', padding: '40px', gridColumn: '1 / -1', textAlign: 'center', fontSize: '14px' }}>
-                    正在加载媒体库...
+                <div className="grid-feedback loading">
+                    正在加载媒体内容...
                 </div>
             )}
         </div>

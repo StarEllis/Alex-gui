@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 //go:embed all:frontend/dist
@@ -29,22 +30,25 @@ func (h *LocalFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// Create an instance of the app structure
 	app := NewApp()
 
-	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "alex-desktop",
-		Width:            1090,
-		Height:           770,
-		MinWidth:         1090,
-		MinHeight:        770,
+		Title:     "alex-desktop",
+		Width:     1090,
+		Height:    770,
+		MinWidth:  1090,
+		MinHeight: 770,
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: &LocalFileHandler{},
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		BackgroundColour: &options.RGBA{R: 10, G: 14, B: 23, A: 1},
 		OnStartup:        app.startup,
+		Windows: &windows.Options{
+			Theme:                             windows.Dark,
+			DisableFramelessWindowDecorations: false,
+		},
 		Bind: []interface{}{
 			app,
 		},

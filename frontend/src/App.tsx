@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
+import './library-refine.css';
 import {
     GetActorStats,
     GetDesktopSettings,
-    GetDirectoryStats,
     GetGenreStats,
     GetLibraries,
-    GetSeriesStats,
     PlayRandomLibraryMedia,
     ScanLibraryWithMode,
 } from "../wailsjs/go/main/App";
-import { EventsOn, WindowSetTitle } from "../wailsjs/runtime/runtime";
+import { EventsOn, WindowSetDarkTheme, WindowSetTitle } from "../wailsjs/runtime/runtime";
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import MediaGrid from './components/MediaGrid';
@@ -20,7 +19,7 @@ import LibraryModal from './components/LibraryModal';
 import LibraryEditModal from './components/LibraryEditModal';
 import MediaDetail from './components/MediaDetail';
 
-type ViewName = 'libs' | 'settings' | 'directory' | 'actor' | 'genre' | 'series' | 'watched' | 'favorite';
+type ViewName = 'libs' | 'settings' | 'actor' | 'genre' | 'watched' | 'favorite';
 type SortField = 'created_at' | 'release_date' | 'video_codec' | 'last_watched';
 type SortOrder = 'asc' | 'desc';
 type FilterState = { type: string; value: string; label: string } | null;
@@ -31,11 +30,21 @@ type FilterReturnContext = {
 
 const APP_TITLE = 'ALEX';
 
+const VIEW_LABELS: Record<Exclude<ViewName, 'libs'>, string> = {
+    settings: '设置',
+    actor: '演员',
+    genre: '类别',
+    watched: '已看',
+    favorite: '收藏',
+};
+
 const SCAN_MODE_LABELS: Record<string, string> = {
     overwrite: '覆盖刷新',
     delete_update: '删改刷新',
-    incremental: '新增刷新',
+    incremental: '增量刷新',
 };
+
+const SEARCHABLE_VIEWS = new Set<ViewName>(['libs', 'watched', 'favorite']);
 
 const formatError = (error: unknown) => {
     if (error instanceof Error && error.message) {
@@ -48,6 +57,7 @@ const formatError = (error: unknown) => {
 };
 
 function App() {
+    const [layoutVersion, setLayoutVersion] = useState(0);
     const [view, setView] = useState<ViewName>('libs');
     const [libraries, setLibraries] = useState<any[]>([]);
     const [currentLib, setCurrentLib] = useState<any>(null);
@@ -82,10 +92,12 @@ function App() {
     const updateScanTitle = (data: any, fallbackPrefix: string) => {
         const current = typeof data?.current === 'number' ? data.current : 0;
         const total = typeof data?.total === 'number' ? data.total : 0;
-        const elapsedSeconds = scanStartedAtRef.current ? Math.max(0, Math.floor((Date.now() - scanStartedAtRef.current) / 1000)) : 0;
+        const elapsedSeconds = scanStartedAtRef.current
+            ? Math.max(0, Math.floor((Date.now() - scanStartedAtRef.current) / 1000))
+            : 0;
         const ratioText = total > 0 ? `${current}/${total}` : `${current}`;
         const message = typeof data?.message === 'string' ? data.message.trim() : '';
-        const suffix = elapsedSeconds > 0 ? `，耗时: ${elapsedSeconds}秒` : '';
+        const suffix = elapsedSeconds > 0 ? `，耗时 ${elapsedSeconds}s` : '';
         const detail = message ? ` ${message}` : '';
         setAppTitle(`${APP_TITLE} - ${fallbackPrefix}${ratioText}${detail}${suffix}`);
     };
@@ -121,7 +133,25 @@ function App() {
     };
 
     useEffect(() => {
+        let frameId = 0;
+        const handleResize = () => {
+            window.cancelAnimationFrame(frameId);
+            frameId = window.requestAnimationFrame(() => {
+                setLayoutVersion((prev) => prev + 1);
+            });
+        };
+
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            window.cancelAnimationFrame(frameId);
+        };
+    }, []);
+
+    useEffect(() => {
         setAppTitle(APP_TITLE);
+        WindowSetDarkTheme();
         loadLibraries();
 
         GetDesktopSettings().then((settings: any) => {
@@ -200,9 +230,7 @@ function App() {
         });
     };
 
-    const handleSelectLibrary = (lib: any) => {
-        setCurrentLib(lib);
-        setView('libs');
+    const resetWorkspaceState = () => {
         setSelectedMedia(null);
         setGridScrollTop(0);
         setActiveFilter(null);
@@ -210,22 +238,25 @@ function App() {
         setSearchKeyword('');
     };
 
+    const handleSelectLibrary = (lib: any) => {
+        setCurrentLib(lib);
+        setView('libs');
+        resetWorkspaceState();
+    };
+
     const handleOpenSettings = () => {
-        setSelectedMedia(null);
-        setGridScrollTop(0);
-        setActiveFilter(null);
-        setFilterReturnContext(null);
-        setSearchKeyword('');
+        resetWorkspaceState();
         setView('settings');
     };
 
     const handleSelectView = (nextView: ViewName) => {
-        setSelectedMedia(null);
-        setGridScrollTop(0);
+        resetWorkspaceState();
         setView(nextView);
-        setActiveFilter(null);
-        setFilterReturnContext(null);
-        setSearchKeyword('');
+    };
+
+    const handleNavigateHome = () => {
+        resetWorkspaceState();
+        setView('libs');
     };
 
     const handleLibCreated = () => {
@@ -281,170 +312,154 @@ function App() {
         setSortOrder('desc');
     };
 
-    const renderLibraryTopBar = (name: string, count: number, showControls: boolean) => (
-        <TopBar
-            libName={name}
-            mediaCount={count}
-            searchValue={searchKeyword}
-            onSearch={setSearchKeyword}
-            onScanWithMode={handleScanWithMode}
-            onEditLibrary={showControls && currentLib ? () => setEditingLib(currentLib) : undefined}
-            onRandomPlay={showControls && currentLib ? handleRandomPlay : undefined}
-            onSortSelect={showControls ? handleSortSelect : undefined}
-            sortField={sortField}
-            sortOrder={sortOrder}
-            showLibraryControls={showControls}
-        />
-    );
+    const currentLibraryName = currentLib?.name || '未选择媒体库';
+    const baseCount = typeof currentLib?.media_count === 'number' ? currentLib.media_count : mediaCount;
+    const headerCount = (view === 'libs' || view === 'watched' || view === 'favorite') ? mediaCount : baseCount;
+    const searchEnabled = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
+    const showLibraryActions = Boolean(currentLib && view === 'libs');
+    const showListActions = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
+    const viewLabel = view === 'libs' ? undefined : VIEW_LABELS[view as Exclude<ViewName, 'libs'>];
+    const isDetailOpen = Boolean(selectedMedia);
+
+    const renderWorkspaceContent = () => {
+        if (!currentLib && view !== 'settings') {
+            return (
+                <div className="workspace-empty-state">
+                    <div className="workspace-empty-state-inner">
+                        <span className="workspace-empty-eyebrow">媒体库</span>
+                        <h2>还没有可用的媒体库</h2>
+                        <p>先创建一个媒体库，然后即可开始扫描、搜索和浏览你的内容。</p>
+                        <button type="button" className="workspace-empty-action" onClick={() => setShowLibModal(true)}>
+                            新建媒体库
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        switch (view) {
+            case 'watched':
+                return (
+                    <MediaGrid
+                        libraryId={currentLib.id}
+                        keyword={searchKeyword}
+                        sortField={sortField}
+                        sortOrder={sortOrder}
+                        layoutVersion={layoutVersion}
+                        filter={{ type: 'watched', value: 'true', label: '已看' }}
+                        onSelectMedia={setSelectedMedia}
+                        onCountChange={setMediaCount}
+                        onQuickPlayStatus={showStatus}
+                        initialScrollTop={gridScrollTop}
+                        onScrollPositionChange={setGridScrollTop}
+                    />
+                );
+            case 'favorite':
+                return (
+                    <MediaGrid
+                        libraryId={currentLib.id}
+                        keyword={searchKeyword}
+                        sortField={sortField}
+                        sortOrder={sortOrder}
+                        layoutVersion={layoutVersion}
+                        filter={{ type: 'favorite', value: 'true', label: '收藏' }}
+                        onSelectMedia={setSelectedMedia}
+                        onCountChange={setMediaCount}
+                        onQuickPlayStatus={showStatus}
+                        initialScrollTop={gridScrollTop}
+                        onScrollPositionChange={setGridScrollTop}
+                    />
+                );
+            case 'actor':
+                return (
+                    <CategoryGrid
+                        type="actor"
+                        libraryId={currentLib.id}
+                        fetchFn={GetActorStats}
+                        onSelect={(value, label) => applyFilterFromView('actor', { type: 'actor', value, label })}
+                    />
+                );
+            case 'genre':
+                return (
+                    <CategoryGrid
+                        type="genre"
+                        libraryId={currentLib.id}
+                        fetchFn={GetGenreStats}
+                        onSelect={(value, label) => applyFilterFromView('genre', { type: 'genre', value, label })}
+                    />
+                );
+            case 'settings':
+                return <SettingsPage onClose={handleNavigateHome} />;
+            case 'libs':
+            default:
+                return (
+                    <MediaGrid
+                        libraryId={currentLib.id}
+                        keyword={searchKeyword}
+                        sortField={sortField}
+                        sortOrder={sortOrder}
+                        layoutVersion={layoutVersion}
+                        filter={activeFilter}
+                        onSelectMedia={setSelectedMedia}
+                        onCountChange={setMediaCount}
+                        onQuickPlayStatus={showStatus}
+                        initialScrollTop={gridScrollTop}
+                        onScrollPositionChange={setGridScrollTop}
+                    />
+                );
+        }
+    };
 
     return (
         <div className="app-container">
-            <Sidebar
-                libraries={libraries}
-                currentLib={currentLib}
-                currentView={view}
-                onSelectLib={handleSelectLibrary}
-                onOpenSettings={handleOpenSettings}
-                onSelectView={handleSelectView}
-                onAddLib={() => setShowLibModal(true)}
-                onEditLib={(lib: any) => setEditingLib(lib)}
-            />
+            <div className="window-shell">
+                <div className="workspace-shell">
+                    <Sidebar
+                        appName={APP_TITLE}
+                        libraries={libraries}
+                        currentLib={currentLib}
+                        currentView={view}
+                        onSelectLib={handleSelectLibrary}
+                        onOpenSettings={handleOpenSettings}
+                        onSelectView={handleSelectView}
+                        onAddLib={() => setShowLibModal(true)}
+                        onEditLib={(lib: any) => setEditingLib(lib)}
+                    />
 
-            <div className="main-content" style={{ position: 'relative' }}>
-                {view === 'settings' ? (
-                    <SettingsPage onClose={() => setView('libs')} />
-                ) : (
-                    <>
-                        {view === 'libs' && currentLib && (
-                            <>
-                                {renderLibraryTopBar(currentLib.name, mediaCount, true)}
-                                {activeFilter && (
-                                    <div className="filter-bar">
-                                        <span>当前筛选：{activeFilter.label}</span>
-                                        <button className="filter-clear" onClick={clearFilter}>清除筛选</button>
-                                    </div>
-                                )}
-                                <MediaGrid
-                                    libraryId={currentLib.id}
-                                    keyword={searchKeyword}
-                                    sortField={sortField}
-                                    sortOrder={sortOrder}
-                                    filter={activeFilter}
-                                    onSelectMedia={setSelectedMedia}
-                                    onCountChange={setMediaCount}
-                                    onQuickPlayStatus={showStatus}
-                                    initialScrollTop={gridScrollTop}
-                                    onScrollPositionChange={setGridScrollTop}
-                                />
-                            </>
+                    <div className="main-content">
+                        {!isDetailOpen && (
+                            <TopBar
+                                currentLibraryName={currentLibraryName}
+                                mediaCount={headerCount || 0}
+                                viewLabel={viewLabel}
+                                filterLabel={activeFilter?.label}
+                                searchValue={searchKeyword}
+                                onSearch={setSearchKeyword}
+                                searchDisabled={!searchEnabled}
+                                onScanWithMode={showLibraryActions ? handleScanWithMode : undefined}
+                                onEditLibrary={showLibraryActions && currentLib ? () => setEditingLib(currentLib) : undefined}
+                                onRandomPlay={showListActions ? handleRandomPlay : undefined}
+                                onSortSelect={showListActions ? handleSortSelect : undefined}
+                                sortField={sortField}
+                                sortOrder={sortOrder}
+                                onBackButtonClick={view !== 'libs' ? handleNavigateHome : undefined}
+                                onClearFilter={activeFilter ? clearFilter : undefined}
+                            />
                         )}
 
-                        {view === 'watched' && currentLib && (
-                            <>
-                                {renderLibraryTopBar('已看列表', mediaCount, false)}
-                                <div className="filter-bar">
-                                    <span>当前视图：已看 / 历史记录</span>
-                                    <button className="filter-clear" onClick={() => setView('libs')}>返回主页</button>
-                                </div>
-                                <MediaGrid
-                                    libraryId={currentLib.id}
-                                    keyword={searchKeyword}
-                                    sortField={sortField}
-                                    sortOrder={sortOrder}
-                                    filter={{ type: 'watched', value: 'true', label: '已看' }}
-                                    onSelectMedia={setSelectedMedia}
-                                    onCountChange={setMediaCount}
-                                    initialScrollTop={gridScrollTop}
-                                    onScrollPositionChange={setGridScrollTop}
-                                />
-                            </>
-                        )}
-
-                        {view === 'favorite' && currentLib && (
-                            <>
-                                {renderLibraryTopBar('我的收藏', mediaCount, false)}
-                                <div className="filter-bar">
-                                    <span>当前视图：我的收藏</span>
-                                    <button className="filter-clear" onClick={() => setView('libs')}>返回主页</button>
-                                </div>
-                                <MediaGrid
-                                    libraryId={currentLib.id}
-                                    keyword={searchKeyword}
-                                    sortField={sortField}
-                                    sortOrder={sortOrder}
-                                    filter={{ type: 'favorite', value: 'true', label: '收藏' }}
-                                    onSelectMedia={setSelectedMedia}
-                                    onCountChange={setMediaCount}
-                                    initialScrollTop={gridScrollTop}
-                                    onScrollPositionChange={setGridScrollTop}
-                                />
-                            </>
-                        )}
-
-                        {view === 'directory' && currentLib && (
-                            <>
-                                {renderLibraryTopBar('目录聚合', 0, false)}
-                                <CategoryGrid
-                                    type="directory"
-                                    libraryId={currentLib.id}
-                                    fetchFn={GetDirectoryStats}
-                                    onSelect={(value, label) => applyFilterFromView('directory', { type: 'directory', value, label })}
-                                />
-                            </>
-                        )}
-
-                        {view === 'actor' && currentLib && (
-                            <>
-                                {renderLibraryTopBar('演员', 0, false)}
-                                <CategoryGrid
-                                    type="actor"
-                                    libraryId={currentLib.id}
-                                    fetchFn={GetActorStats}
-                                    onSelect={(value, label) => applyFilterFromView('actor', { type: 'actor', value, label })}
-                                />
-                            </>
-                        )}
-
-                        {view === 'genre' && currentLib && (
-                            <>
-                                {renderLibraryTopBar('类别统计', 0, false)}
-                                <CategoryGrid
-                                    type="genre"
-                                    libraryId={currentLib.id}
-                                    fetchFn={GetGenreStats}
-                                    onSelect={(value, label) => applyFilterFromView('genre', { type: 'genre', value, label })}
-                                />
-                            </>
-                        )}
-
-                        {view === 'series' && currentLib && (
-                            <>
-                                {renderLibraryTopBar('系列 / 集合', 0, false)}
-                                <CategoryGrid
-                                    type="series"
-                                    libraryId={currentLib.id}
-                                    fetchFn={GetSeriesStats}
-                                    onSelect={(value, label) => applyFilterFromView('series', { type: 'series', value, label })}
-                                />
-                            </>
-                        )}
-
-                        {view === 'libs' && !currentLib && (
-                            <div className="empty-state">
-                                请先新建媒体库
-                            </div>
-                        )}
-                        {selectedMedia && (
-                            <div className="detail-overlay" style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'flex' }}>
+                        <div className={`content-region ${isDetailOpen ? 'detail-mode' : ''}`}>
+                            {isDetailOpen ? (
                                 <MediaDetail
                                     media={selectedMedia}
                                     onClose={() => setSelectedMedia(null)}
                                     onSelectFilter={applyFilterFromDetail}
                                 />
-                            </div>
-                        )}
-                    </>
-                )}
+                            ) : (
+                                renderWorkspaceContent()
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {showLibModal && (

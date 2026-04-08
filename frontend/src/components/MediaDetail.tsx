@@ -53,6 +53,19 @@ const hasImageToken = (path: string, token: string) => getImageTokens(path).incl
 const isImagePath = (path: unknown): path is string => typeof path === 'string' && path.trim().length > 0;
 const isPosterLikeImage = (path: string) => hasImageToken(path, 'poster') || coverTokens.some((token) => hasImageToken(path, token));
 const toLocalAssetUrl = (path: string) => `/local/${encodeURIComponent(path)}`;
+const deriveImmediateFanartPath = (filePath: string) => {
+    const trimmed = filePath.trim();
+    if (!trimmed) {
+        return '';
+    }
+
+    const ext = trimmed.match(/\.[^.\\/]+$/)?.[0] || '';
+    if (!ext) {
+        return '';
+    }
+
+    return `${trimmed.slice(0, -ext.length)}-fanart.jpg`;
+};
 
 const pickDetailImagePath = (detail: any, previews: string[], role: DetailImageRole) => {
     const backgroundTokens = ['fanart', 'backdrop', 'background', 'banner', 'clearart', 'landscape'];
@@ -479,7 +492,8 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
     };
 
     const posterPath = pickPosterImagePath(detail, previews);
-    const backdropPath = pickBackdropImagePath(detail);
+    const immediateBackdropPath = deriveImmediateFanartPath(currFilePath || media.file_path || '');
+    const backdropPath = pickBackdropImagePath(detail) || immediateBackdropPath || posterPath;
     const posterUrl = posterPath ? toLocalAssetUrl(posterPath) : '';
     const backdropUrl = backdropPath ? toLocalAssetUrl(backdropPath) : '';
     const actors = normalizeActors(detail);

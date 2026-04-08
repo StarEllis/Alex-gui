@@ -1,20 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import {
+    ArrowDown,
+    ArrowLeft,
+    ChevronDown,
+    Edit3,
+    RefreshCw,
+    Search,
+    Shuffle,
+} from 'lucide-react';
+import { WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
 
 type MenuType = 'scan' | 'sort' | null;
 
 interface TopBarProps {
-    libName: string;
+    currentLibraryName: string;
     mediaCount: number;
+    viewLabel?: string;
+    filterLabel?: string;
     searchValue: string;
     onSearch: (keyword: string) => void;
-    onScanWithMode: (mode: string) => void;
+    searchDisabled?: boolean;
+    onScanWithMode?: (mode: string) => void;
     onEditLibrary?: () => void;
     onRandomPlay?: () => void;
     onSortSelect?: (field: string) => void;
     sortField?: string;
     sortOrder?: 'asc' | 'desc';
-    showLibraryControls?: boolean;
+    onBackButtonClick?: () => void;
+    onClearFilter?: () => void;
 }
 
 const sortOptions = [
@@ -27,7 +40,7 @@ const sortOptions = [
 const scanOptions = [
     { mode: 'overwrite', label: '覆盖刷新' },
     { mode: 'delete_update', label: '删改刷新' },
-    { mode: 'incremental', label: '新增刷新' },
+    { mode: 'incremental', label: '增量刷新' },
 ];
 
 const getSortLabel = (field: string) => {
@@ -44,18 +57,34 @@ const getSortLabel = (field: string) => {
     }
 };
 
+const shouldIgnoreHeaderDoubleClick = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return Boolean(
+        target.closest(
+            '.no-drag, button, input, select, textarea, a, [role="button"], [data-no-window-toggle="true"]',
+        ),
+    );
+};
+
 const TopBar: React.FC<TopBarProps> = ({
-    libName,
+    currentLibraryName,
     mediaCount,
+    viewLabel,
+    filterLabel,
     searchValue,
     onSearch,
+    searchDisabled = false,
     onScanWithMode,
     onEditLibrary,
     onRandomPlay,
     onSortSelect,
     sortField = 'created_at',
     sortOrder = 'desc',
-    showLibraryControls = true,
+    onBackButtonClick,
+    onClearFilter,
 }) => {
     const [openMenu, setOpenMenu] = useState<MenuType>(null);
     const [confirmScanMode, setConfirmScanMode] = useState<'overwrite' | null>(null);
@@ -77,6 +106,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
         document.addEventListener('mousedown', handlePointerDown);
         document.addEventListener('keydown', handleEscape);
+
         return () => {
             document.removeEventListener('mousedown', handlePointerDown);
             document.removeEventListener('keydown', handleEscape);
@@ -89,110 +119,146 @@ const TopBar: React.FC<TopBarProps> = ({
             setConfirmScanMode('overwrite');
             return;
         }
-        onScanWithMode(mode);
+        onScanWithMode?.(mode);
     };
 
-    const sortArrow = sortOrder === 'desc' ? '↓' : '↑';
-    const sortLabel = `按${getSortLabel(sortField)}排序`;
+    const handleHeaderDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (shouldIgnoreHeaderDoubleClick(event.target)) {
+            return;
+        }
+
+        WindowToggleMaximise();
+    };
+
+    const countLabel = `${mediaCount.toLocaleString()} 个项目`;
+    const headerHint = filterLabel || viewLabel || '';
 
     return (
         <>
-            <div className="topbar" ref={menuRootRef}>
-                <span className="topbar-hamburger">☰</span>
-                <span className="topbar-lib-name">{libName || '媒体库'}</span>
-                <span className="topbar-count">{mediaCount || 0} 个项目</span>
+            <div className="topbar" ref={menuRootRef} onDoubleClick={handleHeaderDoubleClick}>
+                <div className="workspace-header-main">
+                    <div className="workspace-header-heading">
+                        <div className="workspace-header-title-row">
+                            <span className="workspace-library-current" title={currentLibraryName}>
+                                {currentLibraryName}
+                            </span>
+                            <span className="workspace-library-count">{countLabel}</span>
+                        </div>
+                        {headerHint && <div className="workspace-header-subtitle">{headerHint}</div>}
+                    </div>
 
-                {showLibraryControls && (
-                    <>
-                        <button className="topbar-btn" type="button" onClick={onRandomPlay} disabled={!onRandomPlay}>
-                            <span className="topbar-btn-icon">⤮</span>
-                            <span>随机播放</span>
-                        </button>
+                    <div className="workspace-header-search no-drag">
+                        <div className="workspace-search-group">
+                            <label className={`workspace-search-shell ${searchDisabled ? 'disabled' : ''}`}>
+                                <span className="workspace-search-icon-wrap">
+                                    <Search size={15} strokeWidth={2} className="workspace-search-icon" />
+                                </span>
+                                <input
+                                    type="text"
+                                    className="workspace-search"
+                                    placeholder="搜索媒体、演员、标签"
+                                    value={searchValue}
+                                    onChange={(event) => onSearch(event.target.value)}
+                                    disabled={searchDisabled}
+                                />
+                            </label>
+                        </div>
+                    </div>
 
-                        <div className="topbar-menu-anchor">
-                            <button
-                                type="button"
-                                className={`topbar-btn ${openMenu === 'sort' ? 'active' : ''}`}
-                                onClick={() => setOpenMenu((prev) => (prev === 'sort' ? null : 'sort'))}
-                            >
-                                <span className="topbar-btn-icon">{sortArrow}</span>
-                                <span>{sortLabel}</span>
-                                <span className="topbar-btn-caret">▾</span>
-                            </button>
+                    <div className="workspace-header-actions no-drag">
+                            {onClearFilter && (
+                                <button type="button" className="workspace-action-btn subtle" onClick={onClearFilter}>
+                                    清除筛选
+                                </button>
+                            )}
 
-                            {openMenu === 'sort' && (
-                                <div className="topbar-dropdown-menu">
-                                    {sortOptions.map((option) => {
-                                        const isActive = sortField === option.field;
-                                        return (
-                                            <button
-                                                key={option.field}
-                                                type="button"
-                                                className={`topbar-dropdown-item ${isActive ? 'active' : ''}`}
-                                                onClick={() => {
-                                                    onSortSelect?.(option.field);
-                                                    setOpenMenu(null);
-                                                }}
-                                            >
-                                                <span>{option.label}</span>
-                                                {isActive && <span>{sortArrow}</span>}
-                                            </button>
-                                        );
-                                    })}
+                            {onBackButtonClick && (
+                                <button type="button" className="workspace-action-btn subtle" onClick={onBackButtonClick}>
+                                    <ArrowLeft size={14} />
+                                    <span>返回主页</span>
+                                </button>
+                            )}
+
+                            {onRandomPlay && (
+                                <button type="button" className="workspace-action-btn" onClick={onRandomPlay}>
+                                    <Shuffle size={15} />
+                                    <span>随机玩玩</span>
+                                </button>
+                            )}
+
+                            {onSortSelect && (
+                                <div className={`workspace-menu-shell ${openMenu === 'sort' ? 'open' : ''}`}>
+                                    <button
+                                        type="button"
+                                        className="workspace-action-btn"
+                                        onClick={() => setOpenMenu((prev) => (prev === 'sort' ? null : 'sort'))}
+                                    >
+                                        <ArrowDown size={15} />
+                                        <span>按{getSortLabel(sortField)}排序</span>
+                                    </button>
+
+                                    {openMenu === 'sort' && (
+                                        <div className="workspace-dropdown-menu">
+                                            {sortOptions.map((option) => {
+                                                const isActive = sortField === option.field;
+                                                return (
+                                                    <button
+                                                        key={option.field}
+                                                        type="button"
+                                                        className={`workspace-dropdown-item ${isActive ? 'active' : ''}`}
+                                                        onClick={() => {
+                                                            onSortSelect(option.field);
+                                                            setOpenMenu(null);
+                                                        }}
+                                                    >
+                                                        <span>{option.label}</span>
+                                                        {isActive && (
+                                                            <span className="workspace-dropdown-meta">
+                                                                {sortOrder === 'desc' ? '降序' : '升序'}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                        </div>
 
-                        <div className="topbar-menu-anchor">
-                            <button
-                                type="button"
-                                className={`topbar-btn icon-only ${openMenu === 'scan' ? 'active' : ''}`}
-                                onClick={() => setOpenMenu((prev) => (prev === 'scan' ? null : 'scan'))}
-                                title="刷新"
-                            >
-                                <span className="topbar-btn-icon">↻</span>
-                            </button>
+                            {onScanWithMode && (
+                                <div className={`workspace-menu-shell ${openMenu === 'scan' ? 'open' : ''}`}>
+                                    <button
+                                        type="button"
+                                        className="workspace-action-btn compact"
+                                        onClick={() => setOpenMenu((prev) => (prev === 'scan' ? null : 'scan'))}
+                                    >
+                                        <RefreshCw size={15} />
+                                        <span>刷新</span>
+                                        <ChevronDown size={13} />
+                                    </button>
 
-                            {openMenu === 'scan' && (
-                                <div className="topbar-dropdown-menu narrow">
-                                    {scanOptions.map((option) => (
-                                        <button
-                                            key={option.mode}
-                                            type="button"
-                                            className="topbar-dropdown-item"
-                                            onClick={() => handleScanModeClick(option.mode)}
-                                        >
-                                            <span>{option.label}</span>
-                                        </button>
-                                    ))}
+                                    {openMenu === 'scan' && (
+                                        <div className="workspace-dropdown-menu">
+                                            {scanOptions.map((option) => (
+                                                <button
+                                                    key={option.mode}
+                                                    type="button"
+                                                    className="workspace-dropdown-item"
+                                                    onClick={() => handleScanModeClick(option.mode)}
+                                                >
+                                                    <span>{option.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                        </div>
 
-                        <button
-                            type="button"
-                            className="topbar-btn icon-only"
-                            title="编辑当前媒体库"
-                            onClick={() => onEditLibrary?.()}
-                            disabled={!onEditLibrary}
-                        >
-                            <span className="topbar-btn-icon">⋯</span>
-                        </button>
-                    </>
-                )}
-
-                <div className="topbar-search-container">
-                    <div className="topbar-search-shell">
-                        <span className="topbar-search-icon-wrap">
-                            <Search size={14} strokeWidth={2.1} className="topbar-search-icon" />
-                        </span>
-                        <input
-                            type="text"
-                            className="topbar-search"
-                            placeholder="搜索媒体、演员、标签..."
-                            value={searchValue}
-                            onChange={(event) => onSearch(event.target.value)}
-                        />
+                            {onEditLibrary && (
+                                <button type="button" className="workspace-icon-btn" onClick={onEditLibrary} title="编辑当前媒体库">
+                                    <Edit3 size={15} />
+                                </button>
+                            )}
                     </div>
                 </div>
             </div>
@@ -202,23 +268,27 @@ const TopBar: React.FC<TopBarProps> = ({
                     <div className="confirm-modal" onClick={(event) => event.stopPropagation()}>
                         <div className="confirm-modal-header">
                             <span>提示</span>
-                            <button type="button" className="confirm-modal-close" onClick={() => setConfirmScanMode(null)}>×</button>
+                            <button type="button" className="confirm-modal-close" onClick={() => setConfirmScanMode(null)}>
+                                ×
+                            </button>
                         </div>
 
                         <div className="confirm-modal-body">
-                            <div className="confirm-modal-icon">?</div>
+                            <div className="confirm-modal-icon">!</div>
                             <div className="confirm-modal-text">
-                                你确定要覆盖刷新吗？这样会清空当前媒体库。
+                                你确定要覆盖刷新吗？这会清空当前媒体库并重新扫描。
                             </div>
                         </div>
 
                         <div className="confirm-modal-actions">
-                            <button type="button" className="confirm-modal-btn ghost" onClick={() => setConfirmScanMode(null)}>取消</button>
+                            <button type="button" className="confirm-modal-btn ghost" onClick={() => setConfirmScanMode(null)}>
+                                取消
+                            </button>
                             <button
                                 type="button"
                                 className="confirm-modal-btn primary"
                                 onClick={() => {
-                                    onScanWithMode('overwrite');
+                                    onScanWithMode?.('overwrite');
                                     setConfirmScanMode(null);
                                 }}
                             >
