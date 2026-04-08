@@ -100,11 +100,15 @@ func (a *App) GetLibraries() ([]model.Library, error) {
 	return libs, nil
 }
 
-func (a *App) CreateLibrary(lib *model.Library) error {
+func (a *App) CreateLibrary(lib *model.Library) (*model.Library, error) {
 	if err := lib.ApplyPathConfig(); err != nil {
-		return err
+		return nil, err
 	}
-	return a.repos.Library.Create(lib)
+	if err := a.repos.Library.Create(lib); err != nil {
+		return nil, err
+	}
+	lib.HydratePathConfig()
+	return lib, nil
 }
 
 func (a *App) UpdateLibrary(lib *model.Library) error {
@@ -114,19 +118,64 @@ func (a *App) UpdateLibrary(lib *model.Library) error {
 	return a.repos.Library.Update(lib)
 }
 
-func (a *App) ScanLibrary(libraryID string) error {
-	lib, err := a.repos.Library.FindByID(libraryID)
-	if err != nil {
-		return err
+func normalizeScanMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "overwrite", "delete_update", "incremental":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "incremental"
 	}
-	// 利用本地并行协程进行扫描防卡死
+}
+
+func (a *App) startScanWithOptions(lib *model.Library, mode string, options service.ScanOptions) {
 	go func() {
-		_, err := a.scanner.ScanLibrary(lib)
+		_, err := a.scanner.ScanLibraryWithOptions(lib, options)
 		if err != nil {
-			a.logger.Errorf("Scan error: %v", err)
+			a.logger.Errorf("Scan error (mode=%s): %v", mode, err)
+			return
 		}
+
+		lastScanAt := time.Now().UTC().Truncate(time.Second)
+		updatedLib := *lib
+		updatedLib.LastScan = &lastScanAt
+		if err := a.repos.Library.Update(&updatedLib); err != nil {
+			a.logger.Errorf("update library last_scan failed (mode=%s): %v", mode, err)
+			return
+		}
+		lib.LastScan = &lastScanAt
 	}()
-	return nil
+}
+
+func (a *App) ScanLibrary(libraryID string) error {
+	return a.ScanLibraryWithMode(libraryID, "incremental")
+	/*
+		lib, err := a.repos.Library.FindByID(libraryID)
+		if err != nil {
+			return err
+		}
+		// 利用本地并行协程进行扫描防卡死
+		go func() {
+			_, err := a.scanner.ScanLibraryWithOptions(lib, service.ScanOptions{
+				Mode:         "incremental",
+				Incremental:  true,
+				CleanDeleted: false,
+			})
+			if err != nil {
+				a.logger.Errorf("Scan error: %v", err)
+				return
+			}
+
+			lastScanAt := time.Now().UTC().Truncate(time.Second)
+			libPatch := &model.Library{
+				ID:       lib.ID,
+				LastScan: &lastScanAt,
+			}
+			if err := a.repos.Library.Update(libPatch); err != nil {
+				a.logger.Errorf("update library last_scan failed: %v", err)
+			}
+		}()
+		return nil
+	*/
 }
 
 type StatsItem struct {
@@ -1286,7 +1335,9 @@ func (a *App) ScanLibraryWithMode(libraryID string, mode string) error {
 	if err != nil {
 		return err
 	}
+	mode = normalizeScanMode(mode)
 	a.logger.Infof("ScanLibraryWithMode: id=%s mode=%s", libraryID, mode)
+
 	if mode == "overwrite" {
 		if err := a.repos.Media.DeleteByLibraryID(libraryID); err != nil {
 			return err
@@ -1295,12 +1346,13 @@ func (a *App) ScanLibraryWithMode(libraryID string, mode string) error {
 			return err
 		}
 	}
-	go func() {
-		_, err := a.scanner.ScanLibrary(lib)
-		if err != nil {
-			a.logger.Errorf("Scan error (mode=%s): %v", mode, err)
-		}
-	}()
+
+	options := service.ScanOptions{
+		Mode:         mode,
+		Incremental:  mode != "overwrite",
+		CleanDeleted: mode == "delete_update",
+	}
+	a.startScanWithOptions(lib, mode, options)
 	return nil
 }
 

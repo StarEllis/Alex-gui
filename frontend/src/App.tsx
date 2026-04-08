@@ -27,6 +27,15 @@ type FilterReturnContext = {
     view: ViewName;
     media: any | null;
 } | null;
+type ScanProgressState = {
+    libraryId: string;
+    libraryName: string;
+    mode: string;
+    phase: string;
+    current: number;
+    total: number;
+    message: string;
+};
 
 const APP_TITLE = 'ALEX';
 
@@ -36,12 +45,6 @@ const VIEW_LABELS: Record<Exclude<ViewName, 'libs'>, string> = {
     genre: '类别',
     watched: '已看',
     favorite: '收藏',
-};
-
-const SCAN_MODE_LABELS: Record<string, string> = {
-    overwrite: '覆盖刷新',
-    delete_update: '删改刷新',
-    incremental: '增量刷新',
 };
 
 const SEARCHABLE_VIEWS = new Set<ViewName>(['libs', 'watched', 'favorite']);
@@ -58,6 +61,7 @@ const formatError = (error: unknown) => {
 
 function App() {
     const [layoutVersion, setLayoutVersion] = useState(0);
+    const [contentRefreshVersion, setContentRefreshVersion] = useState(0);
     const [view, setView] = useState<ViewName>('libs');
     const [libraries, setLibraries] = useState<any[]>([]);
     const [currentLib, setCurrentLib] = useState<any>(null);
@@ -66,6 +70,7 @@ function App() {
     const [editingLib, setEditingLib] = useState<any>(null);
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
     const [statusMsg, setStatusMsg] = useState('');
+    const [scanProgress, setScanProgress] = useState<ScanProgressState | null>(null);
     const [mediaCount, setMediaCount] = useState(0);
     const [activeFilter, setActiveFilter] = useState<FilterState>(null);
     const [filterReturnContext, setFilterReturnContext] = useState<FilterReturnContext>(null);
@@ -73,6 +78,7 @@ function App() {
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [gridScrollTop, setGridScrollTop] = useState(0);
     const scanStartedAtRef = useRef<number | null>(null);
+    const scanModeRef = useRef<string>('');
     const resetTitleTimerRef = useRef<number | null>(null);
 
     const setAppTitle = (title: string) => {
@@ -105,6 +111,15 @@ function App() {
     const showStatus = (msg: string) => {
         setStatusMsg(msg);
         window.setTimeout(() => setStatusMsg(''), 5000);
+    };
+
+    const clearScanProgress = () => {
+        setScanProgress(null);
+    };
+
+    const startScanForLibrary = async (libraryId: string, mode: string) => {
+        scanModeRef.current = mode;
+        await ScanLibraryWithMode(libraryId, mode);
     };
 
     const loadLibraries = async () => {
@@ -162,12 +177,32 @@ function App() {
 
         const unsubStart = EventsOn("scan:started", (data: any) => {
             scanStartedAtRef.current = Date.now();
-            setStatusMsg(`扫描开始：${data?.library_name || ''}`);
+            setScanProgress({
+                libraryId: typeof data?.library_id === 'string' ? data.library_id : '',
+                libraryName: typeof data?.library_name === 'string' ? data.library_name : '',
+                mode: typeof data?.mode === 'string' ? data.mode : (scanModeRef.current || ''),
+                phase: typeof data?.phase === 'string' ? data.phase : 'started',
+                current: typeof data?.current === 'number'
+                    ? data.current
+                    : (typeof data?.new_found === 'number' ? data.new_found : 0),
+                total: typeof data?.total === 'number' ? data.total : 0,
+                message: typeof data?.message === 'string' ? data.message : '',
+            });
             updateScanTitle(data, '扫描 ');
         });
 
         const unsubProgress = EventsOn("scan:progress", (data: any) => {
-            setStatusMsg(`扫描中：${data?.message || ''} [${data?.current || 0}/${data?.total || 0}]`);
+            setScanProgress((prev) => ({
+                libraryId: typeof data?.library_id === 'string' ? data.library_id : (prev?.libraryId || ''),
+                libraryName: typeof data?.library_name === 'string' ? data.library_name : (prev?.libraryName || ''),
+                mode: typeof data?.mode === 'string' ? data.mode : (prev?.mode || scanModeRef.current || ''),
+                phase: typeof data?.phase === 'string' ? data.phase : (prev?.phase || 'progress'),
+                current: typeof data?.current === 'number'
+                    ? data.current
+                    : (typeof data?.new_found === 'number' ? data.new_found : (prev?.current || 0)),
+                total: typeof data?.total === 'number' ? data.total : (prev?.total || 0),
+                message: typeof data?.message === 'string' ? data.message : (prev?.message || ''),
+            }));
             updateScanTitle(data, '扫描 ');
         });
 
@@ -175,15 +210,20 @@ function App() {
             showStatus(`扫描完成：${data?.library_name || ''}`);
             updateScanTitle(data, '完成 ');
             scanStartedAtRef.current = null;
+            scanModeRef.current = '';
             scheduleTitleReset();
+            clearScanProgress();
             loadLibraries();
+            setContentRefreshVersion((prev) => prev + 1);
         });
 
         const unsubFail = EventsOn("scan:failed", (data: any) => {
             showStatus(`扫描失败：${data?.message || '未知错误'}`);
             updateScanTitle(data, '失败 ');
             scanStartedAtRef.current = null;
+            scanModeRef.current = '';
             scheduleTitleReset();
+            clearScanProgress();
         });
 
         return () => {
@@ -194,6 +234,7 @@ function App() {
             if (resetTitleTimerRef.current) {
                 window.clearTimeout(resetTitleTimerRef.current);
             }
+            scanModeRef.current = '';
             setAppTitle(APP_TITLE);
         };
     }, []);
@@ -259,23 +300,37 @@ function App() {
         setView('libs');
     };
 
-    const handleLibCreated = () => {
+    const handleLibCreated = async (createdLib: any) => {
         setShowLibModal(false);
+        resetWorkspaceState();
+        setView('libs');
+        if (createdLib) {
+            setCurrentLib(createdLib);
+        }
         loadLibraries();
-        showStatus('新建媒体库成功');
-    };
 
+        if (createdLib?.id) {
+            try {
+                await startScanForLibrary(createdLib.id, 'incremental');
+            } catch (error) {
+                showStatus(`新建媒体库成功，但自动扫描失败：${formatError(error)}`);
+            }
+            return;
+        }
+
+        showStatus('\u65b0\u5efa\u5a92\u4f53\u5e93\u6210\u529f');
+    };
     const handleLibSaved = () => {
         setEditingLib(null);
         loadLibraries();
-        showStatus('媒体库已保存');
+        showStatus('\u5a92\u4f53\u5e93\u5df2\u4fdd\u5b58');
     };
 
     const handleLibDeleted = () => {
         setEditingLib(null);
         setCurrentLib(null);
         loadLibraries();
-        showStatus('媒体库已删除');
+        showStatus('\u5a92\u4f53\u5e93\u5df2\u5220\u9664');
     };
 
     const handleScanWithMode = async (mode: string) => {
@@ -283,13 +338,11 @@ function App() {
             return;
         }
         try {
-            await ScanLibraryWithMode(currentLib.id, mode);
-            showStatus(`${SCAN_MODE_LABELS[mode] || mode}已启动`);
+            await startScanForLibrary(currentLib.id, mode);
         } catch (error) {
             showStatus(`扫描启动失败：${formatError(error)}`);
         }
     };
-
     const handleRandomPlay = async () => {
         if (!currentLib) {
             return;
@@ -320,6 +373,10 @@ function App() {
     const showListActions = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
     const viewLabel = view === 'libs' ? undefined : VIEW_LABELS[view as Exclude<ViewName, 'libs'>];
     const isDetailOpen = Boolean(selectedMedia);
+    const showScanProgressPanel = Boolean(scanProgress && !statusMsg);
+    const scanProgressText = scanProgress
+        ? `\u6b63\u5728\u626b\u63cf: ${scanProgress.current}/${scanProgress.total > 0 ? scanProgress.total : '...'}`
+        : '';
 
     const renderWorkspaceContent = () => {
         if (!currentLib && view !== 'settings') {
@@ -346,6 +403,7 @@ function App() {
                         sortField={sortField}
                         sortOrder={sortOrder}
                         layoutVersion={layoutVersion}
+                        refreshVersion={contentRefreshVersion}
                         filter={{ type: 'watched', value: 'true', label: '已看' }}
                         onSelectMedia={setSelectedMedia}
                         onCountChange={setMediaCount}
@@ -362,6 +420,7 @@ function App() {
                         sortField={sortField}
                         sortOrder={sortOrder}
                         layoutVersion={layoutVersion}
+                        refreshVersion={contentRefreshVersion}
                         filter={{ type: 'favorite', value: 'true', label: '收藏' }}
                         onSelectMedia={setSelectedMedia}
                         onCountChange={setMediaCount}
@@ -375,6 +434,7 @@ function App() {
                     <CategoryGrid
                         type="actor"
                         libraryId={currentLib.id}
+                        refreshVersion={contentRefreshVersion}
                         fetchFn={GetActorStats}
                         onSelect={(value, label) => applyFilterFromView('actor', { type: 'actor', value, label })}
                     />
@@ -384,6 +444,7 @@ function App() {
                     <CategoryGrid
                         type="genre"
                         libraryId={currentLib.id}
+                        refreshVersion={contentRefreshVersion}
                         fetchFn={GetGenreStats}
                         onSelect={(value, label) => applyFilterFromView('genre', { type: 'genre', value, label })}
                     />
@@ -399,6 +460,7 @@ function App() {
                         sortField={sortField}
                         sortOrder={sortOrder}
                         layoutVersion={layoutVersion}
+                        refreshVersion={contentRefreshVersion}
                         filter={activeFilter}
                         onSelectMedia={setSelectedMedia}
                         onCountChange={setMediaCount}
@@ -477,6 +539,15 @@ function App() {
 
             {statusMsg && (
                 <div className="status-toast">{statusMsg}</div>
+            )}
+
+            {showScanProgressPanel && scanProgress && (
+                <div className="scan-progress-panel">
+                    <div className="scan-progress-title">{scanProgressText}</div>
+                    {scanProgress.message && (
+                        <div className="scan-progress-message">{scanProgress.message}</div>
+                    )}
+                </div>
             )}
         </div>
     );

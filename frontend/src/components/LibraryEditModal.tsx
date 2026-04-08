@@ -4,7 +4,7 @@ import LibraryFormModal from './LibraryFormModal';
 interface LibraryEditModalProps {
     library: any;
     onClose: () => void;
-    onSaved: () => void;
+    onSaved: (library?: any) => void;
     onDeleted: () => void;
 }
 

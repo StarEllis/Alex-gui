@@ -13,11 +13,11 @@ const (
 	EventScanFailed    = "scan:failed"
 )
 
-
 // ScanProgressData holds the payload for a scan progress event.
 type ScanProgressData struct {
 	LibraryID   string `json:"library_id"`
 	LibraryName string `json:"library_name"`
+	Mode        string `json:"mode"`
 	Phase       string `json:"phase"`
 	Current     int    `json:"current"`
 	Total       int    `json:"total"`

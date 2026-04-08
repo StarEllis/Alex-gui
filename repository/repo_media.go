@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"alex-desktop/model"
 	"gorm.io/gorm"
@@ -501,6 +502,30 @@ func (r *MediaRepo) GetAllFilePathsByLibrary(libraryID string) (map[string]bool,
 		pathSet[p] = true
 	}
 	return pathSet, nil
+}
+
+type MediaFileSignature struct {
+	ID          string
+	FilePath    string
+	FileSize    int64
+	FileModTime *time.Time
+}
+
+func (r *MediaRepo) GetAllFileSignaturesByLibrary(libraryID string) (map[string]MediaFileSignature, error) {
+	var rows []MediaFileSignature
+	err := r.db.Model(&model.Media{}).
+		Select("id, file_path, file_size, file_mod_time").
+		Where("library_id = ?", libraryID).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	signatures := make(map[string]MediaFileSignature, len(rows))
+	for _, row := range rows {
+		signatures[row.FilePath] = row
+	}
+	return signatures, nil
 }
 
 // BatchCreate 批量创建媒体记录（减少 SQLite 写锁竞争，每批 100 条）

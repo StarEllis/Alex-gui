@@ -8,6 +8,7 @@ interface MediaGridProps {
     sortField: string;
     sortOrder: 'asc' | 'desc';
     layoutVersion?: number;
+    refreshVersion?: number;
     filter?: { type: string; value: string; label: string } | null;
     onSelectMedia: (media: any) => void;
     onCountChange?: (count: number) => void;
@@ -22,6 +23,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     sortField,
     sortOrder,
     layoutVersion = 0,
+    refreshVersion = 0,
     filter,
     onSelectMedia,
     onCountChange,
@@ -138,7 +140,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         return () => {
             active = false;
         };
-    }, [libraryId, keyword, sortField, sortOrder, filter, onCountChange]);
+    }, [libraryId, keyword, sortField, sortOrder, filter, refreshVersion, onCountChange]);
 
     useEffect(() => {
         return () => {

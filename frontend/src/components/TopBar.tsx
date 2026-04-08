@@ -38,9 +38,9 @@ const sortOptions = [
 ];
 
 const scanOptions = [
-    { mode: 'overwrite', label: '覆盖刷新' },
-    { mode: 'delete_update', label: '删改刷新' },
-    { mode: 'incremental', label: '增量刷新' },
+    { mode: 'overwrite', label: '\u5b8c\u6574\u626b\u63cf' },
+    { mode: 'delete_update', label: '\u6e05\u7406\u5e76\u626b\u63cf' },
+    { mode: 'incremental', label: '\u626b\u63cf' },
 ];
 
 const getSortLabel = (field: string) => {

@@ -3,7 +3,7 @@ import LibraryFormModal from './LibraryFormModal';
 
 interface LibraryModalProps {
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (library: any) => void;
 }
 
 const LibraryModal: React.FC<LibraryModalProps> = ({ onClose, onSuccess }) => (

@@ -10,11 +10,12 @@ interface StatsItem {
 interface CategoryGridProps {
     type: 'directory' | 'actor' | 'genre' | 'series';
     libraryId: string;
+    refreshVersion?: number;
     onSelect: (value: string, label: string) => void;
     fetchFn: (libId: string) => Promise<StatsItem[]>;
 }
 
-const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, onSelect, fetchFn }) => {
+const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, refreshVersion = 0, onSelect, fetchFn }) => {
     const [items, setItems] = useState<StatsItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -49,7 +50,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, onSelect, 
         return () => {
             active = false;
         };
-    }, [fetchFn, libraryId, type]);
+    }, [fetchFn, libraryId, refreshVersion, type]);
 
     if (loading) {
         return (

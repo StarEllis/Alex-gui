@@ -4,7 +4,7 @@ import {model} from '../models';
 import {main} from '../models';
 import {service} from '../models';
 
-export function CreateLibrary(arg1:model.Library):Promise<void>;
+export function CreateLibrary(arg1:model.Library):Promise<model.Library>;
 
 export function DeleteLibrary(arg1:string):Promise<void>;
 

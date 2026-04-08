@@ -12,7 +12,7 @@ interface LibraryFormModalProps {
     mode: 'create' | 'edit';
     library?: any;
     onClose: () => void;
-    onSaved: () => void;
+    onSaved: (library?: any) => void;
     onDeleted?: () => void;
 }
 
@@ -93,15 +93,16 @@ const LibraryFormModal: React.FC<LibraryFormModalProps> = ({
 
         try {
             if (mode === 'create') {
-                await CreateLibrary({
+                const createdLibrary = await CreateLibrary({
                     ...payload,
                     type: library?.type || 'movie',
                     metadata_mode: library?.metadata_mode || 'online_preferred',
                 } as any);
+                onSaved(createdLibrary);
             } else {
                 await UpdateLibrary(payload as any);
+                onSaved(payload);
             }
-            onSaved();
         } catch (error: any) {
             setMsg(`${mode === 'create' ? '创建' : '保存'}失败：${error}`);
         }
