@@ -505,16 +505,17 @@ func (r *MediaRepo) GetAllFilePathsByLibrary(libraryID string) (map[string]bool,
 }
 
 type MediaFileSignature struct {
-	ID          string
-	FilePath    string
-	FileSize    int64
-	FileModTime *time.Time
+	ID            string
+	FilePath      string
+	FileSize      int64
+	FileCreatedAt *time.Time
+	FileModTime   *time.Time
 }
 
 func (r *MediaRepo) GetAllFileSignaturesByLibrary(libraryID string) (map[string]MediaFileSignature, error) {
 	var rows []MediaFileSignature
 	err := r.db.Model(&model.Media{}).
-		Select("id, file_path, file_size, file_mod_time").
+		Select("id, file_path, file_size, file_created_at, file_mod_time").
 		Where("library_id = ?", libraryID).
 		Scan(&rows).Error
 	if err != nil {
@@ -533,7 +534,9 @@ func (r *MediaRepo) BatchCreate(mediaList []*model.Media) error {
 	if len(mediaList) == 0 {
 		return nil
 	}
-	return r.db.CreateInBatches(mediaList, 100).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.CreateInBatches(mediaList, 100).Error
+	})
 }
 
 // UpdateFields 仅更新指定字段（减少写锁争用，提高 SQLite 并发性能）

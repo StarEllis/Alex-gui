@@ -219,21 +219,22 @@ func (l *Library) ApplyPathConfig() error {
 
 // Media 媒体项（电影/剧集）
 type Media struct {
-	ID           string     `json:"id" gorm:"primaryKey;type:text"`
-	LibraryID    string     `json:"library_id" gorm:"index;type:text;not null"`
-	Title        string     `json:"title" gorm:"index;type:text;not null"`
-	OrigTitle    string     `json:"orig_title" gorm:"type:text"` // 原始标题
-	Year         int        `json:"year" gorm:"index"`
-	Overview     string     `json:"overview" gorm:"type:text"`
-	PosterPath   string     `json:"poster_path" gorm:"type:text"`   // 海报图片路径
-	BackdropPath string     `json:"backdrop_path" gorm:"type:text"` // 背景图路径
-	Rating       float64    `json:"rating"`
-	Runtime      int        `json:"runtime"`                             // 时长（分钟）
-	Genres       string     `json:"genres" gorm:"type:text"`             // 逗号分隔的类型
-	FilePath     string     `json:"file_path" gorm:"type:text;not null"` // 视频文件绝对路径
-	FileSize     int64      `json:"file_size"`
-	FileModTime  *time.Time `json:"file_mod_time"`
-	MediaType    string     `json:"media_type" gorm:"type:text;default:movie"` // movie / episode
+	ID            string     `json:"id" gorm:"primaryKey;type:text"`
+	LibraryID     string     `json:"library_id" gorm:"index;type:text;not null"`
+	Title         string     `json:"title" gorm:"index;type:text;not null"`
+	OrigTitle     string     `json:"orig_title" gorm:"type:text"` // 原始标题
+	Year          int        `json:"year" gorm:"index"`
+	Overview      string     `json:"overview" gorm:"type:text"`
+	PosterPath    string     `json:"poster_path" gorm:"type:text"`   // 海报图片路径
+	BackdropPath  string     `json:"backdrop_path" gorm:"type:text"` // 背景图路径
+	Rating        float64    `json:"rating"`
+	Runtime       int        `json:"runtime"`                             // 时长（分钟）
+	Genres        string     `json:"genres" gorm:"type:text"`             // 逗号分隔的类型
+	FilePath      string     `json:"file_path" gorm:"type:text;not null"` // 视频文件绝对路径
+	FileSize      int64      `json:"file_size"`
+	FileCreatedAt *time.Time `json:"file_created_at" gorm:"index"`
+	FileModTime   *time.Time `json:"file_mod_time"`
+	MediaType     string     `json:"media_type" gorm:"type:text;default:movie"` // movie / episode
 	// 视频信息
 	VideoCodec string  `json:"video_codec" gorm:"type:text"`
 	AudioCodec string  `json:"audio_codec" gorm:"type:text"`
@@ -244,14 +245,19 @@ type Media struct {
 	// STRM 远程流支持
 	StreamURL string `json:"stream_url" gorm:"type:text"` // .strm 文件中的远程流地址（为空表示本地文件）
 	// V2 扩展字段
-	TMDbID     int    `json:"tmdb_id" gorm:"index"`         // TMDb 唯一 ID
-	DoubanID   string `json:"douban_id" gorm:"type:text"`   // 豆瓣 ID
-	BangumiID  int    `json:"bangumi_id" gorm:"index"`      // Bangumi 条目 ID
-	Country    string `json:"country" gorm:"type:text"`     // 制片国家
-	Language   string `json:"language" gorm:"type:text"`    // 语言
-	Tagline    string `json:"tagline" gorm:"type:text"`     // 标语/宣传语
-	Studio     string `json:"studio" gorm:"type:text"`      // 出品公司
-	TrailerURL string `json:"trailer_url" gorm:"type:text"` // 预告片链接（YouTube）
+	TMDbID        int    `json:"tmdb_id" gorm:"index"`         // TMDb 唯一 ID
+	DoubanID      string `json:"douban_id" gorm:"type:text"`   // 豆瓣 ID
+	BangumiID     int    `json:"bangumi_id" gorm:"index"`      // Bangumi 条目 ID
+	Country       string `json:"country" gorm:"type:text"`     // 制片国家
+	Language      string `json:"language" gorm:"type:text"`    // 语言
+	Tagline       string `json:"tagline" gorm:"type:text"`     // 标语/宣传语
+	Studio        string `json:"studio" gorm:"type:text"`      // 出品公司
+	Maker         string `json:"maker" gorm:"index;type:text"` // NFO maker / 片商
+	Label         string `json:"label" gorm:"index;type:text"` // NFO label / 产品线
+	Code          string `json:"code" gorm:"type:text"`        // 归一化编号
+	CodePrefix    string `json:"code_prefix" gorm:"index;type:text"`
+	MetadataScore int    `json:"metadata_score"`
+	TrailerURL    string `json:"trailer_url" gorm:"type:text"` // 预告片链接（YouTube）
 	// 多CD堆叠 & 多版本聚合（P2）
 	StackGroup   string `json:"stack_group" gorm:"index;type:text"`   // 堆叠组 ID（cd1/cd2 共享同一组 ID）
 	StackOrder   int    `json:"stack_order"`                          // 堆叠顺序（1=cd1, 2=cd2...）

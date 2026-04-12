@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -30,24 +31,24 @@ func NewNFOService(logger *zap.SugaredLogger) *NFOService {
 type NFOMovie struct {
 	XMLName xml.Name `xml:"movie"`
 	// 标准字段
-	Title     string  `xml:"title"`
-	OrigTitle string  `xml:"originaltitle"`
-	SortTitle string  `xml:"sorttitle"`
-	Year      int     `xml:"year"`
-	Plot      string  `xml:"plot"`
-	Outline   string  `xml:"outline"`
-	Tagline   string  `xml:"tagline"`
-	Rating    float64 `xml:"rating"`
-	Runtime   int     `xml:"runtime"`
-	Studio    string  `xml:"studio"`
-	Country   string  `xml:"country"`
-	TMDbID    int     `xml:"tmdbid"`
-	DoubanID  string  `xml:"doubanid"`
-	Genres    []string `xml:"genre"`
-	Tags      []string `xml:"tag"`
-	Directors []string `xml:"director"`
+	Title     string     `xml:"title"`
+	OrigTitle string     `xml:"originaltitle"`
+	SortTitle string     `xml:"sorttitle"`
+	Year      int        `xml:"year"`
+	Plot      string     `xml:"plot"`
+	Outline   string     `xml:"outline"`
+	Tagline   string     `xml:"tagline"`
+	Rating    float64    `xml:"rating"`
+	Runtime   int        `xml:"runtime"`
+	Studio    string     `xml:"studio"`
+	Country   string     `xml:"country"`
+	TMDbID    int        `xml:"tmdbid"`
+	DoubanID  string     `xml:"doubanid"`
+	Genres    []string   `xml:"genre"`
+	Tags      []string   `xml:"tag"`
+	Directors []string   `xml:"director"`
 	Actors    []NFOActor `xml:"actor"`
-	Set       string `xml:"set"`
+	Set       string     `xml:"set"`
 	// 增强字段：日期（多种来源，后续归一化）
 	Premiered   string `xml:"premiered"`
 	ReleaseDate string `xml:"releasedate"`
@@ -69,14 +70,14 @@ type NFOMovie struct {
 	Fanart string `xml:"fanart"`
 	Thumb  string `xml:"thumb"`
 	// 增强字段：站点来源 Provider IDs
-	JavbusID      string `xml:"javbusid"`
-	AiravCcid     string `xml:"airav_ccid"`
-	JavdbSearchID string `xml:"javdbsearchid"`
-	LockData      string `xml:"lockdata"`
-	DateAdded     string `xml:"dateadded"`
-	Trailer       string `xml:"trailer"`
-	Votes         string `xml:"votes"`
-	Website       string `xml:"website"`
+	JavbusID      string         `xml:"javbusid"`
+	AiravCcid     string         `xml:"airav_ccid"`
+	JavdbSearchID string         `xml:"javdbsearchid"`
+	LockData      string         `xml:"lockdata"`
+	DateAdded     string         `xml:"dateadded"`
+	Trailer       string         `xml:"trailer"`
+	Votes         string         `xml:"votes"`
+	Website       string         `xml:"website"`
 	FileInfo      *NFORawSection `xml:"fileinfo"`
 }
 
@@ -317,14 +318,134 @@ func releaseYear(value string, fallback int) int {
 	return fallback
 }
 
+func sanitizeMalformedNFOXML(data []byte) ([]byte, bool) {
+	if len(data) == 0 {
+		return data, false
+	}
+
+	raw := string(data)
+	var builder strings.Builder
+	builder.Grow(len(raw))
+
+	changed := false
+	inCDATA := false
+
+	for i := 0; i < len(raw); i++ {
+		switch {
+		case !inCDATA && strings.HasPrefix(raw[i:], "<![CDATA["):
+			builder.WriteString("<![CDATA[")
+			i += len("<![CDATA[") - 1
+			inCDATA = true
+			continue
+		case inCDATA && strings.HasPrefix(raw[i:], "]]>"):
+			builder.WriteString("]]>")
+			i += len("]]>") - 1
+			inCDATA = false
+			continue
+		}
+
+		if !inCDATA && raw[i] == '&' && !looksLikeXMLEntity(raw, i) {
+			builder.WriteString("&amp;")
+			changed = true
+			continue
+		}
+
+		builder.WriteByte(raw[i])
+	}
+
+	if !changed {
+		return data, false
+	}
+
+	return []byte(builder.String()), true
+}
+
+func looksLikeXMLEntity(raw string, ampIndex int) bool {
+	if ampIndex < 0 || ampIndex >= len(raw) || raw[ampIndex] != '&' || ampIndex+1 >= len(raw) {
+		return false
+	}
+
+	i := ampIndex + 1
+	if raw[i] == '#' {
+		i++
+		if i < len(raw) && (raw[i] == 'x' || raw[i] == 'X') {
+			i++
+			start := i
+			for i < len(raw) && isHexDigit(raw[i]) {
+				i++
+			}
+			return i > start && i < len(raw) && raw[i] == ';'
+		}
+
+		start := i
+		for i < len(raw) && raw[i] >= '0' && raw[i] <= '9' {
+			i++
+		}
+		return i > start && i < len(raw) && raw[i] == ';'
+	}
+
+	if !isXMLNameStart(raw[i]) {
+		return false
+	}
+
+	i++
+	for i < len(raw) && isXMLNameChar(raw[i]) {
+		i++
+	}
+
+	return i < len(raw) && raw[i] == ';'
+}
+
+func isHexDigit(value byte) bool {
+	return (value >= '0' && value <= '9') ||
+		(value >= 'a' && value <= 'f') ||
+		(value >= 'A' && value <= 'F')
+}
+
+func isXMLNameStart(value byte) bool {
+	return (value >= 'a' && value <= 'z') ||
+		(value >= 'A' && value <= 'Z') ||
+		value == '_' || value == ':'
+}
+
+func isXMLNameChar(value byte) bool {
+	return isXMLNameStart(value) ||
+		(value >= '0' && value <= '9') ||
+		value == '-' || value == '.'
+}
+
+func (s *NFOService) unmarshalNFOXML(data []byte, target interface{}, nfoPath string) error {
+	if err := xml.Unmarshal(data, target); err == nil {
+		return nil
+	} else {
+		sanitized, changed := sanitizeMalformedNFOXML(data)
+		if !changed {
+			return err
+		}
+		targetValue := reflect.ValueOf(target)
+		if targetValue.Kind() == reflect.Ptr && !targetValue.IsNil() {
+			targetValue.Elem().Set(reflect.Zero(targetValue.Elem().Type()))
+		}
+		if retryErr := xml.Unmarshal(sanitized, target); retryErr == nil {
+			if s.logger != nil {
+				s.logger.Debugf("parsed malformed NFO after XML sanitization: %s", nfoPath)
+			}
+			return nil
+		}
+		return err
+	}
+}
+
 func (s *NFOService) LoadEditorData(nfoPath string, media *model.Media) (*NFOEditorData, error) {
+	ApplyDerivedMediaFields(media)
+
 	data := &NFOEditorData{
 		NFOPath:     strings.TrimSpace(nfoPath),
 		Title:       strings.TrimSpace(media.Title),
 		Code:        deriveEditorCode(media),
 		ReleaseDate: strings.TrimSpace(media.ReleaseDateNormalized),
-		Publisher:   strings.TrimSpace(media.Studio),
-		Maker:       strings.TrimSpace(media.Studio),
+		Publisher:   firstNonEmptyTrimmed(media.Label, media.Studio),
+		Maker:       firstNonEmptyTrimmed(media.Maker, media.Studio),
 		Genres:      joinEditorList(strings.Split(strings.TrimSpace(media.Genres), ",")),
 		Actors:      joinEditorList(strings.Split(strings.TrimSpace(media.Actor), ",")),
 		Plot:        strings.TrimSpace(media.Overview),
@@ -351,7 +472,7 @@ func (s *NFOService) LoadEditorData(nfoPath string, media *model.Media) (*NFOEdi
 	}
 
 	var movie NFOMovie
-	if err := xml.Unmarshal(content, &movie); err != nil {
+	if err := s.unmarshalNFOXML(content, &movie, nfoPath); err != nil {
 		return nil, fmt.Errorf("解析 NFO 文件失败: %w", err)
 	}
 
@@ -382,7 +503,7 @@ func (s *NFOService) SaveEditorData(nfoPath string, data *NFOEditorData) error {
 
 	var movie NFOMovie
 	if content, err := os.ReadFile(nfoPath); err == nil {
-		if err := xml.Unmarshal(content, &movie); err != nil {
+		if err := s.unmarshalNFOXML(content, &movie, nfoPath); err != nil {
 			return fmt.Errorf("解析 NFO 文件失败: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
@@ -445,10 +566,10 @@ func (s *NFOService) ParseMovieNFO(nfoPath string, media *model.Media) error {
 	media.NfoRawXml = string(data)
 
 	var nfo NFOMovie
-	if err := xml.Unmarshal(data, &nfo); err != nil {
+	if err := s.unmarshalNFOXML(data, &nfo, nfoPath); err != nil {
 		// 尝试作为 tvshow 解析
 		var tvNFO NFOTVShow
-		if err2 := xml.Unmarshal(data, &tvNFO); err2 != nil {
+		if err2 := s.unmarshalNFOXML(data, &tvNFO, nfoPath); err2 != nil {
 			return fmt.Errorf("解析NFO XML失败: %w", err)
 		}
 		// 如果是 tvshow 格式，转换后应用
@@ -468,7 +589,7 @@ func (s *NFOService) ParseTVShowNFO(nfoPath string, series *model.Series) error 
 	}
 
 	var nfo NFOTVShow
-	if err := xml.Unmarshal(data, &nfo); err != nil {
+	if err := s.unmarshalNFOXML(data, &nfo, nfoPath); err != nil {
 		return fmt.Errorf("解析NFO XML失败: %w", err)
 	}
 
@@ -485,13 +606,13 @@ func (s *NFOService) GetActorsFromNFO(nfoPath string) ([]NFOActor, []string, err
 
 	// 先尝试 movie
 	var movie NFOMovie
-	if err := xml.Unmarshal(data, &movie); err == nil && movie.Title != "" {
+	if err := s.unmarshalNFOXML(data, &movie, nfoPath); err == nil && movie.Title != "" {
 		return movie.Actors, movie.Directors, nil
 	}
 
 	// 再尝试 tvshow
 	var tvshow NFOTVShow
-	if err := xml.Unmarshal(data, &tvshow); err == nil && tvshow.Title != "" {
+	if err := s.unmarshalNFOXML(data, &tvshow, nfoPath); err == nil && tvshow.Title != "" {
 		return tvshow.Actors, tvshow.Directors, nil
 	}
 
@@ -761,6 +882,8 @@ func (s *NFOService) applyMovieNFOToMedia(media *model.Media, nfo *NFOMovie) {
 			media.NfoExtraFields = string(data)
 		}
 	}
+
+	ApplyDerivedMediaFields(media)
 }
 
 // hasExtraContent 检查扩展字段是否有实际内容（避免写入空 JSON）
@@ -810,6 +933,8 @@ func (s *NFOService) applyTVShowNFOToMedia(media *model.Media, nfo *NFOTVShow) {
 	if normalized != "" {
 		media.ReleaseDateNormalized = normalized
 	}
+
+	ApplyDerivedMediaFields(media)
 }
 
 func (s *NFOService) applyTVShowNFOToSeries(series *model.Series, nfo *NFOTVShow) {

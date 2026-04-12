@@ -53,6 +53,7 @@ func (a *App) startup(ctx context.Context) {
 		a.logger.Fatalf("连接数据库失败: %v", err)
 	}
 	a.db = db
+	a.configureSQLitePerformance()
 
 	// 初始化库表结构
 	err = model.AutoMigrate(db)
@@ -73,6 +74,25 @@ func (a *App) startup(ctx context.Context) {
 	// a.scanner.SetMatchRuleRepo(a.repos.MatchRule)
 
 	a.logger.Infof("Application backend started successfully! DB: %s", dbPath)
+}
+
+func (a *App) configureSQLitePerformance() {
+	if a.db == nil {
+		return
+	}
+
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL;",
+		"PRAGMA synchronous=NORMAL;",
+		"PRAGMA busy_timeout=5000;",
+		"PRAGMA temp_store=MEMORY;",
+	}
+
+	for _, pragma := range pragmas {
+		if err := a.db.Exec(pragma).Error; err != nil {
+			a.logger.Warnf("apply sqlite pragma failed: %s, err=%v", pragma, err)
+		}
+	}
 }
 
 func (a *App) hydrateLibraryForClient(lib *model.Library) {
@@ -143,6 +163,8 @@ func (a *App) startScanWithOptions(lib *model.Library, mode string, options serv
 			return
 		}
 		lib.LastScan = &lastScanAt
+		a.bumpRecommendationVersion()
+		a.clearRecommendationGenres()
 	}()
 }
 
@@ -359,11 +381,17 @@ func (a *App) GetMediaList(libraryID string, page, size int, sortBy, sortOrder, 
 	}
 
 	var total int64
-	query.Count(&total)
+	if size > 0 {
+		query.Count(&total)
+	}
 
 	var media []model.Media
 	// 简单的排序处理
-	sortField := "media.created_at"
+	if sortBy == "created_at" || sortBy == "added_at" || sortBy == "" {
+		a.backfillMediaFileCreatedAt(libraryID)
+	}
+
+	sortField := "COALESCE(media.file_created_at, media.file_mod_time, media.created_at)"
 	switch sortBy {
 	case "release_date":
 		sortField = "CASE WHEN media.release_date_normalized != '' THEN media.release_date_normalized ELSE printf('%04d-01-01', media.year) END"
@@ -372,9 +400,9 @@ func (a *App) GetMediaList(libraryID string, page, size int, sortBy, sortOrder, 
 	case "last_watched":
 		sortField = "COALESCE(last_watch.last_watched_at, '')"
 	case "created_at", "added_at", "":
-		sortField = "media.created_at"
+		sortField = "COALESCE(media.file_created_at, media.file_mod_time, media.created_at)"
 	default:
-		sortField = "media.created_at"
+		sortField = "COALESCE(media.file_created_at, media.file_mod_time, media.created_at)"
 	}
 
 	dir := "DESC"
@@ -383,14 +411,69 @@ func (a *App) GetMediaList(libraryID string, page, size int, sortBy, sortOrder, 
 	}
 	sortStr := sortField + " " + dir
 
-	err := query.Order(sortStr).Offset((page - 1) * size).Limit(size).Find(&media).Error
+	if page < 1 {
+		page = 1
+	}
+
+	orderedQuery := query.Order(sortStr)
+	if size > 0 {
+		orderedQuery = orderedQuery.Offset((page - 1) * size).Limit(size)
+	}
+
+	err := orderedQuery.Find(&media).Error
 	if err == nil {
+		if size <= 0 {
+			total = int64(len(media))
+		}
 		a.hydrateMediaSliceStates(media)
 	}
 	return map[string]interface{}{
 		"items": media,
 		"total": total,
 	}, err
+}
+
+type mediaFileTimeBackfillRow struct {
+	ID            string
+	FilePath      string
+	FileModTime   *time.Time
+	FileCreatedAt *time.Time
+}
+
+func (a *App) backfillMediaFileCreatedAt(libraryID string) {
+	query := a.db.Model(&model.Media{}).
+		Select("id, file_path, file_mod_time, file_created_at").
+		Where("file_created_at IS NULL")
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+
+	var rows []mediaFileTimeBackfillRow
+	if err := query.Find(&rows).Error; err != nil || len(rows) == 0 {
+		return
+	}
+
+	for _, row := range rows {
+		var fileCreatedAt *time.Time
+
+		if info, err := os.Stat(row.FilePath); err == nil && !info.IsDir() {
+			fileCreatedAt = service.ResolveFileCreatedTime(info)
+		}
+
+		if (fileCreatedAt == nil || fileCreatedAt.IsZero()) && row.FileModTime != nil && !row.FileModTime.IsZero() {
+			fallback := row.FileModTime.UTC().Truncate(time.Second)
+			fileCreatedAt = &fallback
+		}
+
+		if fileCreatedAt == nil || fileCreatedAt.IsZero() {
+			continue
+		}
+
+		_ = a.db.Model(&model.Media{}).
+			Where("id = ?", row.ID).
+			Update("file_created_at", fileCreatedAt).
+			Error
+	}
 }
 
 // GetDirectoryStats 获取目录聚合统计
@@ -535,6 +618,15 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 
 	if media.FilePath != "" {
 		nfoService := service.NewNFOService(a.logger)
+		if service.NeedsLocalMetadataRepair(&media) {
+			if nfoPath := nfoService.FindNFOForMedia(media.FilePath); nfoPath != "" {
+				if err := nfoService.ParseMovieNFO(nfoPath, &media); err != nil {
+					a.logger.Debugf("repair media local NFO failed: %s, err=%v", nfoPath, err)
+				} else if err := a.repos.Media.Update(&media); err != nil {
+					a.logger.Warnf("persist repaired media metadata failed: %s, err=%v", media.FilePath, err)
+				}
+			}
+		}
 		poster, backdrop := nfoService.FindLocalImages(filepath.Dir(media.FilePath))
 		if poster != "" && (media.PosterPath == "" || strings.Contains(strings.ToLower(filepath.Base(media.PosterPath)), "fanart")) {
 			media.PosterPath = poster
@@ -547,6 +639,7 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 	actors, actorText := a.resolveMediaActors(&media)
 	media.Actors = actors
 	media.Actor = actorText
+	service.ApplyDerivedMediaFields(&media)
 	a.hydrateMediaState(&media)
 
 	return &media, nil
@@ -883,6 +976,8 @@ func (a *App) syncMediaFromNFO(mediaID string, nfoPath string) {
 		}
 	}
 
+	service.ApplyDerivedMediaFields(&updated)
+
 	updates := map[string]interface{}{
 		"title":                   updated.Title,
 		"orig_title":              updated.OrigTitle,
@@ -892,6 +987,11 @@ func (a *App) syncMediaFromNFO(mediaID string, nfoPath string) {
 		"runtime":                 updated.Runtime,
 		"genres":                  updated.Genres,
 		"studio":                  updated.Studio,
+		"maker":                   updated.Maker,
+		"label":                   updated.Label,
+		"code":                    updated.Code,
+		"code_prefix":             updated.CodePrefix,
+		"metadata_score":          updated.MetadataScore,
 		"poster_path":             updated.PosterPath,
 		"backdrop_path":           updated.BackdropPath,
 		"nfo_extra_fields":        updated.NfoExtraFields,
@@ -923,6 +1023,8 @@ func (a *App) SaveNFOEditorData(mediaID string, data *service.NFOEditorData) err
 	}
 
 	a.syncMediaFromNFO(mediaID, nfoPath)
+	a.bumpRecommendationVersion()
+	a.invalidateRecommendationGenres(mediaID)
 	return nil
 }
 
@@ -1359,9 +1461,11 @@ func (a *App) ScanLibraryWithMode(libraryID string, mode string) error {
 	}
 
 	options := service.ScanOptions{
-		Mode:         mode,
-		Incremental:  mode != "overwrite",
-		CleanDeleted: mode == "delete_update",
+		Mode:        mode,
+		Incremental: mode != "overwrite",
+		// "delete_update" no longer performs the pre-clean existence sweep because
+		// it blocks refresh on large libraries and duplicates the normal scan pass.
+		CleanDeleted: false,
 	}
 	a.startScanWithOptions(lib, mode, options)
 	return nil

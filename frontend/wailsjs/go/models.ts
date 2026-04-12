@@ -301,6 +301,8 @@ export namespace model {
 	    file_path: string;
 	    file_size: number;
 	    // Go type: time
+	    file_created_at?: any;
+	    // Go type: time
 	    file_mod_time?: any;
 	    media_type: string;
 	    video_codec: string;
@@ -316,6 +318,11 @@ export namespace model {
 	    language: string;
 	    tagline: string;
 	    studio: string;
+	    maker: string;
+	    label: string;
+	    code: string;
+	    code_prefix: string;
+	    metadata_score: number;
 	    trailer_url: string;
 	    stack_group: string;
 	    stack_order: number;
@@ -360,6 +367,7 @@ export namespace model {
 	        this.genres = source["genres"];
 	        this.file_path = source["file_path"];
 	        this.file_size = source["file_size"];
+	        this.file_created_at = this.convertValues(source["file_created_at"], null);
 	        this.file_mod_time = this.convertValues(source["file_mod_time"], null);
 	        this.media_type = source["media_type"];
 	        this.video_codec = source["video_codec"];
@@ -375,6 +383,11 @@ export namespace model {
 	        this.language = source["language"];
 	        this.tagline = source["tagline"];
 	        this.studio = source["studio"];
+	        this.maker = source["maker"];
+	        this.label = source["label"];
+	        this.code = source["code"];
+	        this.code_prefix = source["code_prefix"];
+	        this.metadata_score = source["metadata_score"];
 	        this.trailer_url = source["trailer_url"];
 	        this.stack_group = source["stack_group"];
 	        this.stack_order = source["stack_order"];
@@ -422,6 +435,76 @@ export namespace model {
 
 export namespace service {
 	
+	export class RelatedMediaItem {
+	    media: model.Media;
+	    reason: string;
+	    match_type: string;
+	    score: number;
+	    matched_values?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RelatedMediaItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.media = this.convertValues(source["media"], model.Media);
+	        this.reason = source["reason"];
+	        this.match_type = source["match_type"];
+	        this.score = source["score"];
+	        this.matched_values = source["matched_values"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DetailRecommendationResponse {
+	    continue_watching: RelatedMediaItem[];
+	    more_like_this: RelatedMediaItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DetailRecommendationResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.continue_watching = this.convertValues(source["continue_watching"], RelatedMediaItem);
+	        this.more_like_this = this.convertValues(source["more_like_this"], RelatedMediaItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class NFOEditorData {
 	    nfo_path: string;
 	    title: string;

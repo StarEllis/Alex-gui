@@ -43,10 +43,10 @@ const DEFAULT_SORT_OPTIONS: SortOption[] = [
     { field: 'last_watched', label: '观看时间' },
 ];
 
-const scanOptions = [
-    { mode: 'overwrite', label: '\u5b8c\u6574\u626b\u63cf' },
-    { mode: 'delete_update', label: '\u6e05\u7406\u5e76\u626b\u63cf' },
-    { mode: 'incremental', label: '\u626b\u63cf' },
+const SCAN_OPTIONS = [
+    { mode: 'overwrite', label: '覆盖刷新' },
+    { mode: 'delete_update', label: '删改刷新' },
+    { mode: 'incremental', label: '新增刷新' },
 ];
 
 const getSortLabel = (field: string, sortOptions: SortOption[]) => {
@@ -191,7 +191,7 @@ const TopBar: React.FC<TopBarProps> = ({
                                     onClick={() => setOpenMenu((prev) => (prev === 'sort' ? null : 'sort'))}
                                 >
                                     {sortOrder === 'asc' ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-                                    <span>按{currentSortLabel}排序</span>
+                                    <span>{`按${currentSortLabel}排序`}</span>
                                 </button>
 
                                 {openMenu === 'sort' && (
@@ -236,7 +236,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
                                 {openMenu === 'scan' && (
                                     <div className="workspace-dropdown-menu">
-                                        {scanOptions.map((option) => (
+                                        {SCAN_OPTIONS.map((option) => (
                                             <button
                                                 key={option.mode}
                                                 type="button"
@@ -267,11 +267,22 @@ const TopBar: React.FC<TopBarProps> = ({
 
             {confirmScanMode === 'overwrite' && (
                 <div className="modal-overlay" onClick={() => setConfirmScanMode(null)}>
-                    <div className="confirm-modal" onClick={(event) => event.stopPropagation()}>
+                    <div
+                        className="confirm-modal"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="overwrite-confirm-title"
+                    >
                         <div className="confirm-modal-header">
-                            <span>提示</span>
-                            <button type="button" className="confirm-modal-close" onClick={() => setConfirmScanMode(null)}>
-                                脳
+                            <span id="overwrite-confirm-title">提示</span>
+                            <button
+                                type="button"
+                                className="confirm-modal-close"
+                                onClick={() => setConfirmScanMode(null)}
+                                aria-label="关闭"
+                            >
+                                ×
                             </button>
                         </div>
 

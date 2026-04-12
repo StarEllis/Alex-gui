@@ -219,12 +219,31 @@ type scanProgressTracker struct {
 	current int
 }
 
+type scanProgressThrottleState struct {
+	lastSentAt time.Time
+	lastMetric int
+	lastPhase  string
+}
+
 var scanProgressStateStore = struct {
 	sync.Mutex
 	items map[string]*scanProgressTracker
 }{
 	items: make(map[string]*scanProgressTracker),
 }
+
+var scanProgressThrottleStore = struct {
+	sync.Mutex
+	items map[string]*scanProgressThrottleState
+}{
+	items: make(map[string]*scanProgressThrottleState),
+}
+
+const (
+	scanProgressBroadcastMinInterval = 200 * time.Millisecond
+	scanProgressBroadcastMinStep     = 20
+	scanCreateBatchSize              = 100
+)
 
 type subtitleFileCandidate struct {
 	stem string
@@ -279,6 +298,24 @@ func normalizeFileModTime(ts time.Time) time.Time {
 
 func hasValidFileModTime(ts *time.Time) bool {
 	return ts != nil && !ts.IsZero()
+}
+
+func hasValidFileCreatedTime(ts *time.Time) bool {
+	return ts != nil && !ts.IsZero()
+}
+
+func applyFileTimes(media *model.Media, info os.FileInfo) {
+	if media == nil || info == nil {
+		return
+	}
+
+	fileModTime := normalizeFileModTime(info.ModTime())
+	media.FileSize = info.Size()
+	media.FileModTime = &fileModTime
+
+	if fileCreatedAt := ResolveFileCreatedTime(info); hasValidFileCreatedTime(fileCreatedAt) {
+		media.FileCreatedAt = fileCreatedAt
+	}
 }
 
 func (s *ScannerService) buildDirectorySidecarFiles(dir string) *directorySidecarFiles {
@@ -536,7 +573,7 @@ func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, options 
 
 func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, options ScanOptions) (int, error) {
 	s.logger.Infof("start scanning library: %s (%s), mode=%s", library.Name, library.Path, options.Mode)
-	totalTargets := s.countScanTargets(library)
+	totalTargets := 0
 	s.beginScanProgress(library, options.Mode, totalTargets)
 	defer s.endScanProgress(library.ID)
 
@@ -950,7 +987,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 				skippedUpdated++
 				existing, findErr := s.mediaRepo.FindByFilePath(path)
 				if findErr == nil {
-					existing.FileSize = info.Size()
+					applyFileTimes(existing, info)
 					s.probeMediaInfo(existing)
 					s.scanExternalSubtitles(existing)
 					s.mediaRepo.Update(existing)
@@ -967,7 +1004,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 					return nil
 				}
 				skippedUpdated++
-				existing.FileSize = info.Size()
+				applyFileTimes(existing, info)
 				s.probeMediaInfo(existing)
 				s.scanExternalSubtitles(existing)
 				s.mediaRepo.Update(existing)
@@ -989,6 +1026,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			TMDbID:       tmdbID,
 			ScrapeStatus: "pending",
 		}
+		applyFileTimes(media, info)
 
 		// P2: 应用匹配规则的非跳过动作（set_type, set_genre 等）
 		s.applyMatchRulesAction(media, path, matchRules)
@@ -1161,10 +1199,16 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 		}
 	}
 
+	shouldRepairExistingFromLocalNFO := func(existing *model.Media, mediaPath string) bool {
+		if options.Mode != "delete_update" || !NeedsLocalMetadataRepair(existing) {
+			return false
+		}
+		sidecars := getSidecars(mediaPath)
+		return sidecars != nil && sidecars.nfoPathForMedia(mediaPath) != ""
+	}
+
 	refreshExistingMedia := func(existing *model.Media, mediaPath string, info os.FileInfo) {
-		fileModTime := normalizeFileModTime(info.ModTime())
-		existing.FileSize = info.Size()
-		existing.FileModTime = &fileModTime
+		applyFileTimes(existing, info)
 		s.probeMediaInfo(existing)
 
 		sidecars := getSidecars(mediaPath)
@@ -1220,9 +1264,17 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 				signatureMatched = true
 				if options.Incremental &&
 					signature.FileSize == info.Size() &&
+					hasValidFileCreatedTime(signature.FileCreatedAt) &&
 					hasValidFileModTime(signature.FileModTime) &&
 					normalizeFileModTime(*signature.FileModTime).Equal(currentModTime) {
-					skippedExist++
+					existing, findErr := s.mediaRepo.FindByFilePath(path)
+					if findErr == nil && shouldRepairExistingFromLocalNFO(existing, path) {
+						skippedUpdated++
+						refreshExistingMedia(existing, path, info)
+						s.logger.Debugf("repaired existing media metadata from local nfo: %s", path)
+					} else {
+						skippedExist++
+					}
 					s.advanceScanProgress(library, progressMessage)
 					return nil
 				}
@@ -1243,9 +1295,16 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 			if findErr == nil {
 				if options.Incremental &&
 					existing.FileSize == info.Size() &&
+					hasValidFileCreatedTime(existing.FileCreatedAt) &&
 					hasValidFileModTime(existing.FileModTime) &&
 					normalizeFileModTime(*existing.FileModTime).Equal(currentModTime) {
-					skippedExist++
+					if shouldRepairExistingFromLocalNFO(existing, path) {
+						skippedUpdated++
+						refreshExistingMedia(existing, path, info)
+						s.logger.Debugf("repaired existing media metadata from local nfo: %s", path)
+					} else {
+						skippedExist++
+					}
 					s.advanceScanProgress(library, progressMessage)
 					return nil
 				}
@@ -1272,6 +1331,7 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 			TMDbID:       tmdbID,
 			ScrapeStatus: "pending",
 		}
+		applyFileTimes(media, info)
 
 		s.applyMatchRulesAction(media, path, matchRules)
 
@@ -1312,6 +1372,39 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 			}
 		}
 
+		flushCreateBatch := func(batch []pendingMedia) {
+			if len(batch) == 0 {
+				return
+			}
+
+			mediaBatch := make([]*model.Media, 0, len(batch))
+			for _, item := range batch {
+				mediaBatch = append(mediaBatch, item.media)
+			}
+
+			if createErr := s.mediaRepo.BatchCreate(mediaBatch); createErr != nil {
+				s.logger.Warnf("batch save media failed, fallback to single insert: batch=%d err=%v", len(batch), createErr)
+				for _, item := range batch {
+					if singleErr := s.mediaRepo.Create(item.media); singleErr != nil {
+						s.logger.Warnf("save media failed: %s, err=%v", item.path, singleErr)
+						s.advanceScanProgress(library, item.message)
+						continue
+					}
+					s.persistActorsForMedia(item.media)
+					count++
+					s.advanceScanProgress(library, item.message)
+				}
+				return
+			}
+
+			for _, item := range batch {
+				s.persistActorsForMedia(item.media)
+				count++
+				s.advanceScanProgress(library, item.message)
+			}
+		}
+
+		createBatch := make([]pendingMedia, 0, scanCreateBatchSize)
 		for _, pm := range pendingList {
 			sidecars := getSidecars(pm.path)
 			s.scanExternalSubtitlesWithSidecars(pm.media, sidecars)
@@ -1326,15 +1419,14 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 				}
 			}
 
-			if createErr := s.mediaRepo.Create(pm.media); createErr != nil {
-				s.logger.Warnf("save media failed: %s, err=%v", pm.path, createErr)
-				s.advanceScanProgress(library, pm.message)
-				continue
+			createBatch = append(createBatch, pm)
+			if len(createBatch) >= scanCreateBatchSize {
+				flushCreateBatch(createBatch)
+				createBatch = createBatch[:0]
 			}
-			s.persistActorsForMedia(pm.media)
-			count++
-			s.advanceScanProgress(library, pm.message)
 		}
+
+		flushCreateBatch(createBatch)
 	}
 
 	s.logger.Infof("movie scan stats: %s total=%d video=%d new=%d unchanged=%d updated=%d ruleSkipped=%d",
@@ -1604,6 +1696,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 				FileSize:  info.Size(),
 				MediaType: "movie",
 			}
+			applyFileTimes(media, info)
 			s.probeMediaInfo(media)
 			s.scanExternalSubtitles(media)
 			if err := s.mediaRepo.Create(media); err != nil {
@@ -1644,6 +1737,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			FileSize:  info.Size(),
 			MediaType: "movie",
 		}
+		applyFileTimes(media, info)
 		s.probeMediaInfo(media)
 		s.scanExternalSubtitles(media)
 		if err := s.mediaRepo.Create(media); err != nil {
@@ -1928,6 +2022,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 					FileSize:  f.info.Size(),
 					MediaType: "episode",
 				}
+				applyFileTimes(media, f.info)
 				s.probeMediaInfo(media)
 				s.scanExternalSubtitles(media)
 				ep := s.parseEpisodeInfo(f.entry.Name())
@@ -1956,6 +2051,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 					FileSize:  f.info.Size(),
 					MediaType: "episode",
 				}
+				applyFileTimes(media, f.info)
 				s.probeMediaInfo(media)
 				s.scanExternalSubtitles(media)
 				ep := s.parseEpisodeInfo(f.entry.Name())
@@ -2009,6 +2105,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 				EpisodeNum:   ep.EpisodeNum,
 				EpisodeTitle: ep.EpisodeTitle,
 			}
+			applyFileTimes(media, f.info)
 			s.probeMediaInfo(media)
 			s.scanExternalSubtitles(media)
 
@@ -2299,6 +2396,7 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 				EpisodeNum:   ep.EpisodeNum,
 				EpisodeTitle: ep.EpisodeTitle,
 			}
+			applyFileTimes(media, ep.FileInfo)
 
 			s.probeMediaInfo(media)
 			s.scanExternalSubtitles(media)
@@ -2436,6 +2534,7 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 			EpisodeNum:   ep.EpisodeNum,
 			EpisodeTitle: ep.EpisodeTitle,
 		}
+		applyFileTimes(media, ep.FileInfo)
 
 		s.probeMediaInfo(media)
 		s.scanExternalSubtitles(media)
@@ -2898,9 +2997,69 @@ func (s *ScannerService) extractSeriesTitle(folderName string) string {
 
 // broadcastScanEvent 广播扫描事件
 func (s *ScannerService) broadcastScanEvent(eventType string, data *ScanProgressData) {
+	if data != nil && data.LibraryID != "" {
+		switch eventType {
+		case EventScanStarted:
+			resetScanProgressThrottle(data.LibraryID)
+		case EventScanProgress:
+			if !shouldBroadcastScanProgress(data) {
+				return
+			}
+		case EventScanCompleted, EventScanFailed:
+			defer resetScanProgressThrottle(data.LibraryID)
+		}
+	}
+
 	if s.wsHub != nil {
 		s.wsHub.BroadcastEvent(eventType, data)
 	}
+}
+
+func resetScanProgressThrottle(libraryID string) {
+	if libraryID == "" {
+		return
+	}
+
+	scanProgressThrottleStore.Lock()
+	delete(scanProgressThrottleStore.items, libraryID)
+	scanProgressThrottleStore.Unlock()
+}
+
+func shouldBroadcastScanProgress(data *ScanProgressData) bool {
+	if data == nil || data.LibraryID == "" {
+		return true
+	}
+
+	now := time.Now()
+	metric := data.Current
+	if data.NewFound > metric {
+		metric = data.NewFound
+	}
+	if data.Cleaned > metric {
+		metric = data.Cleaned
+	}
+
+	scanProgressThrottleStore.Lock()
+	defer scanProgressThrottleStore.Unlock()
+
+	state, ok := scanProgressThrottleStore.items[data.LibraryID]
+	if !ok || state == nil || state.lastPhase != data.Phase {
+		scanProgressThrottleStore.items[data.LibraryID] = &scanProgressThrottleState{
+			lastSentAt: now,
+			lastMetric: metric,
+			lastPhase:  data.Phase,
+		}
+		return true
+	}
+
+	if metric >= state.lastMetric+scanProgressBroadcastMinStep || now.Sub(state.lastSentAt) >= scanProgressBroadcastMinInterval {
+		state.lastSentAt = now
+		state.lastMetric = metric
+		state.lastPhase = data.Phase
+		return true
+	}
+
+	return false
 }
 
 func (s *ScannerService) beginScanProgress(library *model.Library, mode string, total int) {

@@ -17,6 +17,22 @@ interface MediaGridProps {
     onScrollPositionChange?: (scrollTop: number) => void;
 }
 
+interface MediaListCacheEntry {
+    items: any[];
+    total: number;
+}
+
+const mediaListCache = new Map<string, MediaListCacheEntry>();
+
+const getMediaListCacheKey = (
+    libraryId: string,
+    keyword: string,
+    sortField: string,
+    sortOrder: 'asc' | 'desc',
+    filterType: string,
+    filterValue: string,
+) => JSON.stringify([libraryId, keyword, sortField, sortOrder, filterType, filterValue]);
+
 const MediaGrid: React.FC<MediaGridProps> = ({
     libraryId,
     keyword,
@@ -31,11 +47,16 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     initialScrollTop = 0,
     onScrollPositionChange,
 }) => {
-    const [mediaItems, setMediaItems] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const filterType = filter?.type || '';
+    const filterValue = filter?.value || '';
+    const cacheKey = getMediaListCacheKey(libraryId, keyword, sortField, sortOrder, filterType, filterValue);
+    const initialCache = mediaListCache.get(cacheKey);
+    const [mediaItems, setMediaItems] = useState<any[]>(() => initialCache?.items || []);
+    const [isLoading, setIsLoading] = useState(() => !initialCache);
     const containerRef = useRef<HTMLDivElement>(null);
     const latestScrollTopRef = useRef(0);
     const pendingRestoreRef = useRef<number | null>(initialScrollTop);
+    const requestTokenRef = useRef(0);
     const [layout, setLayout] = useState({ columns: 4, gap: 20, justify: 'start' });
 
     const updateLayout = () => {
@@ -90,10 +111,10 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     useEffect(() => {
         pendingRestoreRef.current = initialScrollTop;
         latestScrollTopRef.current = initialScrollTop;
-    }, [initialScrollTop, libraryId, keyword, sortField, sortOrder, filter]);
+    }, [initialScrollTop, libraryId, keyword, sortField, sortOrder, filterType, filterValue]);
 
     useLayoutEffect(() => {
-        if (isLoading || mediaItems.length === 0 || pendingRestoreRef.current === null || !containerRef.current) {
+        if (isLoading || pendingRestoreRef.current === null || !containerRef.current) {
             return;
         }
 
@@ -106,10 +127,13 @@ const MediaGrid: React.FC<MediaGridProps> = ({
                 if (!containerRef.current) {
                     return;
                 }
-                containerRef.current.scrollTop = targetScrollTop;
-                latestScrollTopRef.current = containerRef.current.scrollTop;
-                onScrollPositionChange?.(latestScrollTopRef.current);
+
+                const maxScrollTop = Math.max(containerRef.current.scrollHeight - containerRef.current.clientHeight, 0);
+                const restoredScrollTop = Math.min(targetScrollTop, maxScrollTop);
+                containerRef.current.scrollTop = restoredScrollTop;
+                latestScrollTopRef.current = restoredScrollTop;
                 pendingRestoreRef.current = null;
+                onScrollPositionChange?.(restoredScrollTop);
             });
         });
 
@@ -117,30 +141,49 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             window.cancelAnimationFrame(frameId);
             window.cancelAnimationFrame(nestedFrameId);
         };
-    }, [isLoading, mediaItems.length, layout.columns, layout.gap, onScrollPositionChange]);
+    }, [isLoading, layout.columns, layout.gap, mediaItems.length, onScrollPositionChange]);
 
     useEffect(() => {
-        setIsLoading(true);
-        let active = true;
-        const filterType = filter?.type || '';
-        const filterValue = filter?.value || '';
+        const cachedEntry = mediaListCache.get(cacheKey);
+        const requestToken = requestTokenRef.current + 1;
+        requestTokenRef.current = requestToken;
 
-        GetMediaList(libraryId, 1, 100, sortField, sortOrder, keyword, filterType, filterValue)
+        if (cachedEntry) {
+            setMediaItems(cachedEntry.items);
+            onCountChange?.(cachedEntry.total);
+            setIsLoading(false);
+        } else {
+            setMediaItems([]);
+            setIsLoading(true);
+        }
+
+        void GetMediaList(libraryId, 1, 0, sortField, sortOrder, keyword, filterType, filterValue)
             .then((res: any) => {
-                if (!active) return;
-                setMediaItems(res.items || []);
-                onCountChange?.(res.total || 0);
+                if (requestTokenRef.current !== requestToken) {
+                    return;
+                }
+
+                const nextItems = Array.isArray(res?.items) ? res.items : [];
+                const nextTotal = Number(res?.total || 0);
+                mediaListCache.set(cacheKey, {
+                    items: nextItems,
+                    total: nextTotal,
+                });
+                setMediaItems(nextItems);
+                onCountChange?.(nextTotal);
                 setIsLoading(false);
             })
             .catch((err) => {
                 console.error(err);
-                if (active) setIsLoading(false);
+                if (requestTokenRef.current === requestToken && !cachedEntry) {
+                    setIsLoading(false);
+                }
             });
 
         return () => {
-            active = false;
+            requestTokenRef.current += 1;
         };
-    }, [libraryId, keyword, sortField, sortOrder, filter, refreshVersion, onCountChange]);
+    }, [cacheKey, filterType, filterValue, keyword, libraryId, onCountChange, refreshVersion, sortField, sortOrder]);
 
     useEffect(() => {
         return () => {
@@ -158,8 +201,9 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             ref={containerRef}
             className="grid-container"
             onScroll={(event) => {
-                latestScrollTopRef.current = event.currentTarget.scrollTop;
-                onScrollPositionChange?.(latestScrollTopRef.current);
+                const nextScrollTop = event.currentTarget.scrollTop;
+                latestScrollTopRef.current = nextScrollTop;
+                onScrollPositionChange?.(nextScrollTop);
             }}
             style={{
                 gridTemplateColumns: `repeat(${layout.columns}, 178px)`,
@@ -179,13 +223,13 @@ const MediaGrid: React.FC<MediaGridProps> = ({
 
             {!isLoading && mediaItems.length === 0 && (
                 <div className="grid-feedback">
-                    没有找到符合条件的媒体内容
+                    {'\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u5a92\u4f53\u5185\u5bb9'}
                 </div>
             )}
 
             {isLoading && mediaItems.length === 0 && (
                 <div className="grid-feedback loading">
-                    正在加载媒体内容...
+                    {'\u6b63\u5728\u52a0\u8f7d\u5a92\u4f53\u5185\u5bb9...'}
                 </div>
             )}
         </div>

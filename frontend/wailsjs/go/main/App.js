@@ -22,6 +22,10 @@ export function GetDesktopSettings() {
   return window['go']['main']['App']['GetDesktopSettings']();
 }
 
+export function GetDetailRecommendations(arg1, arg2) {
+  return window['go']['main']['App']['GetDetailRecommendations'](arg1, arg2);
+}
+
 export function GetDirectoryStats(arg1) {
   return window['go']['main']['App']['GetDirectoryStats'](arg1);
 }

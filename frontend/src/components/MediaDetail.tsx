@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     DeleteMedia,
+    GetDetailRecommendations,
     GetMediaDetail,
     GetMediaFiles,
     GetMediaPreviews,
@@ -26,10 +27,12 @@ import {
     Trash2,
 } from 'lucide-react';
 import NFOEditModal from './NFOEditModal';
+import RecommendationRail from './RecommendationRail';
 
 interface MediaDetailProps {
     media: any;
     onClose: () => void;
+    onSelectMedia: (media: any) => void;
     onSelectFilter: (filter: { type: string; value: string; label: string }) => void;
 }
 
@@ -229,11 +232,60 @@ const normalizeTags = (detail: any) => {
     return uniqueTags.sort((left: string, right: string) => scoreTag(left) - scoreTag(right));
 };
 
-const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilter }) => {
+const getRecommendationMediaKey = (item: any) => {
+    const media = item?.media;
+
+    if (typeof media?.id === 'string' && media.id.trim()) {
+        return `id:${media.id.trim()}`;
+    }
+
+    if (typeof media?.file_path === 'string' && media.file_path.trim()) {
+        return `file:${media.file_path.trim().toLowerCase()}`;
+    }
+
+    if (typeof media?.code === 'string' && media.code.trim()) {
+        return `code:${media.code.trim().toLowerCase()}`;
+    }
+
+    if (typeof media?.title === 'string' && media.title.trim()) {
+        return `title:${media.title.trim().toLowerCase()}`;
+    }
+
+    return '';
+};
+
+const mergeRecommendationItems = (recommendationGroups: any) => {
+    const merged: any[] = [];
+    const seen = new Set<string>();
+
+    [recommendationGroups?.continue_watching, recommendationGroups?.more_like_this].forEach((group, groupIndex) => {
+        if (!Array.isArray(group)) {
+            return;
+        }
+
+        group.forEach((item, itemIndex) => {
+            const key = getRecommendationMediaKey(item) || `fallback:${groupIndex}:${itemIndex}`;
+            if (seen.has(key)) {
+                return;
+            }
+
+            seen.add(key);
+            merged.push(item);
+        });
+    });
+
+    return merged;
+};
+
+const emptyRecommendations = { continue_watching: [], more_like_this: [] };
+
+const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia, onSelectFilter }) => {
     const [detail, setDetail] = useState(media);
     const [msg, setMsg] = useState('');
     const [files, setFiles] = useState<string[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
+    const [recommendations, setRecommendations] = useState<any>(emptyRecommendations);
+    const [recommendationLoading, setRecommendationLoading] = useState(false);
     const [currFilePath, setCurrFilePath] = useState(media.file_path || '');
     const [showFileMenu, setShowFileMenu] = useState(false);
     const [showNFOEditor, setShowNFOEditor] = useState(false);
@@ -249,6 +301,35 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
     };
 
     useEffect(() => {
+        let active = true;
+
+        setDetail(media);
+        setFiles([]);
+        setPreviews([]);
+        setCurrFilePath(media.file_path || '');
+        setRecommendations(emptyRecommendations);
+        setRecommendationLoading(true);
+
+        GetDetailRecommendations(media.id, 12)
+            .then((nextRecommendations) => {
+                if (!active) {
+                    return;
+                }
+                setRecommendations(nextRecommendations || emptyRecommendations);
+            })
+            .catch((error) => {
+                console.error(error);
+                if (!active) {
+                    return;
+                }
+                setRecommendations(emptyRecommendations);
+            })
+            .finally(() => {
+                if (active) {
+                    setRecommendationLoading(false);
+                }
+            });
+
         const load = async () => {
             try {
                 const [nextDetail, nextFiles, nextPreviews] = await Promise.all([
@@ -256,6 +337,10 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
                     GetMediaFiles(media.id),
                     GetMediaPreviews(media.id),
                 ]);
+
+                if (!active) {
+                    return;
+                }
 
                 const normalizedFiles = Array.isArray(nextFiles) ? nextFiles : [];
                 const initialFilePath = (nextDetail?.file_path || normalizedFiles[0] || media.file_path || '').trim();
@@ -266,11 +351,17 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
                 setCurrFilePath(initialFilePath);
             } catch (error) {
                 console.error(error);
+                if (!active) {
+                    return;
+                }
                 showMsg(`加载详情失败：${formatError(error)}`);
             }
         };
 
         load();
+        return () => {
+            active = false;
+        };
     }, [media.id, media.file_path]);
 
     useEffect(() => {
@@ -342,6 +433,20 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
         setDetail(nextDetail);
     };
 
+    const refreshRecommendations = async () => {
+        setRecommendationLoading(true);
+        try {
+            const nextRecommendations = await GetDetailRecommendations(media.id, 12);
+            setRecommendations(nextRecommendations || { continue_watching: [], more_like_this: [] });
+        } catch (error) {
+            console.error(error);
+            setRecommendations({ continue_watching: [], more_like_this: [] });
+            showMsg(`鍔犺浇鎺ㄨ崘澶辫触锛?{formatError(error)}`);
+        } finally {
+            setRecommendationLoading(false);
+        }
+    };
+
     const handlePlay = async () => {
         const targetPath = (currFilePath || detail.file_path || media.file_path || '').trim();
         if (!targetPath) {
@@ -388,6 +493,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
             setNfoSaving(true);
             await SaveNFOEditorData(detail.id, draft);
             await refreshDetail();
+            await refreshRecommendations();
             setNfoEditorData(draft);
             setShowNFOEditor(false);
             showMsg('NFO 已保存');
@@ -503,6 +609,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
     const hasPreviewNavigation = previews.length > 1;
     const canViewPrevPreview = previewViewerIndex !== null && previewViewerIndex > 0;
     const canViewNextPreview = previewViewerIndex !== null && previewViewerIndex < previews.length - 1;
+    const mergedRecommendations = mergeRecommendationItems(recommendations);
 
     return (
         <>
@@ -520,16 +627,17 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
                 </div>
 
                 <div className="detail-main">
-                    <div className="detail-poster-section">
-                        {posterUrl ? (
-                            <img src={posterUrl} className="detail-poster" alt="poster" />
-                        ) : (
-                            <div className="detail-poster no-poster">No Poster</div>
-                        )}
-                    </div>
+                    <div className="detail-hero">
+                        <div className="detail-poster-section">
+                            {posterUrl ? (
+                                <img src={posterUrl} className="detail-poster" alt="poster" />
+                            ) : (
+                                <div className="detail-poster no-poster">No Poster</div>
+                            )}
+                        </div>
 
-                    <div className="detail-info-section">
-                        <div className="detail-info-surface">
+                        <div className="detail-info-section">
+                            <div className="detail-info-surface">
                         <div className="detail-header-row">
                             <div className="detail-title">{detail.title}</div>
                             {msg && <span className="detail-status-msg">{msg}</span>}
@@ -672,8 +780,40 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectFilte
                                 </div>
                             </div>
                         )}
+                        {false && (
+                            <div className="detail-recommendation-block">
+                                <RecommendationRail
+                                    title="继续看"
+                                    subtitle="优先展示同系列、同演员和同厂牌内容"
+                                    items={recommendations?.continue_watching || []}
+                                    loading={recommendationLoading}
+                                    onSelectMedia={onSelectMedia}
+                                    onStatus={showMsg}
+                                />
+                                <RecommendationRail
+                                    title="更多相似"
+                                    subtitle="补充相似标签、编号前缀和探索内容"
+                                    items={recommendations?.more_like_this || []}
+                                    loading={recommendationLoading}
+                                    onSelectMedia={onSelectMedia}
+                                    onStatus={showMsg}
+                                />
+                            </div>
+                        )}
+                            </div>
                         </div>
                     </div>
+                    {(recommendationLoading || mergedRecommendations.length > 0) && (
+                        <div className="detail-recommendation-block">
+                            <RecommendationRail
+                                title="继续看"
+                                items={mergedRecommendations}
+                                loading={recommendationLoading}
+                                onSelectMedia={onSelectMedia}
+                                onStatus={showMsg}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {isPreviewViewerOpen && currentPreviewPath && (

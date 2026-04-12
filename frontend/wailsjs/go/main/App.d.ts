@@ -14,6 +14,8 @@ export function GetActorStats(arg1:string):Promise<Array<main.StatsItem>>;
 
 export function GetDesktopSettings():Promise<main.DesktopSettings>;
 
+export function GetDetailRecommendations(arg1:string,arg2:number):Promise<service.DetailRecommendationResponse>;
+
 export function GetDirectoryStats(arg1:string):Promise<Array<main.StatsItem>>;
 
 export function GetGenreStats(arg1:string):Promise<Array<main.StatsItem>>;

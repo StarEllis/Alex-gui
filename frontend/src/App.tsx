@@ -562,6 +562,7 @@ function App() {
                                 <MediaDetail
                                     media={selectedMedia}
                                     onClose={() => setSelectedMedia(null)}
+                                    onSelectMedia={setSelectedMedia}
                                     onSelectFilter={applyFilterFromDetail}
                                 />
                             ) : (
