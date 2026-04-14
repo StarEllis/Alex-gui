@@ -379,6 +379,7 @@ body {
   justify-content: center;
   z-index: 1000;
   backdrop-filter: blur(8px);
+  --wails-draggable: no-drag;
 }
 
 /* ===== 统计页 (目录/类别/演员/系列) 卡片网格 ===== */
@@ -1636,6 +1637,7 @@ body {
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+  --wails-draggable: no-drag;
 }
 
 .library-edit-header {
@@ -1656,6 +1658,7 @@ body {
   cursor: pointer;
   font-size: 22px;
   line-height: 1;
+  --wails-draggable: no-drag;
 }
 
 .library-edit-body {
@@ -1690,6 +1693,9 @@ body {
   font: inherit;
   font-size: 14px;
   outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  --wails-draggable: no-drag;
 }
 
 .library-edit-input:focus,
@@ -1717,6 +1723,7 @@ body {
   font: inherit;
   font-size: 14px;
   cursor: pointer;
+  --wails-draggable: no-drag;
 }
 
 .library-edit-small-btn {
@@ -1783,6 +1790,7 @@ body {
   color: #d4d8e0;
   font: inherit;
   cursor: pointer;
+  --wails-draggable: no-drag;
 }
 
 .library-path-action.danger,

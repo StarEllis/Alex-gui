@@ -148,6 +148,11 @@ func normalizeScanMode(mode string) string {
 }
 
 func (a *App) startScanWithOptions(lib *model.Library, mode string, options service.ScanOptions) {
+	if settings, err := a.GetDesktopSettings(); err == nil && settings != nil {
+		options.UseEverything = settings.UseEverything
+		options.EverythingAddr = settings.EverythingAddr
+	}
+
 	go func() {
 		_, err := a.scanner.ScanLibraryWithOptions(lib, options)
 		if err != nil {
@@ -703,8 +708,8 @@ func (a *App) GetDesktopSettings() (*DesktopSettings, error) {
 	if settings.MinWindowWidth == 0 {
 		settings.MinWindowWidth = 1024
 	}
-	if settings.EverythingAddr == "" {
-		settings.EverythingAddr = "http://127.0.0.1:80"
+	if strings.TrimSpace(settings.EverythingAddr) == "" || strings.EqualFold(strings.TrimSpace(settings.EverythingAddr), "http://127.0.0.1:80") {
+		settings.EverythingAddr = "http://127.0.0.1:8077"
 	}
 	return &settings, nil
 }

@@ -28,12 +28,20 @@ import {
 } from 'lucide-react';
 import NFOEditModal from './NFOEditModal';
 import RecommendationRail from './RecommendationRail';
+import type {
+    AppMedia,
+    MediaFilter,
+    NFOEditorDraft,
+    RecommendationGroups,
+    RecommendationItem,
+} from '../types/wails';
+import { formatError, toLocalAssetUrl } from '../utils/media';
 
 interface MediaDetailProps {
-    media: any;
+    media: AppMedia;
     onClose: () => void;
-    onSelectMedia: (media: any) => void;
-    onSelectFilter: (filter: { type: string; value: string; label: string }) => void;
+    onSelectMedia: (media: AppMedia) => void;
+    onSelectFilter: (filter: MediaFilter) => void;
 }
 
 interface DetailActor {
@@ -55,7 +63,6 @@ const getImageTokens = (path: string) => {
 const hasImageToken = (path: string, token: string) => getImageTokens(path).includes(token);
 const isImagePath = (path: unknown): path is string => typeof path === 'string' && path.trim().length > 0;
 const isPosterLikeImage = (path: string) => hasImageToken(path, 'poster') || coverTokens.some((token) => hasImageToken(path, token));
-const toLocalAssetUrl = (path: string) => `/local/${encodeURIComponent(path)}`;
 const deriveImmediateFanartPath = (filePath: string) => {
     const trimmed = filePath.trim();
     if (!trimmed) {
@@ -70,7 +77,7 @@ const deriveImmediateFanartPath = (filePath: string) => {
     return `${trimmed.slice(0, -ext.length)}-fanart.jpg`;
 };
 
-const pickDetailImagePath = (detail: any, previews: string[], role: DetailImageRole) => {
+const pickDetailImagePath = (detail: AppMedia, previews: string[], role: DetailImageRole) => {
     const backgroundTokens = ['fanart', 'backdrop', 'background', 'banner', 'clearart', 'landscape'];
     const candidates = Array.from(new Set(
         [detail.poster_path, detail.backdrop_path, detail.fanart_path, ...previews]
@@ -104,30 +111,20 @@ const pickDetailImagePath = (detail: any, previews: string[], role: DetailImageR
     return ranked[0]?.path || '';
 };
 
-const pickPosterImagePath = (detail: any, previews: string[]) => {
+const pickPosterImagePath = (detail: AppMedia, previews: string[]) => {
     if (isImagePath(detail.poster_path)) {
         return detail.poster_path.trim();
     }
     return pickDetailImagePath(detail, previews, 'poster');
 };
 
-const pickBackdropImagePath = (detail: any) => {
+const pickBackdropImagePath = (detail: AppMedia) => {
     const posterPath = isImagePath(detail.poster_path) ? detail.poster_path.trim() : '';
 
     return [detail.fanart_path, detail.backdrop_path]
         .filter(isImagePath)
         .map((path) => path.trim())
         .find((path) => path !== posterPath && !isPosterLikeImage(path)) || '';
-};
-
-const formatError = (error: unknown) => {
-    if (error instanceof Error && error.message) {
-        return error.message;
-    }
-    if (typeof error === 'string') {
-        return error;
-    }
-    return '未知错误';
 };
 
 const formatActorName = (name: string) => {
@@ -149,7 +146,7 @@ const cleanOverview = (text: string) => {
         .trim();
 };
 
-const getMediaCode = (detail: any, currFilePath: string) => {
+const getMediaCode = (detail: AppMedia, currFilePath: string) => {
     if (detail.nfo_extra_fields) {
         try {
             const extra = JSON.parse(detail.nfo_extra_fields);
@@ -170,10 +167,10 @@ const getMediaCode = (detail: any, currFilePath: string) => {
     return detail.code || detail.id?.slice(0, 8) || '未知';
 };
 
-const normalizeActors = (detail: any): DetailActor[] => {
+const normalizeActors = (detail: AppMedia): DetailActor[] => {
     if (Array.isArray(detail.actors) && detail.actors.length > 0) {
         return detail.actors
-            .map((actor: any) => ({
+            .map((actor) => ({
                 id: actor?.id,
                 name: formatActorName(actor?.name || ''),
             }))
@@ -190,7 +187,7 @@ const normalizeActors = (detail: any): DetailActor[] => {
     return [];
 };
 
-const normalizeTags = (detail: any) => {
+const normalizeTags = (detail: AppMedia) => {
     const rawTags = detail.genres
         ? String(detail.genres).split(/[,，/]/).map((tag: string) => tag.trim()).filter(Boolean)
         : [];
@@ -232,8 +229,8 @@ const normalizeTags = (detail: any) => {
     return uniqueTags.sort((left: string, right: string) => scoreTag(left) - scoreTag(right));
 };
 
-const getRecommendationMediaKey = (item: any) => {
-    const media = item?.media;
+const getRecommendationMediaKey = (item: RecommendationItem) => {
+    const media = item.media;
 
     if (typeof media?.id === 'string' && media.id.trim()) {
         return `id:${media.id.trim()}`;
@@ -254,8 +251,8 @@ const getRecommendationMediaKey = (item: any) => {
     return '';
 };
 
-const mergeRecommendationItems = (recommendationGroups: any) => {
-    const merged: any[] = [];
+const mergeRecommendationItems = (recommendationGroups?: RecommendationGroups | null) => {
+    const merged: RecommendationItem[] = [];
     const seen = new Set<string>();
 
     [recommendationGroups?.continue_watching, recommendationGroups?.more_like_this].forEach((group, groupIndex) => {
@@ -277,19 +274,19 @@ const mergeRecommendationItems = (recommendationGroups: any) => {
     return merged;
 };
 
-const emptyRecommendations = { continue_watching: [], more_like_this: [] };
+const emptyRecommendations: RecommendationGroups = { continue_watching: [], more_like_this: [] };
 
 const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia, onSelectFilter }) => {
     const [detail, setDetail] = useState(media);
     const [msg, setMsg] = useState('');
     const [files, setFiles] = useState<string[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
-    const [recommendations, setRecommendations] = useState<any>(emptyRecommendations);
+    const [recommendations, setRecommendations] = useState<RecommendationGroups>(emptyRecommendations);
     const [recommendationLoading, setRecommendationLoading] = useState(false);
     const [currFilePath, setCurrFilePath] = useState(media.file_path || '');
     const [showFileMenu, setShowFileMenu] = useState(false);
     const [showNFOEditor, setShowNFOEditor] = useState(false);
-    const [nfoEditorData, setNfoEditorData] = useState<any>(null);
+    const [nfoEditorData, setNfoEditorData] = useState<NFOEditorDraft | null>(null);
     const [nfoLoading, setNfoLoading] = useState(false);
     const [nfoSaving, setNfoSaving] = useState(false);
     const [previewViewerIndex, setPreviewViewerIndex] = useState<number | null>(null);
@@ -437,11 +434,11 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         setRecommendationLoading(true);
         try {
             const nextRecommendations = await GetDetailRecommendations(media.id, 12);
-            setRecommendations(nextRecommendations || { continue_watching: [], more_like_this: [] });
+            setRecommendations(nextRecommendations || emptyRecommendations);
         } catch (error) {
             console.error(error);
-            setRecommendations({ continue_watching: [], more_like_this: [] });
-            showMsg(`鍔犺浇鎺ㄨ崘澶辫触锛?{formatError(error)}`);
+            setRecommendations(emptyRecommendations);
+            showMsg(`加载推荐失败：${formatError(error)}`);
         } finally {
             setRecommendationLoading(false);
         }
@@ -488,7 +485,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         }
     };
 
-    const handleSaveNFO = async (draft: any) => {
+    const handleSaveNFO = async (draft: NFOEditorDraft) => {
         try {
             setNfoSaving(true);
             await SaveNFOEditorData(detail.id, draft);
@@ -522,7 +519,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const handleFav = async () => {
         try {
             await ToggleFavorite(detail.id);
-            setDetail((prev: any) => ({ ...prev, is_favorite: !prev.is_favorite }));
+            setDetail((prev) => ({ ...prev, is_favorite: !prev.is_favorite }));
         } catch (error) {
             console.error(error);
             showMsg(`收藏失败：${formatError(error)}`);
@@ -532,7 +529,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const handleWatched = async () => {
         try {
             await ToggleWatched(detail.id);
-            setDetail((prev: any) => ({ ...prev, is_watched: !prev.is_watched }));
+            setDetail((prev) => ({ ...prev, is_watched: !prev.is_watched }));
         } catch (error) {
             console.error(error);
             showMsg(`更新观看状态失败：${formatError(error)}`);
@@ -603,6 +600,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const actors = normalizeActors(detail);
     const tags = normalizeTags(detail);
     const filename = currFilePath?.split(/[\\/]/).pop() || '未知文件';
+    const detailSeries = detail.series;
 
     const isPreviewViewerOpen = previewViewerIndex !== null;
     const currentPreviewPath = previewViewerIndex !== null ? previews[previewViewerIndex] : '';
@@ -737,14 +735,14 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                                     </div>
                                 </div>
                             </div>
-                            {detail.series?.title && (
+                            {detailSeries?.title && (
                                 <div className="meta-row">
                                     <span className="meta-label">系列</span>
                                     <span
                                         className="meta-value meta-item-clickable"
-                                        onClick={() => onSelectFilter({ type: 'series', value: detail.series.id, label: detail.series.title })}
+                                        onClick={() => onSelectFilter({ type: 'series', value: detailSeries.id, label: detailSeries.title })}
                                     >
-                                        {detail.series.title}
+                                        {detailSeries.title}
                                     </span>
                                 </div>
                             )}
@@ -778,26 +776,6 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                                         </button>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-                        {false && (
-                            <div className="detail-recommendation-block">
-                                <RecommendationRail
-                                    title="继续看"
-                                    subtitle="优先展示同系列、同演员和同厂牌内容"
-                                    items={recommendations?.continue_watching || []}
-                                    loading={recommendationLoading}
-                                    onSelectMedia={onSelectMedia}
-                                    onStatus={showMsg}
-                                />
-                                <RecommendationRail
-                                    title="更多相似"
-                                    subtitle="补充相似标签、编号前缀和探索内容"
-                                    items={recommendations?.more_like_this || []}
-                                    loading={recommendationLoading}
-                                    onSelectMedia={onSelectMedia}
-                                    onStatus={showMsg}
-                                />
                             </div>
                         )}
                             </div>

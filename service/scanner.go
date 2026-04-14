@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -208,9 +210,11 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 }
 
 type ScanOptions struct {
-	Mode         string
-	Incremental  bool
-	CleanDeleted bool
+	Mode           string
+	Incremental    bool
+	CleanDeleted   bool
+	UseEverything  bool
+	EverythingAddr string
 }
 
 type scanProgressTracker struct {
@@ -573,7 +577,7 @@ func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, options 
 
 func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, options ScanOptions) (int, error) {
 	s.logger.Infof("start scanning library: %s (%s), mode=%s", library.Name, library.Path, options.Mode)
-	totalTargets := 0
+	totalTargets := s.countScanTargets(library, options)
 	s.beginScanProgress(library, options.Mode, totalTargets)
 	defer s.endScanProgress(library.ID)
 
@@ -3116,9 +3120,176 @@ func (s *ScannerService) advanceScanProgress(library *model.Library, message str
 	})
 }
 
-func (s *ScannerService) countScanTargets(library *model.Library) int {
+type everythingHTTPResult struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Size string `json:"size"`
+}
+
+type everythingHTTPResponse struct {
+	TotalResults int                    `json:"totalResults"`
+	Results      []everythingHTTPResult `json:"results"`
+}
+
+func normalizeEverythingAddr(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, "/")
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(raw), "http://") || strings.HasPrefix(strings.ToLower(raw), "https://") {
+		return raw
+	}
+	return "http://" + raw
+}
+
+func everythingSearchForRoot(rootPath string) string {
+	cleanRoot := filepath.Clean(strings.TrimSpace(rootPath))
+	volume := strings.TrimSpace(filepath.VolumeName(cleanRoot))
+
+	terms := []string{"file:"}
+	if volume != "" {
+		terms = append(terms, strings.ToLower(volume))
+	}
+
+	trimmed := strings.TrimPrefix(cleanRoot, volume)
+	trimmed = strings.Trim(trimmed, `\/`)
+	for _, segment := range strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == '\\' || r == '/'
+	}) {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		terms = append(terms, fmt.Sprintf("path:%q", segment))
+	}
+
+	extTerms := make([]string, 0, len(supportedExts))
+	for ext := range supportedExts {
+		extTerms = append(extTerms, "ext:"+strings.TrimPrefix(ext, "."))
+	}
+	sort.Strings(extTerms)
+	terms = append(terms, strings.Join(extTerms, "|"))
+
+	return strings.Join(terms, " ")
+}
+
+func isPathWithinRoot(path string, root string) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	root = filepath.Clean(strings.TrimSpace(root))
+	if path == "" || root == "" {
+		return false
+	}
+	if strings.EqualFold(path, root) {
+		return true
+	}
+	if len(path) <= len(root) || !strings.EqualFold(path[:len(root)], root) {
+		return false
+	}
+	return os.IsPathSeparator(path[len(root)])
+}
+
+func (s *ScannerService) countScanTargetsWithEverything(library *model.Library, addr string) (int, error) {
+	addr = normalizeEverythingAddr(addr)
+	if library == nil || addr == "" {
+		return 0, fmt.Errorf("everything address is empty")
+	}
+
+	rootPaths := library.RootPaths()
+	if len(rootPaths) == 0 {
+		rootPaths = []string{strings.TrimSpace(library.Path)}
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	pageSize := 2000
+	minBytes := int64(0)
+	if library.EnableFileFilter && library.MinFileSize > 0 {
+		minBytes = int64(library.MinFileSize) * 1024 * 1024
+	}
+
+	total := 0
+	for _, rootPath := range rootPaths {
+		rootPath = filepath.Clean(strings.TrimSpace(rootPath))
+		if rootPath == "" {
+			continue
+		}
+
+		query := everythingSearchForRoot(rootPath)
+		for offset := 0; ; offset += pageSize {
+			params := url.Values{}
+			params.Set("json", "1")
+			params.Set("path_column", "1")
+			params.Set("size_column", "1")
+			params.Set("count", strconv.Itoa(pageSize))
+			params.Set("offset", strconv.Itoa(offset))
+			params.Set("search", query)
+
+			resp, err := client.Get(addr + "/?" + params.Encode())
+			if err != nil {
+				return 0, err
+			}
+
+			var payload everythingHTTPResponse
+			decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+			_ = resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return 0, fmt.Errorf("everything http status %d", resp.StatusCode)
+			}
+			if decodeErr != nil {
+				return 0, decodeErr
+			}
+
+			if len(payload.Results) == 0 {
+				break
+			}
+
+			for _, item := range payload.Results {
+				if !strings.EqualFold(strings.TrimSpace(item.Type), "file") {
+					continue
+				}
+
+				fullPath := filepath.Join(item.Path, item.Name)
+				if !isPathWithinRoot(fullPath, rootPath) {
+					continue
+				}
+
+				ext := strings.ToLower(filepath.Ext(item.Name))
+				if !supportedExts[ext] {
+					continue
+				}
+				if isExtrasPath(fullPath) || isExtrasFile(filepath.Base(fullPath)) {
+					continue
+				}
+				if minBytes > 0 {
+					if size, err := strconv.ParseInt(strings.TrimSpace(item.Size), 10, 64); err == nil && size < minBytes {
+						continue
+					}
+				}
+				total++
+			}
+
+			if len(payload.Results) < pageSize {
+				break
+			}
+		}
+	}
+
+	return total, nil
+}
+
+func (s *ScannerService) countScanTargets(library *model.Library, options ScanOptions) int {
 	if library == nil {
 		return 0
+	}
+
+	if options.UseEverything {
+		if total, err := s.countScanTargetsWithEverything(library, options.EverythingAddr); err == nil {
+			s.logger.Infof("counted scan targets via Everything HTTP: library=%s total=%d", library.Name, total)
+			return total
+		} else {
+			s.logger.Warnf("count scan targets via Everything HTTP failed, fallback to walk: library=%s err=%v", library.Name, err)
+		}
 	}
 
 	rootPaths := library.RootPaths()

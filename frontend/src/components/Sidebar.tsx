@@ -8,7 +8,6 @@ import {
     Heart,
     Minus,
     Pencil,
-    Play,
     Settings,
     Shapes,
     Square,
@@ -16,6 +15,7 @@ import {
     X,
 } from 'lucide-react';
 import { Quit, WindowIsMaximised, WindowMinimise, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
+import logoImage from '../assets/images/logo-universal.png';
 import { formatLibraryPathLabel, getLibraryConfig } from '../utils/library';
 
 interface SidebarProps {
@@ -122,7 +122,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 <div className="sidebar-brand">
                     <div className="sidebar-brand-mark" aria-hidden="true">
-                        <Play size={14} fill="currentColor" strokeWidth={1.8} />
+                        <img className="sidebar-brand-mark-image" src={logoImage} alt="" />
                     </div>
                     <div className="sidebar-brand-copy">
                         <span className="sidebar-brand-name">{appName}</span>

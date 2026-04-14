@@ -1,27 +1,17 @@
 import React from 'react';
 import { Play } from 'lucide-react';
 import { PlayFile } from "../../wailsjs/go/main/App";
+import { formatError, toLocalAssetUrl } from '../utils/media';
+import type { AppMedia, RecommendationItem } from '../types/wails';
 
 interface RecommendationCardProps {
-    item: any;
-    onSelectMedia: (media: any) => void;
+    item: RecommendationItem;
+    onSelectMedia: (media: AppMedia) => void;
     onStatus?: (message: string) => void;
 }
 
-const formatError = (error: unknown) => {
-    if (error instanceof Error && error.message) {
-        return error.message;
-    }
-    if (typeof error === 'string') {
-        return error;
-    }
-    return '未知错误';
-};
-
-const toLocalAssetUrl = (path: string) => `/local/${encodeURIComponent(path)}`;
-
 const RecommendationCard: React.FC<RecommendationCardProps> = ({ item, onSelectMedia, onStatus }) => {
-    const media = item?.media || {};
+    const media = item.media;
     const posterPath = typeof media?.poster_path === 'string' && media.poster_path.trim()
         ? media.poster_path.trim()
         : typeof media?.backdrop_path === 'string' && media.backdrop_path.trim()
@@ -67,8 +57,8 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ item, onSelectM
             onKeyDown={handleKeyDown}
         >
             <div className="recommendation-card-media">
-                <span className={`recommendation-reason recommendation-reason-floating recommendation-reason-${item?.match_type || 'default'}`}>
-                    {item?.reason || '相关推荐'}
+                <span className={`recommendation-reason recommendation-reason-floating recommendation-reason-${item.match_type || 'default'}`}>
+                    {item.reason || '相关推荐'}
                 </span>
                 {coverUrl ? (
                     <img

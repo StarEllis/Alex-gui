@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import type { NFOEditorDraft } from '../types/wails';
 
 interface NFOEditModalProps {
-    data: any;
+    data: NFOEditorDraft | null;
     loading: boolean;
     saving: boolean;
     onClose: () => void;
-    onSave: (draft: any) => Promise<void>;
+    onSave: (draft: NFOEditorDraft) => Promise<void>;
 }
 
-const emptyForm = {
+const emptyForm: NFOEditorDraft = {
     nfo_path: '',
     title: '',
     code: '',
@@ -34,7 +35,7 @@ const NFOEditModal: React.FC<NFOEditModalProps> = ({
     onClose,
     onSave,
 }) => {
-    const [form, setForm] = useState<any>(emptyForm);
+    const [form, setForm] = useState<NFOEditorDraft>(emptyForm);
 
     useEffect(() => {
         setForm({
@@ -54,8 +55,8 @@ const NFOEditModal: React.FC<NFOEditModalProps> = ({
         return () => document.removeEventListener('keydown', handleEscape);
     }, [onClose, saving]);
 
-    const updateField = (key: string, value: string) => {
-        setForm((prev: any) => ({
+    const updateField = <K extends keyof NFOEditorDraft>(key: K, value: NFOEditorDraft[K]) => {
+        setForm((prev) => ({
             ...prev,
             [key]: value,
         }));

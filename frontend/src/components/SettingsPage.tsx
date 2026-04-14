@@ -30,6 +30,12 @@ const TEXT = {
     save: '\u4fdd\u5b58',
     placeholderNote: '\u8fd9\u4e00\u9875\u6682\u65f6\u4fdd\u6301\u539f\u6837\uff0c\u4e0d\u5f71\u54cd\u672c\u6b21\u8bbe\u7f6e\u6536\u655b\u3002',
     scanSettings: '\u626b\u63cf\u8bbe\u7f6e',
+    useEverything: '\u8c03\u7528 Everything',
+    useEverythingDesc: '\u9884\u626b\u603b\u6570\u65f6\u4f18\u5148\u8d70 Everything HTTP\uff0c\u53ef\u4ee5\u6bd4\u76f4\u63a5\u904d\u5386\u78c1\u76d8\u5feb\u5f97\u591a\u3002',
+    everythingAddr: 'Everything \u7f51\u5740',
+    everythingAddrDesc: '\u586b Everything HTTP \u670d\u52a1\u5730\u5740\uff0c\u4f8b\u5982 http://127.0.0.1:8077\u3002',
+    everythingAddrPlaceholder: 'http://127.0.0.1:8077',
+    everythingTip: '\u53ea\u52a0\u901f\u201c\u9884\u626b\u8ba1\u6570\u201d\u8fd9\u4e00\u6b65\uff0c\u540e\u9762\u6b63\u5f0f\u626b\u63cf\u4ecd\u7136\u4f1a\u8bfb\u53d6\u5b9e\u9645\u6587\u4ef6\u3002',
     embySettings: 'Emby \u8bbe\u7f6e',
 } as const;
 
@@ -211,6 +217,58 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
         </div>
     );
 
+    const renderScan = () => (
+        <div className="settings-section">
+            <div className="settings-section-title">{TEXT.scanSettings}</div>
+
+            <div className="settings-card">
+                <label className="settings-toggle-row">
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.useEverything}</div>
+                        <div className="settings-description">{TEXT.useEverythingDesc}</div>
+                    </div>
+                    <input
+                        type="checkbox"
+                        checked={!!settings.use_everything}
+                        onChange={(e) => updateSettings({ use_everything: e.target.checked })}
+                    />
+                </label>
+
+                <div className={`settings-program-block ${settings.use_everything ? '' : 'is-disabled'}`}>
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.everythingAddr}</div>
+                        <div className="settings-description">{TEXT.everythingAddrDesc}</div>
+                    </div>
+
+                    <div className="settings-program-controls">
+                        <input
+                            className="settings-input settings-program-input"
+                            type="text"
+                            value={settings.everything_addr || ''}
+                            placeholder={TEXT.everythingAddrPlaceholder}
+                            onChange={(e) => updateSettings({ everything_addr: e.target.value })}
+                            disabled={!settings.use_everything}
+                        />
+                    </div>
+                </div>
+
+                <div className="settings-description">{TEXT.everythingTip}</div>
+            </div>
+
+            <div className="settings-footer">
+                <button
+                    className="settings-btn settings-btn-primary"
+                    type="button"
+                    onClick={handleSave}
+                    disabled={!hasChanges}
+                >
+                    {TEXT.save}
+                </button>
+                {msg && <span className="settings-feedback">{msg}</span>}
+            </div>
+        </div>
+    );
+
     const renderPlaceholder = (title: string) => (
         <div className="settings-section">
             <div className="settings-section-title">{title}</div>
@@ -232,7 +290,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
             <div className="settings-main">
                 {activeTab === 'general' && renderGeneral()}
-                {activeTab === 'scan' && renderPlaceholder(TEXT.scanSettings)}
+                {activeTab === 'scan' && renderScan()}
                 {activeTab === 'emby' && renderPlaceholder(TEXT.embySettings)}
                 {activeTab === 'about' && renderPlaceholder(TEXT.about)}
             </div>

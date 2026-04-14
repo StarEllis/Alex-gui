@@ -1,12 +1,13 @@
 import React from 'react';
 import RecommendationCard from './RecommendationCard';
+import type { AppMedia, RecommendationItem } from '../types/wails';
 
 interface RecommendationRailProps {
     title: string;
     subtitle?: string;
-    items: any[];
+    items: RecommendationItem[];
     loading?: boolean;
-    onSelectMedia: (media: any) => void;
+    onSelectMedia: (media: AppMedia) => void;
     onStatus?: (message: string) => void;
 }
 
@@ -54,7 +55,7 @@ const RecommendationRail: React.FC<RecommendationRailProps> = ({
                     ))
                     : items.map((item, index) => (
                         <RecommendationCard
-                            key={`${item?.media?.id || 'recommendation'}-${item?.match_type || 'item'}-${index}`}
+                            key={`${item.media?.id || 'recommendation'}-${item.match_type || 'item'}-${index}`}
                             item={item}
                             onSelectMedia={onSelectMedia}
                             onStatus={onStatus}
