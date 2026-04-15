@@ -267,15 +267,24 @@ type Media struct {
 	NfoExtraFields        string `json:"nfo_extra_fields" gorm:"type:text"`        // JSON: sorttitle/maker/label/num/providerIds 等非标准字段
 	NfoRawXml             string `json:"-" gorm:"type:text"`                       // 原始 NFO XML 全文保留（不输出到前端）
 	ReleaseDateNormalized string `json:"release_date_normalized" gorm:"type:text"` // 归一化发布日期 YYYY-MM-DD
+	MetadataPhase         string `json:"metadata_phase" gorm:"type:text;default:full"`
 	// 刮削状态追踪（P3）
 	ScrapeStatus   string     `json:"scrape_status" gorm:"type:text;default:pending"` // pending / scraped / failed / manual
 	ScrapeAttempts int        `json:"scrape_attempts"`                                // 刮削尝试次数
 	LastScrapeAt   *time.Time `json:"last_scrape_at"`                                 // 最后一次刮削时间
 	// 剧集专属字段
-	SeriesID     string `json:"series_id" gorm:"index;type:text"`
-	SeasonNum    int    `json:"season_num"`
-	EpisodeNum   int    `json:"episode_num"`
-	EpisodeTitle string `json:"episode_title" gorm:"type:text"` // 单集标题（如有）
+	ThumbnailStatus      string     `json:"thumbnail_status" gorm:"type:text;default:none"`
+	ThumbnailRetryCount  int        `json:"thumbnail_retry_count" gorm:"default:0"`
+	ThumbnailNextAttempt *time.Time `json:"thumbnail_next_attempt_at"`
+	ThumbnailLockedAt    *time.Time `json:"thumbnail_locked_at"`
+	ThumbnailLockedBy    string     `json:"thumbnail_locked_by" gorm:"type:text"`
+	ThumbnailFingerprint string     `json:"thumbnail_fingerprint" gorm:"type:text"`
+	ThumbnailError       string     `json:"thumbnail_error" gorm:"type:text"`
+	ThumbnailUpdatedAt   *time.Time `json:"thumbnail_updated_at"`
+	SeriesID             string     `json:"series_id" gorm:"index;type:text"`
+	SeasonNum            int        `json:"season_num"`
+	EpisodeNum           int        `json:"episode_num"`
+	EpisodeTitle         string     `json:"episode_title" gorm:"type:text"` // 单集标题（如有）
 	// 时间戳
 	CreatedAt time.Time      `json:"created_at" gorm:"index"`
 	UpdatedAt time.Time      `json:"updated_at"`

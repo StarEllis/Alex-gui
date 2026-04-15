@@ -36,6 +36,12 @@ const TEXT = {
     everythingAddrDesc: '\u586b Everything HTTP \u670d\u52a1\u5730\u5740\uff0c\u4f8b\u5982 http://127.0.0.1:8077\u3002',
     everythingAddrPlaceholder: 'http://127.0.0.1:8077',
     everythingTip: '\u53ea\u52a0\u901f\u201c\u9884\u626b\u8ba1\u6570\u201d\u8fd9\u4e00\u6b65\uff0c\u540e\u9762\u6b63\u5f0f\u626b\u63cf\u4ecd\u7136\u4f1a\u8bfb\u53d6\u5b9e\u9645\u6587\u4ef6\u3002',
+    videoThumbnail: '\u81ea\u52a8\u622a\u56fe\u8865\u56fe',
+    videoThumbnailDesc: '\u53ea\u5bf9\u65e0 NFO \u4e14\u65f6\u957f\u8db3\u591f\u7684\u7535\u5f71\u89c6\u9891\u751f\u6210 poster\u3001fanart \u548c\u9884\u89c8\u56fe\u3002',
+    thumbnailMinDuration: '\u6700\u77ed\u65f6\u957f\uff08\u5206\u949f\uff09',
+    thumbnailMinDurationDesc: '\u53ea\u6709\u4e25\u683c\u5927\u4e8e\u8fd9\u4e2a\u65f6\u957f\u7684\u89c6\u9891\u624d\u4f1a\u89e6\u53d1\u81ea\u52a8\u622a\u56fe\u3002',
+    thumbnailPreviewCount: '\u9884\u89c8\u56fe\u6570\u91cf',
+    thumbnailPreviewCountDesc: '\u751f\u6210\u5230 extrafanart \u76ee\u5f55\u7684\u9884\u89c8\u56fe\u5f20\u6570\u3002',
     embySettings: 'Emby \u8bbe\u7f6e',
 } as const;
 
@@ -57,6 +63,22 @@ const getProgramName = (programPath: string) => {
     }
     const normalized = programPath.replace(/\\/g, '/');
     return normalized.split('/').pop() || programPath;
+};
+
+const getThumbnailDurationMinutes = (seconds: unknown) => {
+    const parsed = Number(seconds);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 20;
+    }
+    return Math.max(1, Math.round(parsed / 60));
+};
+
+const getThumbnailPreviewCount = (count: unknown) => {
+    const parsed = Number(count);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 6;
+    }
+    return Math.max(1, Math.min(12, Math.round(parsed)));
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
@@ -253,6 +275,61 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                 </div>
 
                 <div className="settings-description">{TEXT.everythingTip}</div>
+
+                <label className="settings-toggle-row">
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.videoThumbnail}</div>
+                        <div className="settings-description">{TEXT.videoThumbnailDesc}</div>
+                    </div>
+                    <input
+                        type="checkbox"
+                        checked={!!settings.enable_video_thumbnail}
+                        onChange={(e) => updateSettings({ enable_video_thumbnail: e.target.checked })}
+                    />
+                </label>
+
+                <div className={`settings-program-block ${settings.enable_video_thumbnail ? '' : 'is-disabled'}`}>
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.thumbnailMinDuration}</div>
+                        <div className="settings-description">{TEXT.thumbnailMinDurationDesc}</div>
+                    </div>
+
+                    <div className="settings-program-controls">
+                        <input
+                            className="settings-input settings-program-input"
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={getThumbnailDurationMinutes(settings.thumbnail_min_duration_seconds)}
+                            onChange={(e) => updateSettings({
+                                thumbnail_min_duration_seconds: Math.max(1, Number(e.target.value) || 0) * 60,
+                            })}
+                            disabled={!settings.enable_video_thumbnail}
+                        />
+                    </div>
+                </div>
+
+                <div className={`settings-program-block ${settings.enable_video_thumbnail ? '' : 'is-disabled'}`}>
+                    <div className="settings-toggle-copy">
+                        <div className="settings-label">{TEXT.thumbnailPreviewCount}</div>
+                        <div className="settings-description">{TEXT.thumbnailPreviewCountDesc}</div>
+                    </div>
+
+                    <div className="settings-program-controls">
+                        <input
+                            className="settings-input settings-program-input"
+                            type="number"
+                            min={1}
+                            max={12}
+                            step={1}
+                            value={getThumbnailPreviewCount(settings.thumbnail_preview_count)}
+                            onChange={(e) => updateSettings({
+                                thumbnail_preview_count: Math.max(1, Math.min(12, Number(e.target.value) || 0)),
+                            })}
+                            disabled={!settings.enable_video_thumbnail}
+                        />
+                    </div>
+                </div>
             </div>
 
             <div className="settings-footer">

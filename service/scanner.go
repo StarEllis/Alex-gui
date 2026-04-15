@@ -186,27 +186,39 @@ func isBitmapSubtitle(codec string) bool {
 
 // ScannerService 媒体文件扫描服务
 type ScannerService struct {
-	mediaRepo       *repository.MediaRepo
-	seriesRepo      *repository.SeriesRepo
-	personRepo      *repository.PersonRepo
-	mediaPersonRepo *repository.MediaPersonRepo
-	matchRuleRepo   *repository.MatchRuleRepo // P2: 自定义匹配规则
-	cfg             *config.Config
-	logger          *zap.SugaredLogger
-	wsHub           *WSHub      // WebSocket事件广播
-	nfoService      *NFOService // NFO 本地元数据解析服务
+	mediaRepo                 *repository.MediaRepo
+	seriesRepo                *repository.SeriesRepo
+	personRepo                *repository.PersonRepo
+	mediaPersonRepo           *repository.MediaPersonRepo
+	matchRuleRepo             *repository.MatchRuleRepo // P2: 自定义匹配规则
+	cfg                       *config.Config
+	logger                    *zap.SugaredLogger
+	wsHub                     *WSHub      // WebSocket事件广播
+	nfoService                *NFOService // NFO 本地元数据解析服务
+	metadataHighPri           chan metadataCompletionTask
+	metadataNormal            chan metadataCompletionTask
+	metadataMu                sync.Mutex
+	metadataState             map[string]metadataTaskPriority
+	thumbnailService          *ThumbnailService
+	thumbnailSettingsProvider ThumbnailSettingsProvider
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, personRepo *repository.PersonRepo, mediaPersonRepo *repository.MediaPersonRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
-	return &ScannerService{
-		mediaRepo:       mediaRepo,
-		seriesRepo:      seriesRepo,
-		personRepo:      personRepo,
-		mediaPersonRepo: mediaPersonRepo,
-		cfg:             cfg,
-		logger:          logger,
-		nfoService:      NewNFOService(logger),
+	service := &ScannerService{
+		mediaRepo:        mediaRepo,
+		seriesRepo:       seriesRepo,
+		personRepo:       personRepo,
+		mediaPersonRepo:  mediaPersonRepo,
+		cfg:              cfg,
+		logger:           logger,
+		nfoService:       NewNFOService(logger),
+		metadataHighPri:  make(chan metadataCompletionTask, metadataQueueBufferSize),
+		metadataNormal:   make(chan metadataCompletionTask, metadataQueueBufferSize),
+		metadataState:    make(map[string]metadataTaskPriority),
+		thumbnailService: NewThumbnailService(cfg, logger),
 	}
+	service.startMetadataWorkers()
+	return service
 }
 
 type ScanOptions struct {
@@ -244,12 +256,30 @@ var scanProgressThrottleStore = struct {
 }
 
 const (
+	metadataTaskPriorityNormal metadataTaskPriority = iota
+	metadataTaskPriorityHigh
+	metadataTaskPriorityRunning
 	scanProgressBroadcastMinInterval = 200 * time.Millisecond
 	scanProgressBroadcastMinStep     = 20
 	scanCreateBatchSize              = 100
+	metadataQueueBufferSize          = 16384
 )
 
+type metadataTaskPriority int
+
+type metadataCompletionTask struct {
+	MediaID   string
+	Priority  metadataTaskPriority
+	LibraryID string
+}
+
 type subtitleFileCandidate struct {
+	stem string
+	path string
+}
+
+type imageFileCandidate struct {
+	name string
 	stem string
 	path string
 }
@@ -260,6 +290,8 @@ type directorySidecarFiles struct {
 	posterPath      string
 	backdropPath    string
 	subtitleFiles   []subtitleFileCandidate
+	imageFiles      []imageFileCandidate
+	videoCount      int
 }
 
 var sidecarImageNamesPoster = []string{
@@ -323,6 +355,10 @@ func applyFileTimes(media *model.Media, info os.FileInfo) {
 }
 
 func (s *ScannerService) buildDirectorySidecarFiles(dir string) *directorySidecarFiles {
+	return collectDirectorySidecarFiles(dir)
+}
+
+func collectDirectorySidecarFiles(dir string) *directorySidecarFiles {
 	result := &directorySidecarFiles{
 		nfoByStem: make(map[string]string),
 	}
@@ -365,8 +401,17 @@ func (s *ScannerService) buildDirectorySidecarFiles(dir string) *directorySideca
 			})
 		}
 
+		if supportedExts[ext] {
+			result.videoCount++
+		}
+
 		if sidecarImageExts[ext] {
 			imageNames = append(imageNames, name)
+			result.imageFiles = append(result.imageFiles, imageFileCandidate{
+				name: name,
+				stem: stem,
+				path: path,
+			})
 			if firstImagePath == "" {
 				firstImagePath = path
 			}
@@ -444,6 +489,80 @@ func (s *ScannerService) buildDirectorySidecarFiles(dir string) *directorySideca
 	}
 
 	return result
+}
+
+func normalizeSidecarStem(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(value)
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-'
+	})
+	return strings.Join(parts, "-")
+}
+
+func mediaSpecificSidecarMatch(imageStem string, mediaFilePath string, tokens []string) bool {
+	mediaStem := normalizeSidecarStem(strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath)))
+	imageStem = normalizeSidecarStem(imageStem)
+	if mediaStem == "" || imageStem == "" {
+		return false
+	}
+	prefix := mediaStem + "-"
+	if !strings.HasPrefix(imageStem, prefix) {
+		return false
+	}
+	suffix := strings.TrimPrefix(imageStem, prefix)
+	parts := strings.Split(suffix, "-")
+	if len(parts) == 0 {
+		return false
+	}
+	for _, token := range tokens {
+		if parts[0] == token {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *directorySidecarFiles) hasMultipleVideos() bool {
+	return d != nil && d.videoCount > 1
+}
+
+func (d *directorySidecarFiles) findMediaSpecificImagePath(mediaFilePath string, tokens []string) string {
+	if d == nil {
+		return ""
+	}
+	for _, image := range d.imageFiles {
+		if mediaSpecificSidecarMatch(image.stem, mediaFilePath, tokens) {
+			return image.path
+		}
+	}
+	return ""
+}
+
+func (d *directorySidecarFiles) posterPathForMedia(mediaFilePath string) string {
+	if d == nil {
+		return ""
+	}
+	if path := d.findMediaSpecificImagePath(mediaFilePath, []string{"poster", "cover", "folder", "thumb", "movie", "show"}); path != "" {
+		return path
+	}
+	if d.hasMultipleVideos() {
+		return ""
+	}
+	return d.posterPath
+}
+
+func (d *directorySidecarFiles) backdropPathForMedia(mediaFilePath string) string {
+	if d == nil {
+		return ""
+	}
+	if path := d.findMediaSpecificImagePath(mediaFilePath, []string{"fanart", "backdrop", "background", "banner", "clearart", "landscape"}); path != "" {
+		return path
+	}
+	if d.hasMultipleVideos() {
+		return ""
+	}
+	return d.backdropPath
 }
 
 func (d *directorySidecarFiles) nfoPathForMedia(mediaFilePath string) string {
@@ -664,6 +783,322 @@ func (s *ScannerService) SetMatchRuleRepo(repo *repository.MatchRuleRepo) {
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
 func (s *ScannerService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+func (s *ScannerService) startMetadataWorkers() {
+	workers := runtime.NumCPU() / 4
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 3 {
+		workers = 3
+	}
+
+	for i := 0; i < workers; i++ {
+		go s.metadataWorkerLoop()
+	}
+}
+
+func (s *ScannerService) metadataWorkerLoop() {
+	for {
+		var task metadataCompletionTask
+
+		select {
+		case task = <-s.metadataHighPri:
+		default:
+			select {
+			case task = <-s.metadataHighPri:
+			case task = <-s.metadataNormal:
+			}
+		}
+
+		s.runMetadataCompletionTask(task)
+	}
+}
+
+func (s *ScannerService) EnqueueMetadataCompletion(mediaID string, highPriority bool) bool {
+	priority := metadataTaskPriorityNormal
+	if highPriority {
+		priority = metadataTaskPriorityHigh
+	}
+	return s.enqueueMetadataCompletion(mediaID, "", priority)
+}
+
+func (s *ScannerService) enqueueMetadataCompletion(mediaID string, libraryID string, priority metadataTaskPriority) bool {
+	mediaID = strings.TrimSpace(mediaID)
+	if mediaID == "" {
+		return false
+	}
+
+	s.metadataMu.Lock()
+	current, exists := s.metadataState[mediaID]
+	switch {
+	case !exists:
+		s.metadataState[mediaID] = priority
+	case current == metadataTaskPriorityRunning:
+		s.metadataMu.Unlock()
+		return false
+	case current == metadataTaskPriorityHigh || current == priority:
+		s.metadataMu.Unlock()
+		return false
+	default:
+		s.metadataState[mediaID] = priority
+	}
+	s.metadataMu.Unlock()
+
+	task := metadataCompletionTask{
+		MediaID:   mediaID,
+		LibraryID: libraryID,
+		Priority:  priority,
+	}
+
+	if priority == metadataTaskPriorityHigh {
+		s.metadataHighPri <- task
+		return true
+	}
+
+	s.metadataNormal <- task
+	return true
+}
+
+func (s *ScannerService) runMetadataCompletionTask(task metadataCompletionTask) {
+	if strings.TrimSpace(task.MediaID) == "" {
+		return
+	}
+
+	s.metadataMu.Lock()
+	state, exists := s.metadataState[task.MediaID]
+	switch {
+	case !exists:
+		s.metadataMu.Unlock()
+		return
+	case state == metadataTaskPriorityRunning:
+		s.metadataMu.Unlock()
+		return
+	case task.Priority < state:
+		s.metadataMu.Unlock()
+		return
+	default:
+		s.metadataState[task.MediaID] = metadataTaskPriorityRunning
+	}
+	s.metadataMu.Unlock()
+
+	if err := s.completeMediaMetadataByID(task.MediaID); err != nil {
+		s.logger.Warnf("complete media metadata failed: media=%s err=%v", task.MediaID, err)
+	}
+
+	s.metadataMu.Lock()
+	delete(s.metadataState, task.MediaID)
+	s.metadataMu.Unlock()
+}
+
+func (s *ScannerService) completeMediaMetadataByID(mediaID string) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil || media == nil {
+		return err
+	}
+	if !NeedsMetadataCompletion(media) {
+		return nil
+	}
+
+	info, statErr := os.Stat(media.FilePath)
+	if statErr != nil || info.IsDir() {
+		s.markMediaMetadataPhase(media.ID, media.LibraryID, MetadataPhaseFailed, "metadata completion failed")
+		if statErr != nil {
+			return statErr
+		}
+		return fmt.Errorf("media path is not a file: %s", media.FilePath)
+	}
+
+	applyFileTimes(media, info)
+	var sidecars *directorySidecarFiles
+	if media.MediaType == "movie" {
+		sidecars = s.buildDirectorySidecarFiles(filepath.Dir(media.FilePath))
+		s.scanExternalSubtitlesWithSidecars(media, sidecars)
+		s.applyLocalSidecars(media, media.FilePath, sidecars)
+	} else {
+		s.scanExternalSubtitles(media)
+	}
+	s.probeMediaInfo(media)
+	if media.MediaType == "movie" {
+		s.resolveThumbnailState(media, sidecars)
+	}
+	media.MetadataPhase = MetadataPhaseFull
+
+	if err := s.mediaRepo.Update(media); err != nil {
+		s.markMediaMetadataPhase(media.ID, media.LibraryID, MetadataPhaseFailed, "metadata completion failed")
+		return err
+	}
+
+	if media.MediaType == "movie" {
+		s.persistActorsForMedia(media)
+	}
+	s.broadcastMediaMetadataEvent(media.ID, media.LibraryID, media.MetadataPhase, "metadata completed")
+	return nil
+}
+
+func (s *ScannerService) markMediaMetadataPhase(mediaID string, libraryID string, phase string, message string) {
+	if strings.TrimSpace(mediaID) == "" {
+		return
+	}
+	if err := s.mediaRepo.UpdateFields(mediaID, map[string]interface{}{
+		"metadata_phase": phase,
+	}); err != nil {
+		s.logger.Warnf("update media metadata phase failed: media=%s phase=%s err=%v", mediaID, phase, err)
+	}
+	s.broadcastMediaMetadataEvent(mediaID, libraryID, phase, message)
+}
+
+func (s *ScannerService) broadcastMediaMetadataEvent(mediaID string, libraryID string, phase string, message string) {
+	if s.wsHub == nil {
+		return
+	}
+
+	s.wsHub.BroadcastEvent(EventMediaMetadataUpdated, &MediaMetadataEventData{
+		MediaID:       mediaID,
+		LibraryID:     libraryID,
+		MetadataPhase: NormalizeMetadataPhase(phase),
+		Message:       message,
+	})
+}
+
+func (s *ScannerService) applyLocalSidecars(media *model.Media, mediaPath string, sidecars *directorySidecarFiles) {
+	if sidecars == nil {
+		return
+	}
+
+	if nfoPath := sidecars.nfoPathForMedia(mediaPath); nfoPath != "" {
+		if parseErr := s.nfoService.ParseMovieNFO(nfoPath, media); parseErr != nil {
+			s.logger.Debugf("parse NFO failed: %s, err=%v", nfoPath, parseErr)
+		}
+	}
+
+	if posterPath := sidecars.posterPathForMedia(mediaPath); posterPath != "" && media.PosterPath == "" {
+		media.PosterPath = posterPath
+	}
+	if backdropPath := sidecars.backdropPathForMedia(mediaPath); backdropPath != "" && media.BackdropPath == "" {
+		media.BackdropPath = backdropPath
+	}
+}
+
+func (s *ScannerService) resolveThumbnailState(media *model.Media, sidecars *directorySidecarFiles) {
+	if media == nil {
+		return
+	}
+	if sidecars == nil && strings.TrimSpace(media.FilePath) != "" {
+		sidecars = s.buildDirectorySidecarFiles(filepath.Dir(media.FilePath))
+	}
+
+	media.ThumbnailStatus = ResolveThumbnailState(media, sidecars, s.thumbnailSettings())
+	media.ThumbnailFingerprint = CurrentThumbnailFingerprint(media)
+}
+
+func (s *ScannerService) applyLibraryMetadataMode(library *model.Library, media *model.Media) {
+	if library == nil || media == nil {
+		return
+	}
+
+	switch library.MetadataMode {
+	case "local_only":
+		media.ScrapeStatus = "manual"
+	case "local_preferred":
+		if media.NfoRawXml != "" {
+			media.ScrapeStatus = "manual"
+		}
+	}
+}
+
+func (s *ScannerService) prepareQuickMovieMedia(library *model.Library, media *model.Media, sidecars *directorySidecarFiles) {
+	if media == nil {
+		return
+	}
+	if sidecars == nil {
+		sidecars = s.buildDirectorySidecarFiles(filepath.Dir(media.FilePath))
+	}
+	s.scanExternalSubtitlesWithSidecars(media, sidecars)
+	s.applyLocalSidecars(media, media.FilePath, sidecars)
+	media.MetadataPhase = MetadataPhaseQuick
+	s.resolveThumbnailState(media, sidecars)
+	s.applyLibraryMetadataMode(library, media)
+}
+
+func (s *ScannerService) prepareQuickEpisodeMedia(library *model.Library, media *model.Media) {
+	if media == nil {
+		return
+	}
+	s.scanExternalSubtitles(media)
+	media.MetadataPhase = MetadataPhaseQuick
+	s.resolveThumbnailState(media, nil)
+	s.applyLibraryMetadataMode(library, media)
+}
+
+func (s *ScannerService) persistQuickMedia(media *model.Media) error {
+	if media == nil {
+		return fmt.Errorf("media is nil")
+	}
+	if err := s.mediaRepo.Create(media); err != nil {
+		return err
+	}
+	s.enqueueMetadataCompletion(media.ID, media.LibraryID, metadataTaskPriorityNormal)
+	return nil
+}
+
+func (s *ScannerService) requestMetadataCompletionIfNeeded(media *model.Media) bool {
+	if media == nil || !NeedsMetadataCompletion(media) {
+		return false
+	}
+	return s.enqueueMetadataCompletion(media.ID, media.LibraryID, metadataTaskPriorityNormal)
+}
+
+func (s *ScannerService) updateExistingEpisodeRecord(existing *model.Media, seriesID string, title string, ep EpisodeInfo) bool {
+	if existing == nil {
+		return false
+	}
+
+	needUpdate := false
+	if strings.TrimSpace(seriesID) != "" && existing.SeriesID != seriesID {
+		existing.SeriesID = seriesID
+		needUpdate = true
+	}
+	if strings.TrimSpace(title) != "" && existing.Title != title {
+		existing.Title = title
+		needUpdate = true
+	}
+	if existing.EpisodeTitle != ep.EpisodeTitle {
+		existing.EpisodeTitle = ep.EpisodeTitle
+		needUpdate = true
+	}
+	if existing.SeasonNum != ep.SeasonNum {
+		existing.SeasonNum = ep.SeasonNum
+		needUpdate = true
+	}
+	if existing.EpisodeNum != ep.EpisodeNum {
+		existing.EpisodeNum = ep.EpisodeNum
+		needUpdate = true
+	}
+	if ep.FileInfo != nil {
+		prevFileSize := existing.FileSize
+		prevModTime := existing.FileModTime
+		applyFileTimes(existing, ep.FileInfo)
+		if existing.FileSize != prevFileSize {
+			needUpdate = true
+		} else if prevModTime == nil || existing.FileModTime == nil {
+			if !(prevModTime == nil && existing.FileModTime == nil) {
+				needUpdate = true
+			}
+		} else if !prevModTime.Equal(*existing.FileModTime) {
+			needUpdate = true
+		}
+	}
+
+	if needUpdate {
+		if err := s.mediaRepo.Update(existing); err != nil {
+			s.logger.Warnf("update existing episode failed: %s, err=%v", existing.FilePath, err)
+		}
+	}
+
+	s.requestMetadataCompletionIfNeeded(existing)
+	return needUpdate
 }
 
 func (s *ScannerService) persistActorsForMedia(media *model.Media) {
@@ -1125,13 +1560,13 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			}
 			s.persistActorsForMedia(pm.media)
 			count++
-			s.logger.Infof("发现电影: %s [%s | %s | %s]", pm.media.Title, pm.media.Resolution, pm.media.VideoCodec, pm.media.AudioCodec)
+			s.logger.Infof("发现电影: %s", pm.media.Title)
 			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 				LibraryID:   library.ID,
 				LibraryName: library.Name,
 				Phase:       "scanning",
 				NewFound:    count,
-				Message:     fmt.Sprintf("发现: %s [%s]", pm.media.Title, pm.media.Resolution),
+				Message:     fmt.Sprintf("发现: %s", pm.media.Title),
 			})
 		}
 	}
@@ -1184,25 +1619,6 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 		return sidecars
 	}
 
-	applyLocalSidecars := func(media *model.Media, mediaPath string, sidecars *directorySidecarFiles) {
-		if sidecars == nil {
-			return
-		}
-
-		if nfoPath := sidecars.nfoPathForMedia(mediaPath); nfoPath != "" {
-			if parseErr := s.nfoService.ParseMovieNFO(nfoPath, media); parseErr != nil {
-				s.logger.Debugf("parse NFO failed: %s, err=%v", nfoPath, parseErr)
-			}
-		}
-
-		if sidecars.posterPath != "" && media.PosterPath == "" {
-			media.PosterPath = sidecars.posterPath
-		}
-		if sidecars.backdropPath != "" && media.BackdropPath == "" {
-			media.BackdropPath = sidecars.backdropPath
-		}
-	}
-
 	shouldRepairExistingFromLocalNFO := func(existing *model.Media, mediaPath string) bool {
 		if options.Mode != "delete_update" || !NeedsLocalMetadataRepair(existing) {
 			return false
@@ -1211,17 +1627,30 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 		return sidecars != nil && sidecars.nfoPathForMedia(mediaPath) != ""
 	}
 
+	queueExistingMetadataCompletion := func(existing *model.Media, mediaPath string) bool {
+		if existing == nil || !NeedsMetadataCompletion(existing) {
+			return false
+		}
+		if s.enqueueMetadataCompletion(existing.ID, existing.LibraryID, metadataTaskPriorityNormal) {
+			s.logger.Debugf("queued metadata completion for existing media: %s", mediaPath)
+		}
+		return true
+	}
+
 	refreshExistingMedia := func(existing *model.Media, mediaPath string, info os.FileInfo) {
 		applyFileTimes(existing, info)
 		s.probeMediaInfo(existing)
 
 		sidecars := getSidecars(mediaPath)
 		s.scanExternalSubtitlesWithSidecars(existing, sidecars)
-		applyLocalSidecars(existing, mediaPath, sidecars)
+		s.applyLocalSidecars(existing, mediaPath, sidecars)
+		existing.MetadataPhase = MetadataPhaseFull
 
 		if updateErr := s.mediaRepo.Update(existing); updateErr != nil {
 			s.logger.Warnf("update existing media failed: %s, err=%v", mediaPath, updateErr)
+			return
 		}
+		s.persistActorsForMedia(existing)
 	}
 
 	err = filepath.Walk(library.Path, func(path string, info os.FileInfo, walkErr error) error {
@@ -1276,6 +1705,8 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 						skippedUpdated++
 						refreshExistingMedia(existing, path, info)
 						s.logger.Debugf("repaired existing media metadata from local nfo: %s", path)
+					} else if findErr == nil && queueExistingMetadataCompletion(existing, path) {
+						skippedUpdated++
 					} else {
 						skippedExist++
 					}
@@ -1306,6 +1737,8 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 						skippedUpdated++
 						refreshExistingMedia(existing, path, info)
 						s.logger.Debugf("repaired existing media metadata from local nfo: %s", path)
+					} else if queueExistingMetadataCompletion(existing, path) {
+						skippedUpdated++
 					} else {
 						skippedExist++
 					}
@@ -1325,15 +1758,16 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 		title, year, tmdbID := s.extractTitleEnhanced(filename)
 		fileModTime := currentModTime
 		media := &model.Media{
-			LibraryID:    library.ID,
-			Title:        title,
-			FilePath:     path,
-			FileSize:     info.Size(),
-			FileModTime:  &fileModTime,
-			MediaType:    "movie",
-			Year:         year,
-			TMDbID:       tmdbID,
-			ScrapeStatus: "pending",
+			LibraryID:     library.ID,
+			Title:         title,
+			FilePath:      path,
+			FileSize:      info.Size(),
+			FileModTime:   &fileModTime,
+			MediaType:     "movie",
+			Year:          year,
+			TMDbID:        tmdbID,
+			MetadataPhase: MetadataPhaseQuick,
+			ScrapeStatus:  "pending",
 		}
 		applyFileTimes(media, info)
 
@@ -1359,8 +1793,6 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 	})
 
 	if len(pendingList) > 0 {
-		s.parallelProbe(pendingList)
-
 		stackGroups := make(map[string][]*pendingMedia)
 		for i := range pendingList {
 			if pendingList[i].media.StackGroup != "" {
@@ -1394,7 +1826,7 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 						s.advanceScanProgress(library, item.message)
 						continue
 					}
-					s.persistActorsForMedia(item.media)
+					s.enqueueMetadataCompletion(item.media.ID, item.media.LibraryID, metadataTaskPriorityNormal)
 					count++
 					s.advanceScanProgress(library, item.message)
 				}
@@ -1402,7 +1834,7 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 			}
 
 			for _, item := range batch {
-				s.persistActorsForMedia(item.media)
+				s.enqueueMetadataCompletion(item.media.ID, item.media.LibraryID, metadataTaskPriorityNormal)
 				count++
 				s.advanceScanProgress(library, item.message)
 			}
@@ -1412,16 +1844,8 @@ func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opt
 		for _, pm := range pendingList {
 			sidecars := getSidecars(pm.path)
 			s.scanExternalSubtitlesWithSidecars(pm.media, sidecars)
-			applyLocalSidecars(pm.media, pm.path, sidecars)
-
-			switch library.MetadataMode {
-			case "local_only":
-				pm.media.ScrapeStatus = "manual"
-			case "local_preferred":
-				if pm.media.NfoRawXml != "" {
-					pm.media.ScrapeStatus = "manual"
-				}
-			}
+			s.applyLocalSidecars(pm.media, pm.path, sidecars)
+			s.applyLibraryMetadataMode(library, pm.media)
 
 			createBatch = append(createBatch, pm)
 			if len(createBatch) >= scanCreateBatchSize {
@@ -1621,6 +2045,16 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	s.logger.Infof("混合库根目录包含 %d 个条目", len(entries))
 
 	var totalCount int
+	movieSidecarCache := make(map[string]*directorySidecarFiles)
+	getMovieSidecars := func(mediaPath string) *directorySidecarFiles {
+		dir := filepath.Dir(mediaPath)
+		if sidecars, ok := movieSidecarCache[dir]; ok {
+			return sidecars
+		}
+		sidecars := s.buildDirectorySidecarFiles(dir)
+		movieSidecarCache[dir] = sidecars
+		return sidecars
+	}
 	// === 阶段一：收集子目录，按标准化系列名分组（用于多季合并检测） ===
 	seriesDirGroups := make(map[string][]seriesFolder) // 标准化系列名 -> 目录列表
 	var movieDirs []os.DirEntry                        // 被判定为电影的目录
@@ -1689,7 +2123,8 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			if !supportedExts[ext] {
 				return nil
 			}
-			if _, err := s.mediaRepo.FindByFilePath(path); err == nil {
+			if existing, err := s.mediaRepo.FindByFilePath(path); err == nil {
+				s.requestMetadataCompletionIfNeeded(existing)
 				return nil // 已存在
 			}
 			title := s.extractTitle(filepath.Base(path))
@@ -1701,20 +2136,19 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 				MediaType: "movie",
 			}
 			applyFileTimes(media, info)
-			s.probeMediaInfo(media)
-			s.scanExternalSubtitles(media)
-			if err := s.mediaRepo.Create(media); err != nil {
+			s.prepareQuickMovieMedia(library, media, getMovieSidecars(path))
+			if err := s.persistQuickMedia(media); err != nil {
 				s.logger.Warnf("保存媒体失败: %s, 错误: %v", path, err)
 				return nil
 			}
 			totalCount++
-			s.logger.Debugf("发现电影(混合库): %s [%s | %s | %s]", title, media.Resolution, media.VideoCodec, media.AudioCodec)
+			s.logger.Debugf("发现电影(混合库): %s", title)
 			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 				LibraryID:   library.ID,
 				LibraryName: library.Name,
 				Phase:       "scanning",
 				NewFound:    totalCount,
-				Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
+				Message:     fmt.Sprintf("发现电影: %s", title),
 			})
 			return nil
 		})
@@ -1726,7 +2160,8 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	// === 阶段四：处理根目录散落的视频文件（作为电影） ===
 	for _, entry := range looseVideoFiles {
 		filePath := filepath.Join(library.Path, entry.Name())
-		if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+		if existing, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+			s.requestMetadataCompletionIfNeeded(existing)
 			continue // 已存在
 		}
 		info, err := entry.Info()
@@ -1742,20 +2177,19 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			MediaType: "movie",
 		}
 		applyFileTimes(media, info)
-		s.probeMediaInfo(media)
-		s.scanExternalSubtitles(media)
-		if err := s.mediaRepo.Create(media); err != nil {
+		s.prepareQuickMovieMedia(library, media, getMovieSidecars(filePath))
+		if err := s.persistQuickMedia(media); err != nil {
 			s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
 			continue
 		}
 		totalCount++
-		s.logger.Debugf("发现电影(散落): %s [%s]", title, media.Resolution)
+		s.logger.Debugf("发现电影(散落): %s", title)
 		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 			LibraryID:   library.ID,
 			LibraryName: library.Name,
 			Phase:       "scanning",
 			NewFound:    totalCount,
-			Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
+			Message:     fmt.Sprintf("发现电影: %s", title),
 		})
 	}
 
@@ -1957,7 +2391,8 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 			ext := strings.ToLower(filepath.Ext(entry.Name()))
 			if supportedExts[ext] {
 				filePath := filepath.Join(library.Path, entry.Name())
-				if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+				if existing, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+					s.requestMetadataCompletionIfNeeded(existing)
 					continue // 已存在
 				}
 				info, _ := entry.Info()
@@ -2027,13 +2462,12 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 					MediaType: "episode",
 				}
 				applyFileTimes(media, f.info)
-				s.probeMediaInfo(media)
-				s.scanExternalSubtitles(media)
+				s.prepareQuickEpisodeMedia(library, media)
 				ep := s.parseEpisodeInfo(f.entry.Name())
 				media.SeasonNum = ep.SeasonNum
 				media.EpisodeNum = ep.EpisodeNum
 				media.EpisodeTitle = ep.EpisodeTitle
-				if err := s.mediaRepo.Create(media); err != nil {
+				if err := s.persistQuickMedia(media); err != nil {
 					s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
 				}
 				totalNewEpisodes++
@@ -2056,13 +2490,12 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 					MediaType: "episode",
 				}
 				applyFileTimes(media, f.info)
-				s.probeMediaInfo(media)
-				s.scanExternalSubtitles(media)
+				s.prepareQuickEpisodeMedia(library, media)
 				ep := s.parseEpisodeInfo(f.entry.Name())
 				media.SeasonNum = ep.SeasonNum
 				media.EpisodeNum = ep.EpisodeNum
 				media.EpisodeTitle = ep.EpisodeTitle
-				if err := s.mediaRepo.Create(media); err != nil {
+				if err := s.persistQuickMedia(media); err != nil {
 					s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
 				}
 				totalNewEpisodes++
@@ -2110,10 +2543,9 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 				EpisodeTitle: ep.EpisodeTitle,
 			}
 			applyFileTimes(media, f.info)
-			s.probeMediaInfo(media)
-			s.scanExternalSubtitles(media)
+			s.prepareQuickEpisodeMedia(library, media)
 
-			if err := s.mediaRepo.Create(media); err != nil {
+			if err := s.persistQuickMedia(media); err != nil {
 				s.logger.Warnf("保存剧集失败: %s, 错误: %v", filePath, err)
 				continue
 			}
@@ -2121,7 +2553,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 			seasonSet[ep.SeasonNum] = true
 			newCount++
 
-			s.logger.Debugf("发现散落剧集: %s S%02dE%02d [%s]", actualSeriesName, ep.SeasonNum, ep.EpisodeNum, media.Resolution)
+			s.logger.Debugf("发现散落剧集: %s S%02dE%02d", actualSeriesName, ep.SeasonNum, ep.EpisodeNum)
 			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 				LibraryID:   library.ID,
 				LibraryName: library.Name,
@@ -2368,24 +2800,11 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 			}
 
 			// 检查是否已存在，如果存在则修正可能的脏数据（如 episode_title、season_num、episode_num）
+			epAdjusted := ep
+			epAdjusted.SeasonNum = seasonNum
 			if existing, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
 				seasonSet[seasonNum] = true
-				needUpdate := false
-				if existing.EpisodeTitle != ep.EpisodeTitle {
-					existing.EpisodeTitle = ep.EpisodeTitle
-					needUpdate = true
-				}
-				if existing.SeasonNum != seasonNum {
-					existing.SeasonNum = seasonNum
-					needUpdate = true
-				}
-				if existing.EpisodeNum != ep.EpisodeNum {
-					existing.EpisodeNum = ep.EpisodeNum
-					needUpdate = true
-				}
-				if needUpdate {
-					s.mediaRepo.Update(existing)
-				}
+				s.updateExistingEpisodeRecord(existing, series.ID, seriesTitle, epAdjusted)
 				continue
 			}
 
@@ -2396,25 +2815,24 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 				FilePath:     ep.FilePath,
 				FileSize:     ep.FileInfo.Size(),
 				MediaType:    "episode",
-				SeasonNum:    seasonNum,
-				EpisodeNum:   ep.EpisodeNum,
-				EpisodeTitle: ep.EpisodeTitle,
+				SeasonNum:    epAdjusted.SeasonNum,
+				EpisodeNum:   epAdjusted.EpisodeNum,
+				EpisodeTitle: epAdjusted.EpisodeTitle,
 			}
 			applyFileTimes(media, ep.FileInfo)
 
-			s.probeMediaInfo(media)
-			s.scanExternalSubtitles(media)
+			s.prepareQuickEpisodeMedia(library, media)
 
-			if err := s.mediaRepo.Create(media); err != nil {
+			if err := s.persistQuickMedia(media); err != nil {
 				s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
 				continue
 			}
 
-			seasonSet[seasonNum] = true
+			seasonSet[epAdjusted.SeasonNum] = true
 			totalNewCount++
 
-			s.logger.Debugf("发现剧集(多季): %s S%02dE%02d [%s | %s]",
-				seriesTitle, seasonNum, ep.EpisodeNum, media.Resolution, media.VideoCodec)
+			s.logger.Debugf("发现剧集(多季): %s S%02dE%02d",
+				seriesTitle, seasonNum, ep.EpisodeNum)
 			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 				LibraryID:   library.ID,
 				LibraryName: library.Name,
@@ -2508,22 +2926,7 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 		// 检查是否已存在，如果存在则修正可能的脏数据
 		if existing, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
 			seasonSet[ep.SeasonNum] = true
-			needUpdate := false
-			if existing.EpisodeTitle != ep.EpisodeTitle {
-				existing.EpisodeTitle = ep.EpisodeTitle
-				needUpdate = true
-			}
-			if existing.SeasonNum != ep.SeasonNum {
-				existing.SeasonNum = ep.SeasonNum
-				needUpdate = true
-			}
-			if existing.EpisodeNum != ep.EpisodeNum {
-				existing.EpisodeNum = ep.EpisodeNum
-				needUpdate = true
-			}
-			if needUpdate {
-				s.mediaRepo.Update(existing)
-			}
+			s.updateExistingEpisodeRecord(existing, series.ID, seriesTitle, ep)
 			continue
 		}
 
@@ -2540,10 +2943,9 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 		}
 		applyFileTimes(media, ep.FileInfo)
 
-		s.probeMediaInfo(media)
-		s.scanExternalSubtitles(media)
+		s.prepareQuickEpisodeMedia(library, media)
 
-		if err := s.mediaRepo.Create(media); err != nil {
+		if err := s.persistQuickMedia(media); err != nil {
 			s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
 			continue
 		}
@@ -2551,7 +2953,7 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 		seasonSet[ep.SeasonNum] = true
 		newCount++
 
-		s.logger.Debugf("发现剧集: %s S%02dE%02d [%s | %s]", seriesTitle, ep.SeasonNum, ep.EpisodeNum, media.Resolution, media.VideoCodec)
+		s.logger.Debugf("发现剧集: %s S%02dE%02d", seriesTitle, ep.SeasonNum, ep.EpisodeNum)
 		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 			LibraryID:   library.ID,
 			LibraryName: library.Name,

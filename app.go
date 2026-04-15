@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -28,11 +29,12 @@ import (
 
 // App struct
 type App struct {
-	ctx     context.Context
-	db      *gorm.DB
-	repos   *repository.Repositories
-	scanner *service.ScannerService
-	logger  *zap.SugaredLogger
+	ctx             context.Context
+	db              *gorm.DB
+	repos           *repository.Repositories
+	scanner         *service.ScannerService
+	thumbnailWorker *service.ThumbnailWorker
+	logger          *zap.SugaredLogger
 }
 
 func NewApp() *App {
@@ -67,13 +69,124 @@ func (a *App) startup(ctx context.Context) {
 	// 4. 注入之前写好的最小化 Shim 层
 	cfg := config.NewConfig()
 	wsHub := service.NewWSHub(ctx)
+	thumbnailSettingsProvider := func() service.ThumbnailSettings {
+		settings, err := a.GetDesktopSettings()
+		if err != nil || settings == nil {
+			return service.DefaultThumbnailSettings()
+		}
+		return service.ThumbnailSettings{
+			Enabled:            settings.EnableVideoThumbnail,
+			PreviewCount:       settings.ThumbnailPreviewCount,
+			MinDurationSeconds: settings.ThumbnailMinDurationSeconds,
+		}
+	}
 
 	// 5. 将桌面级组件全部注入核心 Scanner
 	a.scanner = service.NewScannerService(a.repos.Media, a.repos.Series, a.repos.Person, a.repos.MediaPerson, cfg, a.logger)
 	a.scanner.SetWSHub(wsHub)
+	a.scanner.SetThumbnailSettingsProvider(thumbnailSettingsProvider)
+	thumbSvc := service.NewThumbnailService(cfg, a.logger)
+	a.migrateThumbnailTasksV2(thumbSvc, thumbnailSettingsProvider())
+	a.thumbnailWorker = service.NewThumbnailWorker(a.repos.Media, thumbSvc, thumbnailSettingsProvider, a.logger, wsHub)
+	a.thumbnailWorker.Start()
 	// a.scanner.SetMatchRuleRepo(a.repos.MatchRule)
 
 	a.logger.Infof("Application backend started successfully! DB: %s", dbPath)
+}
+
+func (a *App) migrateThumbnailTasksV2(thumbSvc *service.ThumbnailService, settings service.ThumbnailSettings) {
+	if a.db == nil {
+		return
+	}
+
+	if a.db.Migrator().HasColumn(&model.Media{}, "thumbnail_policy") {
+		if err := a.db.Migrator().DropColumn(&model.Media{}, "thumbnail_policy"); err != nil {
+			a.logger.Warnf("drop thumbnail_policy column failed: %v", err)
+		}
+	}
+
+	if settings == (service.ThumbnailSettings{}) {
+		settings = service.DefaultThumbnailSettings()
+	}
+	if thumbSvc == nil {
+		thumbSvc = service.NewThumbnailService(config.NewConfig(), a.logger)
+	}
+	sameMediaPath := func(left string, right string) bool {
+		left = strings.TrimSpace(left)
+		right = strings.TrimSpace(right)
+		if left == "" || right == "" {
+			return left == right
+		}
+		return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+	}
+
+	type migrationStats struct {
+		scanned   int64
+		updated   int64
+		pending   int64
+		stale     int64
+		generated int64
+	}
+
+	var stats migrationStats
+	var batch []model.Media
+	result := a.db.Model(&model.Media{}).
+		Where("media_type = ? AND thumbnail_status = ? AND (thumbnail_fingerprint = '' OR thumbnail_fingerprint IS NULL)",
+			"movie", service.ThumbnailStatusNone).
+		Order("created_at ASC").
+		FindInBatches(&batch, 200, func(tx *gorm.DB, batchNum int) error {
+			for i := range batch {
+				original := batch[i]
+				media := batch[i]
+				stats.scanned++
+
+				status, fingerprint, err := service.ResolveThumbnailStateFromDisk(&media, thumbSvc, settings)
+				if err != nil && !os.IsNotExist(err) {
+					a.logger.Debugf("thumbnail v2 migration inspect failed: media=%s err=%v", media.ID, err)
+				}
+
+				if status == original.ThumbnailStatus &&
+					strings.TrimSpace(fingerprint) == strings.TrimSpace(original.ThumbnailFingerprint) &&
+					sameMediaPath(media.PosterPath, original.PosterPath) &&
+					sameMediaPath(media.BackdropPath, original.BackdropPath) {
+					continue
+				}
+
+				updates := map[string]interface{}{
+					"thumbnail_status":      status,
+					"thumbnail_fingerprint": fingerprint,
+				}
+				if !sameMediaPath(media.PosterPath, original.PosterPath) {
+					updates["poster_path"] = media.PosterPath
+				}
+				if !sameMediaPath(media.BackdropPath, original.BackdropPath) {
+					updates["backdrop_path"] = media.BackdropPath
+				}
+
+				if err := tx.Model(&model.Media{}).Where("id = ?", media.ID).Updates(updates).Error; err != nil {
+					return err
+				}
+
+				stats.updated++
+				switch status {
+				case service.ThumbnailStatusPending:
+					stats.pending++
+				case service.ThumbnailStatusStale:
+					stats.stale++
+				case service.ThumbnailStatusGenerated:
+					stats.generated++
+				}
+			}
+			return nil
+		})
+	if result.Error != nil {
+		a.logger.Warnf("thumbnail v2 migration failed: %v", result.Error)
+		return
+	}
+	if stats.updated > 0 {
+		a.logger.Infof("thumbnail v2 migration reconciled %d/%d media items (pending=%d stale=%d generated=%d)",
+			stats.updated, stats.scanned, stats.pending, stats.stale, stats.generated)
+	}
 }
 
 func (a *App) configureSQLitePerformance() {
@@ -621,6 +734,10 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 		return nil, err
 	}
 
+	if service.NormalizeMetadataPhase(media.MetadataPhase) == service.MetadataPhaseQuick {
+		a.scanner.EnqueueMetadataCompletion(media.ID, true)
+	}
+
 	if media.FilePath != "" {
 		nfoService := service.NewNFOService(a.logger)
 		if service.NeedsLocalMetadataRepair(&media) {
@@ -632,7 +749,12 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 				}
 			}
 		}
-		poster, backdrop := nfoService.FindLocalImages(filepath.Dir(media.FilePath))
+		var poster, backdrop string
+		if a.scanner != nil {
+			poster, backdrop = a.scanner.FindLocalArtworkForMedia(media.FilePath)
+		} else {
+			poster, backdrop = nfoService.FindLocalImages(filepath.Dir(media.FilePath))
+		}
 		if poster != "" && (media.PosterPath == "" || strings.Contains(strings.ToLower(filepath.Base(media.PosterPath)), "fanart")) {
 			media.PosterPath = poster
 		}
@@ -640,7 +762,6 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 			media.BackdropPath = backdrop
 		}
 	}
-
 	actors, actorText := a.resolveMediaActors(&media)
 	media.Actors = actors
 	media.Actor = actorText
@@ -677,11 +798,14 @@ type DesktopSettings struct {
 	StartWithOS  bool   `json:"start_with_os"`
 
 	// 扫描设置
-	SkipNoNfo        bool   `json:"skip_no_nfo"`
-	GetResolution    bool   `json:"get_resolution"`
-	UseEverything    bool   `json:"use_everything"`
-	EverythingAddr   string `json:"everything_addr"`
-	ScanFromVideoDir bool   `json:"scan_from_video_dir"`
+	SkipNoNfo                   bool   `json:"skip_no_nfo"`
+	GetResolution               bool   `json:"get_resolution"`
+	UseEverything               bool   `json:"use_everything"`
+	EverythingAddr              string `json:"everything_addr"`
+	ScanFromVideoDir            bool   `json:"scan_from_video_dir"`
+	EnableVideoThumbnail        bool   `json:"enable_video_thumbnail"`
+	ThumbnailPreviewCount       int    `json:"thumbnail_preview_count"`
+	ThumbnailMinDurationSeconds int    `json:"thumbnail_min_duration_seconds"`
 
 	// Emby 设置
 	EmbyEnabled bool   `json:"emby_enabled"`
@@ -694,6 +818,7 @@ var settingsPath = "settings.json"
 
 func (a *App) GetDesktopSettings() (*DesktopSettings, error) {
 	var settings DesktopSettings
+	var data []byte
 	data, err := os.ReadFile(settingsPath)
 	if err == nil {
 		json.Unmarshal(data, &settings)
@@ -710,6 +835,16 @@ func (a *App) GetDesktopSettings() (*DesktopSettings, error) {
 	}
 	if strings.TrimSpace(settings.EverythingAddr) == "" || strings.EqualFold(strings.TrimSpace(settings.EverythingAddr), "http://127.0.0.1:80") {
 		settings.EverythingAddr = "http://127.0.0.1:8077"
+	}
+	thumbnailDefaults := service.DefaultThumbnailSettings()
+	if err != nil || !bytes.Contains(data, []byte(`"enable_video_thumbnail"`)) {
+		settings.EnableVideoThumbnail = thumbnailDefaults.Enabled
+	}
+	if settings.ThumbnailPreviewCount <= 0 {
+		settings.ThumbnailPreviewCount = thumbnailDefaults.PreviewCount
+	}
+	if settings.ThumbnailMinDurationSeconds <= 0 {
+		settings.ThumbnailMinDurationSeconds = thumbnailDefaults.MinDurationSeconds
 	}
 	return &settings, nil
 }
@@ -972,7 +1107,13 @@ func (a *App) syncMediaFromNFO(mediaID string, nfoPath string) {
 		return
 	}
 
-	if poster, backdrop := nfoService.FindLocalImages(filepath.Dir(media.FilePath)); poster != "" || backdrop != "" {
+	var poster, backdrop string
+	if a.scanner != nil {
+		poster, backdrop = a.scanner.FindLocalArtworkForMedia(media.FilePath)
+	} else {
+		poster, backdrop = nfoService.FindLocalImages(filepath.Dir(media.FilePath))
+	}
+	if poster != "" || backdrop != "" {
 		if poster != "" {
 			updated.PosterPath = poster
 		}
@@ -1265,9 +1406,48 @@ type previewCandidate struct {
 }
 
 var previewImageExts = map[string]bool{".jpg": true, ".png": true, ".jpeg": true, ".webp": true}
+var previewVideoExts = map[string]bool{".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true, ".flv": true, ".webm": true, ".m4v": true, ".ts": true, ".strm": true}
 
 func isPreviewImage(path string) bool {
 	return previewImageExts[strings.ToLower(filepath.Ext(path))]
+}
+
+func countVideoFilesInDirectory(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if previewVideoExts[strings.ToLower(filepath.Ext(entry.Name()))] {
+			count++
+		}
+	}
+	return count
+}
+
+func normalizePreviewOwnershipStem(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(value)
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-'
+	})
+	return strings.Join(parts, "-")
+}
+
+func previewBelongsToMediaFile(name string, mediaFilePath string, requirePrefix bool) bool {
+	if !requirePrefix {
+		return true
+	}
+	mediaStem := normalizePreviewOwnershipStem(strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath)))
+	imageStem := normalizePreviewOwnershipStem(strings.TrimSuffix(name, filepath.Ext(name)))
+	if mediaStem == "" || imageStem == "" {
+		return false
+	}
+	return strings.HasPrefix(imageStem, mediaStem+"-")
 }
 
 func previewPriority(name string) (int, bool) {
@@ -1321,6 +1501,7 @@ func (a *App) GetMediaPreviews(mediaID string) ([]string, error) {
 		return nil, err
 	}
 	dir := filepath.Dir(media.FilePath)
+	requirePrefix := countVideoFilesInDirectory(dir) > 1
 
 	var candidates []previewCandidate
 	order := 0
@@ -1349,7 +1530,7 @@ func (a *App) GetMediaPreviews(mediaID string) ([]string, error) {
 					continue
 				}
 				path := filepath.Join(subPath, entry.Name())
-				if isPreviewImage(path) {
+				if isPreviewImage(path) && previewBelongsToMediaFile(entry.Name(), media.FilePath, requirePrefix) {
 					addCandidate(path, sub.priority)
 				}
 			}
@@ -1363,6 +1544,9 @@ func (a *App) GetMediaPreviews(mediaID string) ([]string, error) {
 			}
 			path := filepath.Join(dir, entry.Name())
 			if !isPreviewImage(path) {
+				continue
+			}
+			if !previewBelongsToMediaFile(entry.Name(), media.FilePath, requirePrefix) {
 				continue
 			}
 			if priority, ok := previewPriority(entry.Name()); ok {

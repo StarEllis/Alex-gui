@@ -107,6 +107,8 @@ function App() {
     const scanStartedAtRef = useRef<number | null>(null);
     const scanModeRef = useRef<string>('');
     const resetTitleTimerRef = useRef<number | null>(null);
+    const metadataRefreshTimerRef = useRef<number | null>(null);
+    const currentLibRef = useRef<any>(null);
 
     const setAppTitle = (title: string) => {
         WindowSetTitle(title);
@@ -183,6 +185,10 @@ function App() {
     };
 
     useEffect(() => {
+        currentLibRef.current = currentLib;
+    }, [currentLib]);
+
+    useEffect(() => {
         let frameId = 0;
         const handleResize = () => {
             window.cancelAnimationFrame(frameId);
@@ -252,6 +258,22 @@ function App() {
             setContentRefreshVersion((prev) => prev + 1);
         });
 
+        const unsubMetadata = EventsOn("media:metadata-updated", (data: any) => {
+            const activeLibraryId = currentLibRef.current?.id;
+            const eventLibraryId = typeof data?.library_id === 'string' ? data.library_id : '';
+            if (activeLibraryId && eventLibraryId && activeLibraryId !== eventLibraryId) {
+                return;
+            }
+
+            if (metadataRefreshTimerRef.current !== null) {
+                window.clearTimeout(metadataRefreshTimerRef.current);
+            }
+            metadataRefreshTimerRef.current = window.setTimeout(() => {
+                setContentRefreshVersion((prev) => prev + 1);
+                metadataRefreshTimerRef.current = null;
+            }, 250);
+        });
+
         const unsubFail = EventsOn("scan:failed", (data: any) => {
             showStatus(`扫描失败：${data?.message || '未知错误'}`);
             updateScanTitle(data, '失败 ');
@@ -265,9 +287,13 @@ function App() {
             unsubStart();
             unsubProgress();
             unsubComplete();
+            unsubMetadata();
             unsubFail();
             if (resetTitleTimerRef.current) {
                 window.clearTimeout(resetTitleTimerRef.current);
+            }
+            if (metadataRefreshTimerRef.current !== null) {
+                window.clearTimeout(metadataRefreshTimerRef.current);
             }
             scanModeRef.current = '';
             setAppTitle(APP_TITLE);

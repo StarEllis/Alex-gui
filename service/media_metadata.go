@@ -13,6 +13,12 @@ import (
 var mediaCodePattern = regexp.MustCompile(`(?i)\b([A-Z0-9]{2,10})[-_ ](\d{2,6})\b`)
 var compactMediaCodePattern = regexp.MustCompile(`(?i)\b([A-Z]{2,10})(\d{2,6})\b`)
 
+const (
+	MetadataPhaseQuick  = "quick"
+	MetadataPhaseFull   = "full"
+	MetadataPhaseFailed = "failed"
+)
+
 type DerivedMediaMetadata struct {
 	Maker         string
 	Label         string
@@ -191,6 +197,30 @@ func ApplyDerivedMediaFields(media *model.Media) DerivedMediaMetadata {
 	}
 	media.MetadataScore = metadata.MetadataScore
 	return metadata
+}
+
+func NormalizeMetadataPhase(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case MetadataPhaseQuick:
+		return MetadataPhaseQuick
+	case MetadataPhaseFailed:
+		return MetadataPhaseFailed
+	default:
+		return MetadataPhaseFull
+	}
+}
+
+func NeedsMetadataCompletion(media *model.Media) bool {
+	if media == nil {
+		return false
+	}
+
+	switch NormalizeMetadataPhase(media.MetadataPhase) {
+	case MetadataPhaseQuick, MetadataPhaseFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func NeedsLocalMetadataRepair(media *model.Media) bool {

@@ -12,6 +12,7 @@ import {
     ToggleFavorite,
     ToggleWatched,
 } from "../../wailsjs/go/main/App";
+import { ClipboardSetText, EventsOn } from "../../wailsjs/runtime/runtime";
 import {
     ArrowLeft,
     Check,
@@ -47,6 +48,11 @@ interface MediaDetailProps {
 interface DetailActor {
     id?: string;
     name: string;
+}
+
+interface CopyFeedback {
+    x: number;
+    y: number;
 }
 
 type DetailImageRole = 'poster' | 'backdrop';
@@ -144,6 +150,28 @@ const cleanOverview = (text: string) => {
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<[^>]+>/g, '')
         .trim();
+};
+
+const normalizeMetadataPhase = (phase?: string) => {
+    switch ((phase || '').trim().toLowerCase()) {
+        case 'quick':
+            return 'quick';
+        case 'failed':
+            return 'failed';
+        default:
+            return 'full';
+    }
+};
+
+const getMetadataFallback = (detail: AppMedia, fallback: string) => {
+    const phase = normalizeMetadataPhase(detail.metadata_phase);
+    if (phase === 'quick') {
+        return '补全中';
+    }
+    if (phase === 'failed') {
+        return '补全失败';
+    }
+    return fallback;
 };
 
 const getMediaCode = (detail: AppMedia, currFilePath: string) => {
@@ -290,11 +318,20 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const [nfoLoading, setNfoLoading] = useState(false);
     const [nfoSaving, setNfoSaving] = useState(false);
     const [previewViewerIndex, setPreviewViewerIndex] = useState<number | null>(null);
+    const [codeCopyFeedback, setCodeCopyFeedback] = useState<CopyFeedback | null>(null);
     const fileDropdownRef = useRef<HTMLDivElement | null>(null);
+    const codeCopyTimerRef = useRef<number | null>(null);
 
     const showMsg = (message: string) => {
         setMsg(message);
         window.setTimeout(() => setMsg(''), 4000);
+    };
+
+    const clearCodeCopyFeedbackTimer = () => {
+        if (codeCopyTimerRef.current !== null) {
+            window.clearTimeout(codeCopyTimerRef.current);
+            codeCopyTimerRef.current = null;
+        }
     };
 
     useEffect(() => {
@@ -306,6 +343,8 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         setCurrFilePath(media.file_path || '');
         setRecommendations(emptyRecommendations);
         setRecommendationLoading(true);
+        setCodeCopyFeedback(null);
+        clearCodeCopyFeedbackTimer();
 
         GetDetailRecommendations(media.id, 12)
             .then((nextRecommendations) => {
@@ -425,9 +464,42 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         }
     }, [previewViewerIndex, previews.length]);
 
+    useEffect(() => {
+        return () => {
+            clearCodeCopyFeedbackTimer();
+        };
+    }, []);
+
+    useEffect(() => {
+        const unsubscribe = EventsOn("media:metadata-updated", (data: any) => {
+            if (data?.media_id !== media.id) {
+                return;
+            }
+
+            void refreshDetailAndPreviews().catch((error) => {
+                console.error(error);
+            });
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [media.id]);
+
     const refreshDetail = async () => {
         const nextDetail = await GetMediaDetail(media.id);
         setDetail(nextDetail);
+        setCurrFilePath((prev) => (prev || nextDetail.file_path || media.file_path || '').trim());
+    };
+
+    const refreshDetailAndPreviews = async () => {
+        const [nextDetail, nextPreviews] = await Promise.all([
+            GetMediaDetail(media.id),
+            GetMediaPreviews(media.id),
+        ]);
+        setDetail(nextDetail);
+        setPreviews(Array.isArray(nextPreviews) ? nextPreviews : []);
+        setCurrFilePath((prev) => (prev || nextDetail.file_path || media.file_path || '').trim());
     };
 
     const refreshRecommendations = async () => {
@@ -592,6 +664,37 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         });
     };
 
+    const handleCopyMediaCode = async (event: React.MouseEvent<HTMLButtonElement>) => {
+        const code = getMediaCode(detail, currFilePath).trim();
+        if (!code) {
+            return;
+        }
+
+        try {
+            const copied = await ClipboardSetText(code);
+            if (!copied) {
+                clearCodeCopyFeedbackTimer();
+                setCodeCopyFeedback(null);
+                return;
+            }
+
+            setCodeCopyFeedback({
+                x: Math.round(Math.min(window.innerWidth - 96, Math.max(12, event.clientX + 10))),
+                y: Math.round(Math.min(window.innerHeight - 24, Math.max(12, event.clientY))),
+            });
+            clearCodeCopyFeedbackTimer();
+            codeCopyTimerRef.current = window.setTimeout(() => {
+                setCodeCopyFeedback(null);
+                codeCopyTimerRef.current = null;
+            }, 1200);
+        } catch (error) {
+            console.error(error);
+            clearCodeCopyFeedbackTimer();
+            setCodeCopyFeedback(null);
+            return;
+        }
+    };
+
     const posterPath = pickPosterImagePath(detail, previews);
     const immediateBackdropPath = deriveImmediateFanartPath(currFilePath || media.file_path || '');
     const backdropPath = pickBackdropImagePath(detail) || immediateBackdropPath || posterPath;
@@ -600,8 +703,15 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const actors = normalizeActors(detail);
     const tags = normalizeTags(detail);
     const filename = currFilePath?.split(/[\\/]/).pop() || '未知文件';
+    const mediaCode = getMediaCode(detail, currFilePath);
     const detailSeries = detail.series;
-
+    const metadataPhase = normalizeMetadataPhase(detail.metadata_phase);
+    const metadataHint = metadataPhase === 'quick'
+        ? '正在后台补全时长、演员和技术信息…'
+        : metadataPhase === 'failed'
+            ? '元数据补全失败，可重新扫描后再试。'
+            : '';
+    const overviewText = cleanOverview(detail.overview);
     const isPreviewViewerOpen = previewViewerIndex !== null;
     const currentPreviewPath = previewViewerIndex !== null ? previews[previewViewerIndex] : '';
     const hasPreviewNavigation = previews.length > 1;
@@ -688,10 +798,26 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                             </div>
                         </div>
 
+                        {metadataHint && (
+                            <div className={`detail-metadata-hint ${metadataPhase}`}>
+                                {metadataHint}
+                            </div>
+                        )}
+
                         <div className="detail-meta-grid">
                             <div className="meta-row">
                                 <span className="meta-label">编号</span>
-                                <span className="meta-value highlight">{getMediaCode(detail, currFilePath)}</span>
+                                <div className="meta-value meta-copy-wrap">
+                                    <button
+                                        type="button"
+                                        className="meta-copy-button highlight"
+                                        onClick={handleCopyMediaCode}
+                                        aria-label={`Copy code ${mediaCode}`}
+                                        title={'\u70b9\u51fb\u590d\u5236'}
+                                    >
+                                        {mediaCode}
+                                    </button>
+                                </div>
                             </div>
                             <div className="meta-row">
                                 <span className="meta-label">日期</span>
@@ -755,7 +881,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                         </div>
 
                         <div className="detail-desc">
-                            {cleanOverview(detail.overview)}
+                            {overviewText || getMetadataFallback(detail, '暂无简介')}
                         </div>
 
                         {previews.length > 0 && (
@@ -837,6 +963,18 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                     </div>
                 )}
             </div>
+
+            {codeCopyFeedback && (
+                <div
+                    className="meta-copy-feedback"
+                    style={{
+                        left: `${codeCopyFeedback.x}px`,
+                        top: `${codeCopyFeedback.y}px`,
+                    }}
+                >
+                    {'\u5df2\u590d\u5236'}
+                </div>
+            )}
 
             {showNFOEditor && (
                 <NFOEditModal

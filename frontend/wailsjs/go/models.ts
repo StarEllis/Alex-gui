@@ -63,6 +63,9 @@ export namespace main {
 	    use_everything: boolean;
 	    everything_addr: string;
 	    scan_from_video_dir: boolean;
+	    enable_video_thumbnail: boolean;
+	    thumbnail_preview_count: number;
+	    thumbnail_min_duration_seconds: number;
 	    emby_enabled: boolean;
 	    emby_user: string;
 	    emby_url: string;
@@ -98,6 +101,9 @@ export namespace main {
 	        this.use_everything = source["use_everything"];
 	        this.everything_addr = source["everything_addr"];
 	        this.scan_from_video_dir = source["scan_from_video_dir"];
+	        this.enable_video_thumbnail = source["enable_video_thumbnail"];
+	        this.thumbnail_preview_count = source["thumbnail_preview_count"];
+	        this.thumbnail_min_duration_seconds = source["thumbnail_min_duration_seconds"];
 	        this.emby_enabled = source["emby_enabled"];
 	        this.emby_user = source["emby_user"];
 	        this.emby_url = source["emby_url"];
@@ -330,10 +336,22 @@ export namespace model {
 	    version_group: string;
 	    nfo_extra_fields: string;
 	    release_date_normalized: string;
+	    metadata_phase: string;
 	    scrape_status: string;
 	    scrape_attempts: number;
 	    // Go type: time
 	    last_scrape_at?: any;
+	    thumbnail_status: string;
+	    thumbnail_retry_count: number;
+	    // Go type: time
+	    thumbnail_next_attempt_at?: any;
+	    // Go type: time
+	    thumbnail_locked_at?: any;
+	    thumbnail_locked_by: string;
+	    thumbnail_fingerprint: string;
+	    thumbnail_error: string;
+	    // Go type: time
+	    thumbnail_updated_at?: any;
 	    series_id: string;
 	    season_num: number;
 	    episode_num: number;
@@ -395,9 +413,18 @@ export namespace model {
 	        this.version_group = source["version_group"];
 	        this.nfo_extra_fields = source["nfo_extra_fields"];
 	        this.release_date_normalized = source["release_date_normalized"];
+	        this.metadata_phase = source["metadata_phase"];
 	        this.scrape_status = source["scrape_status"];
 	        this.scrape_attempts = source["scrape_attempts"];
 	        this.last_scrape_at = this.convertValues(source["last_scrape_at"], null);
+	        this.thumbnail_status = source["thumbnail_status"];
+	        this.thumbnail_retry_count = source["thumbnail_retry_count"];
+	        this.thumbnail_next_attempt_at = this.convertValues(source["thumbnail_next_attempt_at"], null);
+	        this.thumbnail_locked_at = this.convertValues(source["thumbnail_locked_at"], null);
+	        this.thumbnail_locked_by = source["thumbnail_locked_by"];
+	        this.thumbnail_fingerprint = source["thumbnail_fingerprint"];
+	        this.thumbnail_error = source["thumbnail_error"];
+	        this.thumbnail_updated_at = this.convertValues(source["thumbnail_updated_at"], null);
 	        this.series_id = source["series_id"];
 	        this.season_num = source["season_num"];
 	        this.episode_num = source["episode_num"];

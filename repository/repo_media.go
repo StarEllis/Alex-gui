@@ -589,3 +589,80 @@ func (r *MediaRepo) ListNeedScrape(libraryID string, skipRecentFailedDays int) (
 	err := query.Order("created_at DESC").Find(&media).Error
 	return media, err
 }
+
+func (r *MediaRepo) FindRunnableThumbnailTasks(limit int, lockTimeout time.Duration) ([]model.Media, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var media []model.Media
+	now := time.Now().UTC()
+	lockCutoff := now.Add(-lockTimeout)
+
+	err := r.db.Model(&model.Media{}).
+		Where("thumbnail_status IN ?", []string{"pending", "stale"}).
+		Where("(thumbnail_locked_at IS NULL OR thumbnail_locked_at < ?)", lockCutoff).
+		Where("(thumbnail_next_attempt IS NULL OR thumbnail_next_attempt <= ?)", now).
+		Order("CASE WHEN thumbnail_status = 'stale' THEN 1 ELSE 2 END").
+		Order("COALESCE(thumbnail_updated_at, created_at) ASC").
+		Limit(limit).
+		Find(&media).Error
+
+	return media, err
+}
+
+func (r *MediaRepo) LockThumbnailTask(mediaID string, workerID string, lockTimeout time.Duration) (bool, error) {
+	now := time.Now().UTC().Truncate(time.Second)
+	lockCutoff := now.Add(-lockTimeout)
+
+	result := r.db.Model(&model.Media{}).
+		Where("id = ?", mediaID).
+		Where("thumbnail_status IN ?", []string{"pending", "stale"}).
+		Where("(thumbnail_locked_at IS NULL OR thumbnail_locked_at < ?)", lockCutoff).
+		Updates(map[string]interface{}{
+			"thumbnail_status":    "processing",
+			"thumbnail_locked_at": &now,
+			"thumbnail_locked_by": workerID,
+		})
+
+	return result.RowsAffected > 0, result.Error
+}
+
+func (r *MediaRepo) UpdateThumbnailStatus(mediaID string, fields map[string]interface{}) error {
+	if strings.TrimSpace(mediaID) == "" || len(fields) == 0 {
+		return nil
+	}
+	return r.db.Model(&model.Media{}).Where("id = ?", mediaID).Updates(fields).Error
+}
+
+func (r *MediaRepo) PromoteFailedThumbnailTasks() (int64, error) {
+	now := time.Now().UTC().Truncate(time.Second)
+	result := r.db.Model(&model.Media{}).
+		Where("thumbnail_status IN ?", []string{"failed", "partial"}).
+		Where("thumbnail_retry_count < ?", 5).
+		Where("thumbnail_next_attempt IS NOT NULL").
+		Where("thumbnail_next_attempt <= ?", now).
+		Updates(map[string]interface{}{
+			"thumbnail_status":    "pending",
+			"thumbnail_locked_at": nil,
+			"thumbnail_locked_by": "",
+		})
+
+	return result.RowsAffected, result.Error
+}
+
+func (r *MediaRepo) RecoverStalledThumbnailTasks(lockTimeout time.Duration) (int64, error) {
+	now := time.Now().UTC().Truncate(time.Second)
+	lockCutoff := now.Add(-lockTimeout)
+
+	result := r.db.Model(&model.Media{}).
+		Where("thumbnail_status = ?", "processing").
+		Where("(thumbnail_locked_at IS NULL OR thumbnail_locked_at < ?)", lockCutoff).
+		Updates(map[string]interface{}{
+			"thumbnail_status":    "stale",
+			"thumbnail_locked_at": nil,
+			"thumbnail_locked_by": "",
+		})
+
+	return result.RowsAffected, result.Error
+}
