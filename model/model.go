@@ -219,22 +219,24 @@ func (l *Library) ApplyPathConfig() error {
 
 // Media 媒体项（电影/剧集）
 type Media struct {
-	ID            string     `json:"id" gorm:"primaryKey;type:text"`
-	LibraryID     string     `json:"library_id" gorm:"index;type:text;not null"`
-	Title         string     `json:"title" gorm:"index;type:text;not null"`
-	OrigTitle     string     `json:"orig_title" gorm:"type:text"` // 原始标题
-	Year          int        `json:"year" gorm:"index"`
-	Overview      string     `json:"overview" gorm:"type:text"`
-	PosterPath    string     `json:"poster_path" gorm:"type:text"`   // 海报图片路径
-	BackdropPath  string     `json:"backdrop_path" gorm:"type:text"` // 背景图路径
-	Rating        float64    `json:"rating"`
-	Runtime       int        `json:"runtime"`                             // 时长（分钟）
-	Genres        string     `json:"genres" gorm:"type:text"`             // 逗号分隔的类型
-	FilePath      string     `json:"file_path" gorm:"type:text;not null"` // 视频文件绝对路径
-	FileSize      int64      `json:"file_size"`
-	FileCreatedAt *time.Time `json:"file_created_at" gorm:"index"`
-	FileModTime   *time.Time `json:"file_mod_time"`
-	MediaType     string     `json:"media_type" gorm:"type:text;default:movie"` // movie / episode
+	ID                 string     `json:"id" gorm:"primaryKey;type:text"`
+	LibraryID          string     `json:"library_id" gorm:"index;type:text;not null"`
+	Title              string     `json:"title" gorm:"index;type:text;not null"`
+	OrigTitle          string     `json:"orig_title" gorm:"type:text"` // 原始标题
+	Year               int        `json:"year" gorm:"index"`
+	Overview           string     `json:"overview" gorm:"type:text"`
+	PosterPath         string     `json:"poster_path" gorm:"type:text"`   // 海报图片路径
+	BackdropPath       string     `json:"backdrop_path" gorm:"type:text"` // 背景图路径
+	Rating             float64    `json:"rating"`
+	Runtime            int        `json:"runtime"`                             // 时长（分钟）
+	Genres             string     `json:"genres" gorm:"type:text"`             // 逗号分隔的类型
+	FilePath           string     `json:"file_path" gorm:"type:text;not null"` // 视频文件绝对路径
+	FileSize           int64      `json:"file_size"`
+	FileCreatedAt      *time.Time `json:"file_created_at" gorm:"index"`
+	FileModTime        *time.Time `json:"file_mod_time"`
+	VideoFingerprint   string     `json:"video_fingerprint" gorm:"type:text"`
+	SidecarFingerprint string     `json:"sidecar_fingerprint" gorm:"type:text"`
+	MediaType          string     `json:"media_type" gorm:"type:text;default:movie"` // movie / episode
 	// 视频信息
 	VideoCodec string  `json:"video_codec" gorm:"type:text"`
 	AudioCodec string  `json:"audio_codec" gorm:"type:text"`

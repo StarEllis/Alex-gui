@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GetMediaList } from "../../wailsjs/go/main/App";
 import MediaCard from './MediaCard';
+import { loadPersistedMediaListCache, persistMediaListCache } from '../utils/persistentCache';
 
 interface MediaGridProps {
     libraryId: string;
@@ -23,6 +24,21 @@ interface MediaListCacheEntry {
 }
 
 const mediaListCache = new Map<string, MediaListCacheEntry>();
+
+const getCachedMediaListEntry = (cacheKey: string) => {
+    const memoryEntry = mediaListCache.get(cacheKey);
+    if (memoryEntry) {
+        return memoryEntry;
+    }
+
+    const persistedEntry = loadPersistedMediaListCache(cacheKey);
+    if (persistedEntry) {
+        mediaListCache.set(cacheKey, persistedEntry);
+        return persistedEntry;
+    }
+
+    return null;
+};
 
 const getMediaListCacheKey = (
     libraryId: string,
@@ -50,7 +66,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     const filterType = filter?.type || '';
     const filterValue = filter?.value || '';
     const cacheKey = getMediaListCacheKey(libraryId, keyword, sortField, sortOrder, filterType, filterValue);
-    const initialCache = mediaListCache.get(cacheKey);
+    const initialCache = getCachedMediaListEntry(cacheKey);
     const [mediaItems, setMediaItems] = useState<any[]>(() => initialCache?.items || []);
     const [isLoading, setIsLoading] = useState(() => !initialCache);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -144,7 +160,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     }, [isLoading, layout.columns, layout.gap, mediaItems.length, onScrollPositionChange]);
 
     useEffect(() => {
-        const cachedEntry = mediaListCache.get(cacheKey);
+        const cachedEntry = getCachedMediaListEntry(cacheKey);
         const requestToken = requestTokenRef.current + 1;
         requestTokenRef.current = requestToken;
 
@@ -166,6 +182,10 @@ const MediaGrid: React.FC<MediaGridProps> = ({
                 const nextItems = Array.isArray(res?.items) ? res.items : [];
                 const nextTotal = Number(res?.total || 0);
                 mediaListCache.set(cacheKey, {
+                    items: nextItems,
+                    total: nextTotal,
+                });
+                persistMediaListCache(cacheKey, {
                     items: nextItems,
                     total: nextTotal,
                 });

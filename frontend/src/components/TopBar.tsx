@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
 
+const CLEAR_FILTER_LABEL = '\u6e05\u9664\u7b5b\u9009';
+
 type MenuType = 'scan' | 'sort' | null;
 
 type SortOption = {
@@ -129,6 +131,7 @@ const TopBar: React.FC<TopBarProps> = ({
     const countLabel = `${mediaCount.toLocaleString()} 个项目`;
     const headerHint = filterLabel || '';
     const currentSortLabel = getSortLabel(sortField, sortOptions);
+    const showClearAction = Boolean(onClearFilter);
 
     return (
         <>
@@ -146,7 +149,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
                     <div className="workspace-header-search no-drag">
                         <div className="workspace-search-group">
-                            <label className={`workspace-search-shell ${searchDisabled ? 'disabled' : ''}`}>
+                            <label className={`workspace-search-shell ${searchDisabled ? 'disabled' : ''} ${showClearAction ? 'has-clear' : ''}`}>
                                 <span className="workspace-search-icon-wrap">
                                     <Search size={15} strokeWidth={2} className="workspace-search-icon" />
                                 </span>
@@ -158,16 +161,21 @@ const TopBar: React.FC<TopBarProps> = ({
                                     onChange={(event) => onSearch(event.target.value)}
                                     disabled={searchDisabled}
                                 />
+                                {showClearAction && (
+                                    <button
+                                        type="button"
+                                        className="workspace-search-clear"
+                                        aria-label={CLEAR_FILTER_LABEL}
+                                        onClick={() => onClearFilter?.()}
+                                    >
+                                        {CLEAR_FILTER_LABEL}
+                                    </button>
+                                )}
                             </label>
                         </div>
                     </div>
 
                     <div className="workspace-header-actions no-drag">
-                        {onClearFilter && (
-                            <button type="button" className="workspace-action-btn subtle" onClick={onClearFilter}>
-                                清除筛选
-                            </button>
-                        )}
 
                         {onBackButtonClick && (
                             <button type="button" className="workspace-action-btn subtle" onClick={onBackButtonClick}>

@@ -310,6 +310,8 @@ export namespace model {
 	    file_created_at?: any;
 	    // Go type: time
 	    file_mod_time?: any;
+	    video_fingerprint: string;
+	    sidecar_fingerprint: string;
 	    media_type: string;
 	    video_codec: string;
 	    audio_codec: string;
@@ -387,6 +389,8 @@ export namespace model {
 	        this.file_size = source["file_size"];
 	        this.file_created_at = this.convertValues(source["file_created_at"], null);
 	        this.file_mod_time = this.convertValues(source["file_mod_time"], null);
+	        this.video_fingerprint = source["video_fingerprint"];
+	        this.sidecar_fingerprint = source["sidecar_fingerprint"];
 	        this.media_type = source["media_type"];
 	        this.video_codec = source["video_codec"];
 	        this.audio_codec = source["audio_codec"];

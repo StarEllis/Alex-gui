@@ -1226,6 +1226,7 @@ body {
     max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+    overscroll-behavior: contain;
     padding: 2px 0 8px;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
@@ -1346,6 +1347,7 @@ body {
 
 .preview-strip.has-scrollbar {
     overflow-x: auto;
+    overscroll-behavior: contain;
 }
 
 .preview-strip.has-scrollbar::-webkit-scrollbar {
@@ -2628,6 +2630,17 @@ body {
   overflow-y: auto;
 }
 
+.detail-drag-zone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  z-index: 3;
+  user-select: none;
+  --wails-draggable: drag;
+}
+
 .detail-hero {
   display: flex;
   align-items: flex-start;
@@ -2997,6 +3010,10 @@ body {
 }
 
 @media (max-width: 960px) {
+  .detail-drag-zone {
+    height: 18px;
+  }
+
   .detail-main {
     padding: 18px 18px 16px;
     gap: 16px;

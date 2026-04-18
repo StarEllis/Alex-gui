@@ -1651,9 +1651,9 @@ func (a *App) ScanLibraryWithMode(libraryID string, mode string) error {
 
 	options := service.ScanOptions{
 		Mode:        mode,
-		Incremental: mode != "overwrite",
-		// "delete_update" no longer performs the pre-clean existence sweep because
-		// it blocks refresh on large libraries and duplicates the normal scan pass.
+		Incremental: mode == "incremental",
+		// Delete/update mode now handles deletes and sidecar changes inside the
+		// main sync pass instead of running a separate full-library existence sweep.
 		CleanDeleted: false,
 	}
 	a.startScanWithOptions(lib, mode, options)

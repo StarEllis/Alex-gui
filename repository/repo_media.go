@@ -505,17 +505,20 @@ func (r *MediaRepo) GetAllFilePathsByLibrary(libraryID string) (map[string]bool,
 }
 
 type MediaFileSignature struct {
-	ID            string
-	FilePath      string
-	FileSize      int64
-	FileCreatedAt *time.Time
-	FileModTime   *time.Time
+	ID                 string
+	FilePath           string
+	SeriesID           string
+	FileSize           int64
+	FileCreatedAt      *time.Time
+	FileModTime        *time.Time
+	VideoFingerprint   string
+	SidecarFingerprint string
 }
 
 func (r *MediaRepo) GetAllFileSignaturesByLibrary(libraryID string) (map[string]MediaFileSignature, error) {
 	var rows []MediaFileSignature
 	err := r.db.Model(&model.Media{}).
-		Select("id, file_path, file_size, file_created_at, file_mod_time").
+		Select("id, file_path, series_id, file_size, file_created_at, file_mod_time, video_fingerprint, sidecar_fingerprint").
 		Where("library_id = ?", libraryID).
 		Scan(&rows).Error
 	if err != nil {

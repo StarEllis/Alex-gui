@@ -12,7 +12,7 @@ import {
     ToggleFavorite,
     ToggleWatched,
 } from "../../wailsjs/go/main/App";
-import { ClipboardSetText, EventsOn } from "../../wailsjs/runtime/runtime";
+import { ClipboardSetText, EventsOn, WindowToggleMaximise } from "../../wailsjs/runtime/runtime";
 import {
     ArrowLeft,
     Check,
@@ -320,6 +320,9 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const [previewViewerIndex, setPreviewViewerIndex] = useState<number | null>(null);
     const [codeCopyFeedback, setCodeCopyFeedback] = useState<CopyFeedback | null>(null);
     const fileDropdownRef = useRef<HTMLDivElement | null>(null);
+    const chipRowRef = useRef<HTMLDivElement | null>(null);
+    const chipStripRef = useRef<HTMLDivElement | null>(null);
+    const previewStripRef = useRef<HTMLDivElement | null>(null);
     const codeCopyTimerRef = useRef<number | null>(null);
 
     const showMsg = (message: string) => {
@@ -465,6 +468,48 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     }, [previewViewerIndex, previews.length]);
 
     useEffect(() => {
+        const chipRow = chipRowRef.current;
+        if (!chipRow) {
+            return;
+        }
+
+        const handleWheel = (event: WheelEvent) => {
+            if (!scrollHorizontalContainer(chipStripRef.current, event.deltaX, event.deltaY)) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        chipRow.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+        return () => {
+            chipRow.removeEventListener('wheel', handleWheel, true);
+        };
+    }, []);
+
+    useEffect(() => {
+        const previewStrip = previewStripRef.current;
+        if (!previewStrip) {
+            return;
+        }
+
+        const handleWheel = (event: WheelEvent) => {
+            if (!scrollHorizontalContainer(previewStrip, event.deltaX, event.deltaY)) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        previewStrip.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+        return () => {
+            previewStrip.removeEventListener('wheel', handleWheel, true);
+        };
+    }, [previews.length]);
+
+    useEffect(() => {
         return () => {
             clearCodeCopyFeedbackTimer();
         };
@@ -608,34 +653,26 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         }
     };
 
-    const handleChipStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-        const container = event.currentTarget;
-        if (container.scrollWidth <= container.clientWidth) {
-            return;
+    const scrollHorizontalContainer = (
+        container: HTMLDivElement | null,
+        deltaX: number,
+        deltaY: number,
+    ) => {
+        if (!container) {
+            return false;
         }
 
-        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (container.scrollWidth <= container.clientWidth) {
+            return false;
+        }
+
+        const delta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY;
         if (delta === 0) {
-            return;
+            return false;
         }
 
         container.scrollLeft += delta;
-        event.preventDefault();
-    };
-
-    const handlePreviewStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-        const container = event.currentTarget;
-        if (container.scrollWidth <= container.clientWidth) {
-            return;
-        }
-
-        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-        if (delta === 0) {
-            return;
-        }
-
-        container.scrollLeft += delta;
-        event.preventDefault();
+        return true;
     };
 
     const handleOpenPreviewViewer = (index: number) => {
@@ -733,6 +770,8 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                         </>
                     )}
                 </div>
+
+                <div className="detail-drag-zone" onDoubleClick={WindowToggleMaximise} />
 
                 <div className="detail-main">
                     <div className="detail-hero">
@@ -844,9 +883,12 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                                     )) : '未知'}
                                 </div>
                             </div>
-                            <div className="meta-row chips-row">
+                            <div className="meta-row chips-row" ref={chipRowRef}>
                                 <span className="meta-label">类型</span>
-                                <div className="meta-value chip-strip-shell" onWheel={handleChipStripWheel}>
+                                <div
+                                    className="meta-value chip-strip-shell"
+                                    ref={chipStripRef}
+                                >
                                     <div className="tag-chips-scroll">
                                         {tags.length > 0 ? tags.map((tag: string, index: number) => (
                                             <button
@@ -889,7 +931,7 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
                                 <div className="previews-label">预览剧照 ({previews.length})</div>
                                 <div
                                     className={`preview-strip ${previews.length > 1 ? 'has-scrollbar' : 'no-scrollbar'}`}
-                                    onWheel={handlePreviewStripWheel}
+                                    ref={previewStripRef}
                                 >
                                     {previews.map((preview, index) => (
                                         <button

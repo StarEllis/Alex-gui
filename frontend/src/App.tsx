@@ -18,6 +18,7 @@ import SettingsPage from './components/SettingsPage';
 import LibraryModal from './components/LibraryModal';
 import LibraryEditModal from './components/LibraryEditModal';
 import MediaDetail from './components/MediaDetail';
+import { loadInitialLibraryState, persistCurrentLibraryID, persistLibraries } from './utils/persistentCache';
 
 type ViewName = 'libs' | 'settings' | 'actor' | 'genre' | 'watched' | 'favorite';
 type SortOrder = 'asc' | 'desc';
@@ -88,18 +89,26 @@ const formatError = (error: unknown) => {
 };
 
 function App() {
+    const initialLibraryStateRef = useRef<ReturnType<typeof loadInitialLibraryState> | null>(null);
+    if (!initialLibraryStateRef.current) {
+        initialLibraryStateRef.current = loadInitialLibraryState();
+    }
+    const initialLibraryState = initialLibraryStateRef.current;
     const [layoutVersion, setLayoutVersion] = useState(0);
     const [contentRefreshVersion, setContentRefreshVersion] = useState(0);
     const [view, setView] = useState<ViewName>('libs');
-    const [libraries, setLibraries] = useState<any[]>([]);
-    const [currentLib, setCurrentLib] = useState<any>(null);
+    const [libraries, setLibraries] = useState<any[]>(() => initialLibraryState.libraries);
+    const [currentLib, setCurrentLib] = useState<any>(() => initialLibraryState.currentLibrary);
     const [searchKeyword, setSearchKeyword] = useState('');
     const [showLibModal, setShowLibModal] = useState(false);
     const [editingLib, setEditingLib] = useState<any>(null);
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
     const [statusMsg, setStatusMsg] = useState('');
     const [scanProgress, setScanProgress] = useState<ScanProgressState | null>(null);
-    const [mediaCount, setMediaCount] = useState(0);
+    const [mediaCount, setMediaCount] = useState(() => {
+        const initialCount = initialLibraryState.currentLibrary?.media_count;
+        return typeof initialCount === 'number' ? initialCount : 0;
+    });
     const [activeFilter, setActiveFilter] = useState<FilterState>(null);
     const [filterReturnContext, setFilterReturnContext] = useState<FilterReturnContext>(null);
     const [sortStateByView, setSortStateByView] = useState<Record<SortViewName, SortConfig>>(DEFAULT_SORTS);
@@ -186,6 +195,14 @@ function App() {
 
     useEffect(() => {
         currentLibRef.current = currentLib;
+    }, [currentLib]);
+
+    useEffect(() => {
+        persistLibraries(libraries);
+    }, [libraries]);
+
+    useEffect(() => {
+        persistCurrentLibraryID(currentLib?.id || '');
     }, [currentLib]);
 
     useEffect(() => {
@@ -301,15 +318,20 @@ function App() {
     }, []);
 
     const clearFilter = () => {
+        const hasFilterContext = Boolean(activeFilter || filterReturnContext);
         setActiveFilter(null);
         setSearchKeyword('');
-        if (filterReturnContext) {
-            setView(filterReturnContext.view);
-            setSelectedMedia(filterReturnContext.media);
-        } else {
-            setView('libs');
-            setSelectedMedia(null);
+
+        if (hasFilterContext) {
+            if (filterReturnContext) {
+                setView(filterReturnContext.view);
+                setSelectedMedia(filterReturnContext.media);
+            } else {
+                setView('libs');
+                setSelectedMedia(null);
+            }
         }
+
         setFilterReturnContext(null);
     };
 
@@ -579,7 +601,7 @@ function App() {
                                 sortOrder={sortOrder}
                                 sortOptions={showListActions ? currentSortOptions : undefined}
                                 onBackButtonClick={view !== 'libs' ? handleNavigateHome : undefined}
-                                onClearFilter={activeFilter ? clearFilter : undefined}
+                                onClearFilter={activeFilter || searchKeyword.trim() ? clearFilter : undefined}
                             />
                         )}
 
