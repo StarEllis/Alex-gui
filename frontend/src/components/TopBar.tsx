@@ -23,6 +23,7 @@ type SortOption = {
 interface TopBarProps {
     currentLibraryName: string;
     mediaCount: number;
+    hidden?: boolean;
     filterLabel?: string;
     searchValue: string;
     onSearch: (keyword: string) => void;
@@ -70,6 +71,7 @@ const shouldIgnoreHeaderDoubleClick = (target: EventTarget | null) => {
 const TopBar: React.FC<TopBarProps> = ({
     currentLibraryName,
     mediaCount,
+    hidden = false,
     filterLabel,
     searchValue,
     onSearch,
@@ -135,7 +137,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
     return (
         <>
-            <div className="topbar" ref={menuRootRef} onDoubleClick={handleHeaderDoubleClick}>
+            <div className={`topbar ${hidden ? 'topbar-hidden' : ''}`} ref={menuRootRef} onDoubleClick={handleHeaderDoubleClick}>
                 <div className="workspace-header-main">
                     <div className="workspace-header-heading">
                         <div className="workspace-header-title-row">

@@ -24,6 +24,8 @@ export function GetLibraries():Promise<Array<model.Library>>;
 
 export function GetMediaDetail(arg1:string):Promise<model.Media>;
 
+export function GetMediaDetailBundle(arg1:string):Promise<main.MediaDetailBundle>;
+
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
 export function GetMediaList(arg1:string,arg2:number,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<any>;

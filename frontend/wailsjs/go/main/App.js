@@ -42,6 +42,10 @@ export function GetMediaDetail(arg1) {
   return window['go']['main']['App']['GetMediaDetail'](arg1);
 }
 
+export function GetMediaDetailBundle(arg1) {
+  return window['go']['main']['App']['GetMediaDetailBundle'](arg1);
+}
+
 export function GetMediaFiles(arg1) {
   return window['go']['main']['App']['GetMediaFiles'](arg1);
 }

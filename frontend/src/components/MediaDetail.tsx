@@ -3,8 +3,6 @@ import {
     DeleteMedia,
     GetDetailRecommendations,
     GetMediaDetail,
-    GetMediaFiles,
-    GetMediaPreviews,
     GetNFOEditorData,
     OpenMediaFolder,
     PlayFile,
@@ -37,12 +35,21 @@ import type {
     RecommendationItem,
 } from '../types/wails';
 import { formatError, toLocalAssetUrl } from '../utils/media';
+import {
+    fetchMediaDetailCacheEntry,
+    getMediaDetailCacheEntry,
+    mergeMediaDetailCacheEntry,
+    removeMediaDetailCacheEntry,
+    seedMediaDetailCache,
+} from '../utils/mediaDetailCache';
 
 interface MediaDetailProps {
     media: AppMedia;
     onClose: () => void;
     onSelectMedia: (media: AppMedia) => void;
     onSelectFilter: (filter: MediaFilter) => void;
+    onMediaChange?: (media: AppMedia) => void;
+    onMediaDelete?: (mediaID: string) => void;
 }
 
 interface DetailActor {
@@ -304,7 +311,14 @@ const mergeRecommendationItems = (recommendationGroups?: RecommendationGroups | 
 
 const emptyRecommendations: RecommendationGroups = { continue_watching: [], more_like_this: [] };
 
-const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia, onSelectFilter }) => {
+const MediaDetail: React.FC<MediaDetailProps> = ({
+    media,
+    onClose,
+    onSelectMedia,
+    onSelectFilter,
+    onMediaChange,
+    onMediaDelete,
+}) => {
     const [detail, setDetail] = useState(media);
     const [msg, setMsg] = useState('');
     const [files, setFiles] = useState<string[]>([]);
@@ -337,13 +351,27 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
         }
     };
 
+    const applyResolvedDetail = (nextDetail: AppMedia) => {
+        setDetail(nextDetail);
+        setCurrFilePath((prev) => (prev || nextDetail.file_path || media.file_path || '').trim());
+        mergeMediaDetailCacheEntry(nextDetail);
+        onMediaChange?.(nextDetail);
+    };
+
     useEffect(() => {
         let active = true;
+        const cachedEntry = getMediaDetailCacheEntry(media.id);
+        const fallbackFiles = cachedEntry?.files?.length
+            ? cachedEntry.files
+            : (typeof media.file_path === 'string' && media.file_path.trim() ? [media.file_path.trim()] : []);
+        const fallbackPreviews = cachedEntry?.previews || [];
+        const initialDetail = cachedEntry?.detail || media;
 
-        setDetail(media);
-        setFiles([]);
-        setPreviews([]);
-        setCurrFilePath(media.file_path || '');
+        seedMediaDetailCache(media);
+        setDetail(initialDetail);
+        setFiles(fallbackFiles);
+        setPreviews(fallbackPreviews);
+        setCurrFilePath((cachedEntry?.detail?.file_path || fallbackFiles[0] || media.file_path || '').trim());
         setRecommendations(emptyRecommendations);
         setRecommendationLoading(true);
         setCodeCopyFeedback(null);
@@ -371,23 +399,17 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
 
         const load = async () => {
             try {
-                const [nextDetail, nextFiles, nextPreviews] = await Promise.all([
-                    GetMediaDetail(media.id),
-                    GetMediaFiles(media.id),
-                    GetMediaPreviews(media.id),
-                ]);
+                const nextEntry = await fetchMediaDetailCacheEntry(media.id);
 
                 if (!active) {
                     return;
                 }
 
-                const normalizedFiles = Array.isArray(nextFiles) ? nextFiles : [];
-                const initialFilePath = (nextDetail?.file_path || normalizedFiles[0] || media.file_path || '').trim();
-
-                setDetail(nextDetail);
-                setFiles(normalizedFiles);
-                setPreviews(Array.isArray(nextPreviews) ? nextPreviews : []);
-                setCurrFilePath(initialFilePath);
+                setDetail(nextEntry.detail);
+                setFiles(nextEntry.files);
+                setPreviews(nextEntry.previews);
+                setCurrFilePath((nextEntry.detail?.file_path || nextEntry.files[0] || media.file_path || '').trim());
+                onMediaChange?.(nextEntry.detail);
             } catch (error) {
                 console.error(error);
                 if (!active) {
@@ -533,18 +555,16 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
 
     const refreshDetail = async () => {
         const nextDetail = await GetMediaDetail(media.id);
-        setDetail(nextDetail);
-        setCurrFilePath((prev) => (prev || nextDetail.file_path || media.file_path || '').trim());
+        applyResolvedDetail(nextDetail);
     };
 
     const refreshDetailAndPreviews = async () => {
-        const [nextDetail, nextPreviews] = await Promise.all([
-            GetMediaDetail(media.id),
-            GetMediaPreviews(media.id),
-        ]);
-        setDetail(nextDetail);
-        setPreviews(Array.isArray(nextPreviews) ? nextPreviews : []);
-        setCurrFilePath((prev) => (prev || nextDetail.file_path || media.file_path || '').trim());
+        const nextEntry = await fetchMediaDetailCacheEntry(media.id);
+        setDetail(nextEntry.detail);
+        setFiles(nextEntry.files);
+        setPreviews(nextEntry.previews);
+        setCurrFilePath((prev) => (prev || nextEntry.detail.file_path || media.file_path || '').trim());
+        onMediaChange?.(nextEntry.detail);
     };
 
     const refreshRecommendations = async () => {
@@ -626,6 +646,8 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
 
         try {
             await DeleteMedia(detail.id);
+            removeMediaDetailCacheEntry(detail.id);
+            onMediaDelete?.(detail.id);
             onClose();
         } catch (error) {
             console.error(error);
@@ -636,7 +658,12 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const handleFav = async () => {
         try {
             await ToggleFavorite(detail.id);
-            setDetail((prev) => ({ ...prev, is_favorite: !prev.is_favorite }));
+            setDetail((prev) => {
+                const nextDetail = { ...prev, is_favorite: !prev.is_favorite };
+                mergeMediaDetailCacheEntry(nextDetail);
+                onMediaChange?.(nextDetail);
+                return nextDetail;
+            });
         } catch (error) {
             console.error(error);
             showMsg(`收藏失败：${formatError(error)}`);
@@ -646,7 +673,12 @@ const MediaDetail: React.FC<MediaDetailProps> = ({ media, onClose, onSelectMedia
     const handleWatched = async () => {
         try {
             await ToggleWatched(detail.id);
-            setDetail((prev) => ({ ...prev, is_watched: !prev.is_watched }));
+            setDetail((prev) => {
+                const nextDetail = { ...prev, is_watched: !prev.is_watched };
+                mergeMediaDetailCacheEntry(nextDetail);
+                onMediaChange?.(nextDetail);
+                return nextDetail;
+            });
         } catch (error) {
             console.error(error);
             showMsg(`更新观看状态失败：${formatError(error)}`);

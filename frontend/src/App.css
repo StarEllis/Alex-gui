@@ -3036,3 +3036,21 @@ body {
     flex-basis: 168px;
   }
 }
+
+.main-content {
+  position: relative;
+}
+
+.topbar-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.detail-overlay-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}

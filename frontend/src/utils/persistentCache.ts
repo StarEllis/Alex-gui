@@ -6,7 +6,7 @@ const MEDIA_LIST_CACHE_VERSION = 1;
 const MEDIA_LIST_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_MEDIA_LIST_ENTRIES = 10;
 
-type MediaListCacheEntry = {
+export type MediaListCacheEntry = {
     items: any[];
     total: number;
 };
@@ -25,6 +25,8 @@ type InitialLibraryState = {
     libraries: any[];
     currentLibrary: any | null;
 };
+
+const mediaListMemoryCache = new Map<string, MediaListCacheEntry>();
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
@@ -220,10 +222,35 @@ export const loadPersistedMediaListCache = (cacheKey: string): MediaListCacheEnt
     };
 };
 
+export const getCachedMediaListEntry = (cacheKey: string): MediaListCacheEntry | null => {
+    if (!cacheKey) {
+        return null;
+    }
+
+    const memoryEntry = mediaListMemoryCache.get(cacheKey);
+    if (memoryEntry) {
+        return memoryEntry;
+    }
+
+    const persistedEntry = loadPersistedMediaListCache(cacheKey);
+    if (persistedEntry) {
+        mediaListMemoryCache.set(cacheKey, persistedEntry);
+        return persistedEntry;
+    }
+
+    return null;
+};
+
 export const persistMediaListCache = (cacheKey: string, entry: MediaListCacheEntry) => {
     if (!cacheKey) {
         return;
     }
+
+    const normalizedEntry = {
+        items: normalizeCachedMediaItems(entry.items),
+        total: typeof entry.total === 'number' ? entry.total : 0,
+    };
+    mediaListMemoryCache.set(cacheKey, normalizedEntry);
 
     const store = readMediaListCacheStore();
     const nextOrder = [cacheKey, ...store.order.filter((key) => key !== cacheKey)].slice(0, MAX_MEDIA_LIST_ENTRIES);
@@ -232,8 +259,8 @@ export const persistMediaListCache = (cacheKey: string, entry: MediaListCacheEnt
     nextOrder.forEach((key) => {
         if (key === cacheKey) {
             nextEntries[key] = {
-                items: normalizeCachedMediaItems(entry.items),
-                total: typeof entry.total === 'number' ? entry.total : 0,
+                items: normalizedEntry.items,
+                total: normalizedEntry.total,
                 updatedAt: Date.now(),
             };
             return;
@@ -247,6 +274,117 @@ export const persistMediaListCache = (cacheKey: string, entry: MediaListCacheEnt
     writeMediaListCacheStore({
         version: MEDIA_LIST_CACHE_VERSION,
         order: nextOrder,
+        entries: nextEntries,
+    });
+};
+
+const writeUpdatedMediaListCacheStore = (store: PersistedMediaListCacheStore) => {
+    const normalizedStore = normalizeMediaListCacheStore(store);
+    writeMediaListCacheStore(normalizedStore);
+    mediaListMemoryCache.clear();
+    normalizedStore.order.forEach((key) => {
+        const entry = normalizedStore.entries[key];
+        if (!entry) {
+            return;
+        }
+        mediaListMemoryCache.set(key, {
+            items: entry.items,
+            total: entry.total,
+        });
+    });
+};
+
+const mergeCachedMediaFields = (item: any, media: any) => ({
+    ...item,
+    ...pickCachedMediaFields({
+        ...item,
+        ...media,
+    }),
+});
+
+export const mergeMediaIntoCachedMediaLists = (media: any) => {
+    const mediaID = typeof media?.id === 'string' ? media.id.trim() : '';
+    if (!mediaID) {
+        return;
+    }
+
+    const store = readMediaListCacheStore();
+    let changed = false;
+    const nextEntries: Record<string, PersistedMediaListCacheEntry> = {};
+
+    store.order.forEach((key) => {
+        const entry = store.entries[key];
+        if (!entry) {
+            return;
+        }
+
+        let entryChanged = false;
+        const nextItems = entry.items.map((item) => {
+            if (item?.id !== mediaID) {
+                return item;
+            }
+
+            entryChanged = true;
+            return mergeCachedMediaFields(item, media);
+        });
+
+        nextEntries[key] = entryChanged
+            ? {
+                ...entry,
+                items: nextItems,
+                updatedAt: Date.now(),
+            }
+            : entry;
+        changed = changed || entryChanged;
+    });
+
+    if (!changed) {
+        return;
+    }
+
+    writeUpdatedMediaListCacheStore({
+        ...store,
+        entries: nextEntries,
+    });
+};
+
+export const removeMediaFromCachedMediaLists = (mediaID: string) => {
+    const normalizedMediaID = typeof mediaID === 'string' ? mediaID.trim() : '';
+    if (!normalizedMediaID) {
+        return;
+    }
+
+    const store = readMediaListCacheStore();
+    let changed = false;
+    const nextEntries: Record<string, PersistedMediaListCacheEntry> = {};
+
+    store.order.forEach((key) => {
+        const entry = store.entries[key];
+        if (!entry) {
+            return;
+        }
+
+        const nextItems = entry.items.filter((item) => item?.id !== normalizedMediaID);
+        if (nextItems.length === entry.items.length) {
+            nextEntries[key] = entry;
+            return;
+        }
+
+        changed = true;
+        nextEntries[key] = {
+            ...entry,
+            items: nextItems,
+            total: Math.max(0, entry.total - (entry.items.length - nextItems.length)),
+            updatedAt: Date.now(),
+        };
+    });
+
+    if (!changed) {
+        return;
+    }
+
+    writeUpdatedMediaListCacheStore({
+        ...store,
         entries: nextEntries,
     });
 };

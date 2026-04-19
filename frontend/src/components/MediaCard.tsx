@@ -1,11 +1,13 @@
 import React from 'react';
 import { Play } from 'lucide-react';
 import { PlayFile } from "../../wailsjs/go/main/App";
+import { toLocalAssetUrl } from '../utils/media';
 
 interface MediaCardProps {
     media: any;
     onClick: () => void;
     onQuickPlayStatus?: (message: string) => void;
+    onPrefetch?: () => void;
 }
 
 const formatError = (error: unknown) => {
@@ -18,11 +20,11 @@ const formatError = (error: unknown) => {
     return '未知错误';
 };
 
-const MediaCard: React.FC<MediaCardProps> = ({ media, onClick, onQuickPlayStatus }) => {
+const MediaCard: React.FC<MediaCardProps> = ({ media, onClick, onQuickPlayStatus, onPrefetch }) => {
     const coverUrl = media.poster_path
-        ? `/local/${media.poster_path}`
+        ? toLocalAssetUrl(media.poster_path)
         : media.backdrop_path
-            ? `/local/${media.backdrop_path}`
+            ? toLocalAssetUrl(media.backdrop_path)
             : '';
 
     const handleQuickPlay = async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -44,7 +46,12 @@ const MediaCard: React.FC<MediaCardProps> = ({ media, onClick, onQuickPlayStatus
     };
 
     return (
-        <div className="media-card" onClick={onClick}>
+        <div
+            className="media-card"
+            onClick={onClick}
+            onPointerEnter={onPrefetch}
+            onFocus={onPrefetch}
+        >
             <div className="media-poster-wrapper">
                 {coverUrl ? (
                     <img

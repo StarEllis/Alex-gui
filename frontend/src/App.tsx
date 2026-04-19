@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import './library-refine.css';
 import {
@@ -12,13 +12,20 @@ import {
 import { EventsOn, WindowSetDarkTheme, WindowSetTitle } from "../wailsjs/runtime/runtime";
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
-import MediaGrid from './components/MediaGrid';
+import MediaGrid, { getMediaListCacheKey, type MediaGridMutation } from './components/MediaGrid';
 import CategoryGrid from './components/CategoryGrid';
 import SettingsPage from './components/SettingsPage';
 import LibraryModal from './components/LibraryModal';
 import LibraryEditModal from './components/LibraryEditModal';
 import MediaDetail from './components/MediaDetail';
-import { loadInitialLibraryState, persistCurrentLibraryID, persistLibraries } from './utils/persistentCache';
+import {
+    loadInitialLibraryState,
+    mergeMediaIntoCachedMediaLists,
+    persistCurrentLibraryID,
+    persistLibraries,
+    removeMediaFromCachedMediaLists,
+} from './utils/persistentCache';
+import { seedMediaDetailCache } from './utils/mediaDetailCache';
 
 type ViewName = 'libs' | 'settings' | 'actor' | 'genre' | 'watched' | 'favorite';
 type SortOrder = 'asc' | 'desc';
@@ -88,6 +95,41 @@ const formatError = (error: unknown) => {
     return '未知错误';
 };
 
+const getMediaGridScrollKey = (
+    libraryId: string,
+    view: ViewName,
+    keyword: string,
+    sortField: SortField,
+    sortOrder: SortOrder,
+    filter: FilterState,
+) => {
+    const normalizedLibraryID = typeof libraryId === 'string' ? libraryId.trim() : '';
+    if (!normalizedLibraryID) {
+        return '';
+    }
+
+    if (view === 'watched') {
+        return getMediaListCacheKey(normalizedLibraryID, keyword, sortField, sortOrder, 'watched', 'true');
+    }
+
+    if (view === 'favorite') {
+        return getMediaListCacheKey(normalizedLibraryID, keyword, sortField, sortOrder, 'favorite', 'true');
+    }
+
+    if (view !== 'libs') {
+        return '';
+    }
+
+    return getMediaListCacheKey(
+        normalizedLibraryID,
+        keyword,
+        sortField,
+        sortOrder,
+        filter?.type || '',
+        filter?.value || '',
+    );
+};
+
 function App() {
     const initialLibraryStateRef = useRef<ReturnType<typeof loadInitialLibraryState> | null>(null);
     if (!initialLibraryStateRef.current) {
@@ -112,7 +154,8 @@ function App() {
     const [activeFilter, setActiveFilter] = useState<FilterState>(null);
     const [filterReturnContext, setFilterReturnContext] = useState<FilterReturnContext>(null);
     const [sortStateByView, setSortStateByView] = useState<Record<SortViewName, SortConfig>>(DEFAULT_SORTS);
-    const [gridScrollTop, setGridScrollTop] = useState(0);
+    const [gridScrollTops, setGridScrollTops] = useState<Record<string, number>>({});
+    const [listMutation, setListMutation] = useState<MediaGridMutation | null>(null);
     const scanStartedAtRef = useRef<number | null>(null);
     const scanModeRef = useRef<string>('');
     const resetTitleTimerRef = useRef<number | null>(null);
@@ -130,6 +173,33 @@ function App() {
         : currentSortView === 'favorite'
             ? FAVORITE_SORT_OPTIONS
             : LIBRARY_SORT_OPTIONS;
+    const currentGridScrollKey = getMediaGridScrollKey(
+        currentLib?.id,
+        view,
+        searchKeyword,
+        sortField,
+        sortOrder,
+        activeFilter,
+    );
+    const currentGridScrollTop = currentGridScrollKey ? (gridScrollTops[currentGridScrollKey] || 0) : 0;
+
+    const handleGridScrollPositionChange = useCallback((scrollTop: number) => {
+        if (!currentGridScrollKey) {
+            return;
+        }
+
+        const normalizedScrollTop = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0;
+        setGridScrollTops((prev) => {
+            if (prev[currentGridScrollKey] === normalizedScrollTop) {
+                return prev;
+            }
+
+            return {
+                ...prev,
+                [currentGridScrollKey]: normalizedScrollTop,
+            };
+        });
+    }, [currentGridScrollKey]);
 
     const scheduleTitleReset = (delay = 3500) => {
         if (resetTitleTimerRef.current) {
@@ -354,9 +424,32 @@ function App() {
         });
     };
 
+    const handleSelectMedia = (media: any) => {
+        seedMediaDetailCache(media);
+        setSelectedMedia(media);
+    };
+
+    const handleDetailMediaChange = (media: any) => {
+        seedMediaDetailCache(media);
+        mergeMediaIntoCachedMediaLists(media);
+        setListMutation({ type: 'merge', media });
+        setSelectedMedia((prev: any) => {
+            if (!prev || prev.id !== media.id) {
+                return media;
+            }
+            return { ...prev, ...media };
+        });
+    };
+
+    const handleDetailDelete = (mediaID: string) => {
+        removeMediaFromCachedMediaLists(mediaID);
+        setListMutation({ type: 'remove', mediaId: mediaID });
+        setSelectedMedia((prev: any) => (prev?.id === mediaID ? null : prev));
+    };
+
     const resetWorkspaceState = () => {
         setSelectedMedia(null);
-        setGridScrollTop(0);
+        setGridScrollTops({});
         setActiveFilter(null);
         setFilterReturnContext(null);
         setSearchKeyword('');
@@ -501,11 +594,12 @@ function App() {
                         layoutVersion={layoutVersion}
                         refreshVersion={contentRefreshVersion}
                         filter={{ type: 'watched', value: 'true', label: '已看' }}
-                        onSelectMedia={setSelectedMedia}
+                        onSelectMedia={handleSelectMedia}
                         onCountChange={setMediaCount}
                         onQuickPlayStatus={showStatus}
-                        initialScrollTop={gridScrollTop}
-                        onScrollPositionChange={setGridScrollTop}
+                        initialScrollTop={currentGridScrollTop}
+                        onScrollPositionChange={handleGridScrollPositionChange}
+                        mutation={listMutation}
                     />
                 );
             case 'favorite':
@@ -518,11 +612,12 @@ function App() {
                         layoutVersion={layoutVersion}
                         refreshVersion={contentRefreshVersion}
                         filter={{ type: 'favorite', value: 'true', label: '收藏' }}
-                        onSelectMedia={setSelectedMedia}
+                        onSelectMedia={handleSelectMedia}
                         onCountChange={setMediaCount}
                         onQuickPlayStatus={showStatus}
-                        initialScrollTop={gridScrollTop}
-                        onScrollPositionChange={setGridScrollTop}
+                        initialScrollTop={currentGridScrollTop}
+                        onScrollPositionChange={handleGridScrollPositionChange}
+                        mutation={listMutation}
                     />
                 );
             case 'actor':
@@ -558,11 +653,12 @@ function App() {
                         layoutVersion={layoutVersion}
                         refreshVersion={contentRefreshVersion}
                         filter={activeFilter}
-                        onSelectMedia={setSelectedMedia}
+                        onSelectMedia={handleSelectMedia}
                         onCountChange={setMediaCount}
                         onQuickPlayStatus={showStatus}
-                        initialScrollTop={gridScrollTop}
-                        onScrollPositionChange={setGridScrollTop}
+                        initialScrollTop={currentGridScrollTop}
+                        onScrollPositionChange={handleGridScrollPositionChange}
+                        mutation={listMutation}
                     />
                 );
         }
@@ -585,38 +681,41 @@ function App() {
                     />
 
                     <div className="main-content">
-                        {!isDetailOpen && (
-                            <TopBar
-                                currentLibraryName={currentLibraryName}
-                                mediaCount={headerCount || 0}
-                                filterLabel={activeFilter?.label}
-                                searchValue={searchKeyword}
-                                onSearch={setSearchKeyword}
-                                searchDisabled={!searchEnabled}
-                                onScanWithMode={showLibraryActions ? handleScanWithMode : undefined}
-                                onEditLibrary={showLibraryActions && currentLib ? () => setEditingLib(currentLib) : undefined}
-                                onRandomPlay={showListActions ? handleRandomPlay : undefined}
-                                onSortSelect={showListActions ? handleSortSelect : undefined}
-                                sortField={sortField}
-                                sortOrder={sortOrder}
-                                sortOptions={showListActions ? currentSortOptions : undefined}
-                                onBackButtonClick={view !== 'libs' ? handleNavigateHome : undefined}
-                                onClearFilter={activeFilter || searchKeyword.trim() ? clearFilter : undefined}
-                            />
-                        )}
+                        <TopBar
+                            hidden={isDetailOpen}
+                            currentLibraryName={currentLibraryName}
+                            mediaCount={headerCount || 0}
+                            filterLabel={activeFilter?.label}
+                            searchValue={searchKeyword}
+                            onSearch={setSearchKeyword}
+                            searchDisabled={!searchEnabled}
+                            onScanWithMode={showLibraryActions ? handleScanWithMode : undefined}
+                            onEditLibrary={showLibraryActions && currentLib ? () => setEditingLib(currentLib) : undefined}
+                            onRandomPlay={showListActions ? handleRandomPlay : undefined}
+                            onSortSelect={showListActions ? handleSortSelect : undefined}
+                            sortField={sortField}
+                            sortOrder={sortOrder}
+                            sortOptions={showListActions ? currentSortOptions : undefined}
+                            onBackButtonClick={view !== 'libs' ? handleNavigateHome : undefined}
+                            onClearFilter={activeFilter || searchKeyword.trim() ? clearFilter : undefined}
+                        />
 
-                        <div className={`content-region ${isDetailOpen ? 'detail-mode' : ''}`}>
-                            {isDetailOpen ? (
+                        <div className="content-region">
+                            {renderWorkspaceContent()}
+                        </div>
+
+                        {isDetailOpen && (
+                            <div className="detail-overlay-shell">
                                 <MediaDetail
                                     media={selectedMedia}
                                     onClose={() => setSelectedMedia(null)}
-                                    onSelectMedia={setSelectedMedia}
+                                    onSelectMedia={handleSelectMedia}
                                     onSelectFilter={applyFilterFromDetail}
+                                    onMediaChange={handleDetailMediaChange}
+                                    onMediaDelete={handleDetailDelete}
                                 />
-                            ) : (
-                                renderWorkspaceContent()
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -202,6 +202,8 @@ type ScannerService struct {
 	metadataState             map[string]metadataTaskPriority
 	thumbnailService          *ThumbnailService
 	thumbnailSettingsProvider ThumbnailSettingsProvider
+	sidecarCacheMu            sync.RWMutex
+	sidecarCache              map[string]directorySidecarCacheEntry
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, personRepo *repository.PersonRepo, mediaPersonRepo *repository.MediaPersonRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -217,6 +219,7 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 		metadataNormal:   make(chan metadataCompletionTask, metadataQueueBufferSize),
 		metadataState:    make(map[string]metadataTaskPriority),
 		thumbnailService: NewThumbnailService(cfg, logger),
+		sidecarCache:     make(map[string]directorySidecarCacheEntry),
 	}
 	service.startMetadataWorkers()
 	return service
@@ -285,6 +288,14 @@ type imageFileCandidate struct {
 	path string
 }
 
+type previewFileCandidate struct {
+	name     string
+	path     string
+	priority int
+	groupKey string
+	order    int
+}
+
 type directorySidecarFiles struct {
 	nfoByStem       map[string]string
 	fallbackNFOPath string
@@ -292,7 +303,20 @@ type directorySidecarFiles struct {
 	backdropPath    string
 	subtitleFiles   []subtitleFileCandidate
 	imageFiles      []imageFileCandidate
+	videoFiles      []string
+	previewFiles    []previewFileCandidate
 	videoCount      int
+}
+
+type directorySidecarSignature struct {
+	dirModTime          time.Time
+	extraFanartModTime  time.Time
+	behindScenesModTime time.Time
+}
+
+type directorySidecarCacheEntry struct {
+	signature directorySidecarSignature
+	sidecars  *directorySidecarFiles
 }
 
 var sidecarImageNamesPoster = []string{
@@ -329,6 +353,18 @@ var sidecarSubtitleExts = map[string]bool{
 	".idx": true,
 }
 
+var previewRootPriorityTokens = []struct {
+	token    string
+	priority int
+}{
+	{token: "thumb", priority: 2},
+	{token: "fanart", priority: 3},
+	{token: "backdrop", priority: 3},
+	{token: "poster", priority: 4},
+	{token: "cover", priority: 4},
+	{token: "folder", priority: 4},
+}
+
 func normalizeFileModTime(ts time.Time) time.Time {
 	return ts.UTC().Truncate(time.Second)
 }
@@ -355,8 +391,114 @@ func applyFileTimes(media *model.Media, info os.FileInfo) {
 	}
 }
 
+func normalizePreviewOwnershipStem(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(value)
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-'
+	})
+	return strings.Join(parts, "-")
+}
+
+func previewBelongsToMediaFile(name string, mediaFilePath string, requirePrefix bool) bool {
+	if !requirePrefix {
+		return true
+	}
+	mediaStem := normalizePreviewOwnershipStem(strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath)))
+	imageStem := normalizePreviewOwnershipStem(strings.TrimSuffix(name, filepath.Ext(name)))
+	if mediaStem == "" || imageStem == "" {
+		return false
+	}
+	return strings.HasPrefix(imageStem, mediaStem+"-")
+}
+
+func previewGroupKey(path, rootDir string) string {
+	name := strings.ToLower(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+	name = strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(name)
+	tokens := strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-'
+	})
+
+	var kept []string
+	removedCategory := false
+	for _, token := range tokens {
+		switch token {
+		case "", "poster", "fanart", "thumb", "cover", "folder", "backdrop", "preview", "landscape", "image", "images":
+			if token != "" {
+				removedCategory = true
+			}
+			continue
+		default:
+			kept = append(kept, token)
+		}
+	}
+
+	if len(kept) == 0 && removedCategory && filepath.Clean(filepath.Dir(path)) == filepath.Clean(rootDir) {
+		return "primary"
+	}
+	if len(kept) == 0 {
+		return name
+	}
+	return strings.Join(kept, "-")
+}
+
+func previewPriorityFromName(name string) (int, bool) {
+	lower := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
+	for _, token := range previewRootPriorityTokens {
+		if strings.Contains(lower, token.token) {
+			return token.priority, true
+		}
+	}
+	return 0, false
+}
+
+func readDirectoryModTime(dir string) time.Time {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return time.Time{}
+	}
+	return normalizeFileModTime(info.ModTime())
+}
+
+func readDirectorySidecarSignature(dir string) directorySidecarSignature {
+	return directorySidecarSignature{
+		dirModTime:          readDirectoryModTime(dir),
+		extraFanartModTime:  readDirectoryModTime(filepath.Join(dir, "extrafanart")),
+		behindScenesModTime: readDirectoryModTime(filepath.Join(dir, "behind the scenes")),
+	}
+}
+
+func (s directorySidecarSignature) equals(other directorySidecarSignature) bool {
+	return s.dirModTime.Equal(other.dirModTime) &&
+		s.extraFanartModTime.Equal(other.extraFanartModTime) &&
+		s.behindScenesModTime.Equal(other.behindScenesModTime)
+}
+
 func (s *ScannerService) buildDirectorySidecarFiles(dir string) *directorySidecarFiles {
-	return collectDirectorySidecarFiles(dir)
+	dir = filepath.Clean(strings.TrimSpace(dir))
+	if s == nil || dir == "." || dir == "" {
+		return collectDirectorySidecarFiles(dir)
+	}
+
+	signature := readDirectorySidecarSignature(dir)
+
+	s.sidecarCacheMu.RLock()
+	if entry, ok := s.sidecarCache[dir]; ok && entry.signature.equals(signature) && entry.sidecars != nil {
+		s.sidecarCacheMu.RUnlock()
+		return entry.sidecars
+	}
+	s.sidecarCacheMu.RUnlock()
+
+	sidecars := collectDirectorySidecarFiles(dir)
+
+	s.sidecarCacheMu.Lock()
+	s.sidecarCache[dir] = directorySidecarCacheEntry{
+		signature: signature,
+		sidecars:  sidecars,
+	}
+	s.sidecarCacheMu.Unlock()
+
+	return sidecars
 }
 
 func collectDirectorySidecarFiles(dir string) *directorySidecarFiles {
@@ -404,6 +546,7 @@ func collectDirectorySidecarFiles(dir string) *directorySidecarFiles {
 
 		if supportedExts[ext] {
 			result.videoCount++
+			result.videoFiles = append(result.videoFiles, path)
 		}
 
 		if sidecarImageExts[ext] {
@@ -416,6 +559,49 @@ func collectDirectorySidecarFiles(dir string) *directorySidecarFiles {
 			if firstImagePath == "" {
 				firstImagePath = path
 			}
+			if priority, ok := previewPriorityFromName(name); ok {
+				result.previewFiles = append(result.previewFiles, previewFileCandidate{
+					name:     name,
+					path:     path,
+					priority: priority,
+					groupKey: previewGroupKey(path, dir),
+					order:    len(result.previewFiles),
+				})
+			}
+		}
+	}
+
+	sort.Strings(result.videoFiles)
+
+	previewSubDirs := []struct {
+		name     string
+		priority int
+	}{
+		{name: "extrafanart", priority: 0},
+		{name: "behind the scenes", priority: 1},
+	}
+	for _, sub := range previewSubDirs {
+		subPath := filepath.Join(dir, sub.name)
+		entries, err := os.ReadDir(subPath)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			path := filepath.Join(subPath, entry.Name())
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if !sidecarImageExts[ext] {
+				continue
+			}
+			result.previewFiles = append(result.previewFiles, previewFileCandidate{
+				name:     entry.Name(),
+				path:     path,
+				priority: sub.priority,
+				groupKey: previewGroupKey(path, dir),
+				order:    len(result.previewFiles),
+			})
 		}
 	}
 
@@ -592,6 +778,86 @@ func (d *directorySidecarFiles) subtitlesForMedia(mediaFilePath string) []string
 	}
 	sort.Strings(found)
 	return found
+}
+
+func (s *ScannerService) FindNFOForMedia(mediaPath string) string {
+	if strings.TrimSpace(mediaPath) == "" {
+		return ""
+	}
+	sidecars := s.buildDirectorySidecarFiles(filepath.Dir(mediaPath))
+	if sidecars == nil {
+		return ""
+	}
+	return sidecars.nfoPathForMedia(mediaPath)
+}
+
+func (s *ScannerService) ListMediaFiles(mediaPath string) []string {
+	if strings.TrimSpace(mediaPath) == "" {
+		return nil
+	}
+	sidecars := s.buildDirectorySidecarFiles(filepath.Dir(mediaPath))
+	if sidecars == nil || len(sidecars.videoFiles) == 0 {
+		return nil
+	}
+	files := make([]string, len(sidecars.videoFiles))
+	copy(files, sidecars.videoFiles)
+	return files
+}
+
+func (s *ScannerService) CollectMediaPreviews(mediaPath string) []string {
+	if strings.TrimSpace(mediaPath) == "" {
+		return nil
+	}
+
+	sidecars := s.buildDirectorySidecarFiles(filepath.Dir(mediaPath))
+	if sidecars == nil || len(sidecars.previewFiles) == 0 {
+		return nil
+	}
+
+	requirePrefix := sidecars.hasMultipleVideos()
+	rootDir := filepath.Dir(mediaPath)
+	candidates := make([]previewFileCandidate, 0, len(sidecars.previewFiles))
+	for _, candidate := range sidecars.previewFiles {
+		if !previewBelongsToMediaFile(candidate.name, mediaPath, requirePrefix) {
+			continue
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority < candidates[j].priority
+		}
+		leftName := strings.ToLower(filepath.Base(candidates[i].path))
+		rightName := strings.ToLower(filepath.Base(candidates[j].path))
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return candidates[i].order < candidates[j].order
+	})
+
+	previews := make([]string, 0, len(candidates))
+	seenPaths := make(map[string]bool)
+	seenGroups := make(map[string]bool)
+	for _, candidate := range candidates {
+		if seenPaths[candidate.path] {
+			continue
+		}
+		groupKey := candidate.groupKey
+		if groupKey == "" {
+			groupKey = previewGroupKey(candidate.path, rootDir)
+		}
+		if groupKey != "" && seenGroups[groupKey] {
+			continue
+		}
+		seenPaths[candidate.path] = true
+		if groupKey != "" {
+			seenGroups[groupKey] = true
+		}
+		previews = append(previews, candidate.path)
+	}
+
+	return previews
 }
 
 func (s *ScannerService) scanExternalSubtitlesWithSidecars(media *model.Media, sidecars *directorySidecarFiles) {

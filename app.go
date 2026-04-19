@@ -741,7 +741,13 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 	if media.FilePath != "" {
 		nfoService := service.NewNFOService(a.logger)
 		if service.NeedsLocalMetadataRepair(&media) {
-			if nfoPath := nfoService.FindNFOForMedia(media.FilePath); nfoPath != "" {
+			nfoPath := ""
+			if a.scanner != nil {
+				nfoPath = a.scanner.FindNFOForMedia(media.FilePath)
+			} else {
+				nfoPath = nfoService.FindNFOForMedia(media.FilePath)
+			}
+			if nfoPath != "" {
 				if err := nfoService.ParseMovieNFO(nfoPath, &media); err != nil {
 					a.logger.Debugf("repair media local NFO failed: %s, err=%v", nfoPath, err)
 				} else if err := a.repos.Media.Update(&media); err != nil {
@@ -769,6 +775,156 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 	a.hydrateMediaState(&media)
 
 	return &media, nil
+}
+
+type MediaDetailBundle struct {
+	Detail   *model.Media `json:"detail"`
+	Files    []string     `json:"files"`
+	Previews []string     `json:"previews"`
+}
+
+func (a *App) getMediaFilesByPath(filePath string) []string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return nil
+	}
+
+	if a.scanner != nil {
+		if files := a.scanner.ListMediaFiles(filePath); len(files) > 0 {
+			return files
+		}
+	}
+
+	dir := filepath.Dir(filePath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var files []string
+	exts := map[string]bool{".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true, ".flv": true, ".webm": true, ".ts": true, ".strm": true}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			if exts[strings.ToLower(filepath.Ext(entry.Name()))] {
+				files = append(files, filepath.Join(dir, entry.Name()))
+			}
+		}
+	}
+	sort.Strings(files)
+	return files
+}
+
+func (a *App) getMediaPreviewsByPath(filePath string) []string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return nil
+	}
+
+	if a.scanner != nil {
+		if previews := a.scanner.CollectMediaPreviews(filePath); len(previews) > 0 {
+			return previews
+		}
+	}
+
+	dir := filepath.Dir(filePath)
+	requirePrefix := countVideoFilesInDirectory(dir) > 1
+
+	var candidates []previewCandidate
+	order := 0
+	addCandidate := func(path string, priority int) {
+		candidates = append(candidates, previewCandidate{
+			path:     path,
+			priority: priority,
+			groupKey: previewGroupKey(path, dir),
+			order:    order,
+		})
+		order++
+	}
+
+	subDirs := []struct {
+		name     string
+		priority int
+	}{
+		{name: "extrafanart", priority: 0},
+		{name: "behind the scenes", priority: 1},
+	}
+	for _, sub := range subDirs {
+		subPath := filepath.Join(dir, sub.name)
+		if entries, err := os.ReadDir(subPath); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				path := filepath.Join(subPath, entry.Name())
+				if isPreviewImage(path) && previewBelongsToMediaFile(entry.Name(), filePath, requirePrefix) {
+					addCandidate(path, sub.priority)
+				}
+			}
+		}
+	}
+
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			if !isPreviewImage(path) {
+				continue
+			}
+			if !previewBelongsToMediaFile(entry.Name(), filePath, requirePrefix) {
+				continue
+			}
+			if priority, ok := previewPriority(entry.Name()); ok {
+				addCandidate(path, priority)
+			}
+		}
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority < candidates[j].priority
+		}
+		leftName := strings.ToLower(filepath.Base(candidates[i].path))
+		rightName := strings.ToLower(filepath.Base(candidates[j].path))
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return candidates[i].order < candidates[j].order
+	})
+
+	var previews []string
+	seenPaths := make(map[string]bool)
+	seenGroups := make(map[string]bool)
+	for _, candidate := range candidates {
+		if seenPaths[candidate.path] {
+			continue
+		}
+		if candidate.groupKey != "" && seenGroups[candidate.groupKey] {
+			continue
+		}
+		seenPaths[candidate.path] = true
+		if candidate.groupKey != "" {
+			seenGroups[candidate.groupKey] = true
+		}
+		previews = append(previews, candidate.path)
+	}
+
+	return previews
+}
+
+func (a *App) GetMediaDetailBundle(mediaID string) (*MediaDetailBundle, error) {
+	detail, err := a.GetMediaDetail(mediaID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MediaDetailBundle{
+		Detail:   detail,
+		Files:    a.getMediaFilesByPath(detail.FilePath),
+		Previews: a.getMediaPreviewsByPath(detail.FilePath),
+	}, nil
 }
 
 type DesktopSettings struct {
@@ -1180,23 +1336,7 @@ func (a *App) GetMediaFiles(mediaID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Dir(media.FilePath)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	var files []string
-	exts := map[string]bool{".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true, ".flv": true, ".webm": true, ".ts": true, ".strm": true}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			if exts[strings.ToLower(filepath.Ext(entry.Name()))] {
-				files = append(files, filepath.Join(dir, entry.Name()))
-			}
-		}
-	}
-	return files, nil
+	return a.getMediaFilesByPath(media.FilePath), nil
 }
 
 type resolvedActor struct {
@@ -1271,7 +1411,13 @@ func (a *App) resolveMediaActors(media *model.Media) ([]model.MediaActor, string
 	}
 
 	nfoService := service.NewNFOService(a.logger)
-	if nfoPath := nfoService.FindNFOForMedia(media.FilePath); nfoPath != "" {
+	nfoPath := ""
+	if a.scanner != nil {
+		nfoPath = a.scanner.FindNFOForMedia(media.FilePath)
+	} else {
+		nfoPath = nfoService.FindNFOForMedia(media.FilePath)
+	}
+	if nfoPath != "" {
 		if nfoActors, _, err := nfoService.GetActorsFromNFO(nfoPath); err == nil {
 			for idx, nfoActor := range nfoActors {
 				sortOrder := nfoActor.SortOrder
@@ -1500,91 +1646,7 @@ func (a *App) GetMediaPreviews(mediaID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Dir(media.FilePath)
-	requirePrefix := countVideoFilesInDirectory(dir) > 1
-
-	var candidates []previewCandidate
-	order := 0
-	addCandidate := func(path string, priority int) {
-		candidates = append(candidates, previewCandidate{
-			path:     path,
-			priority: priority,
-			groupKey: previewGroupKey(path, dir),
-			order:    order,
-		})
-		order++
-	}
-
-	subDirs := []struct {
-		name     string
-		priority int
-	}{
-		{name: "extrafanart", priority: 0},
-		{name: "behind the scenes", priority: 1},
-	}
-	for _, sub := range subDirs {
-		subPath := filepath.Join(dir, sub.name)
-		if entries, err := os.ReadDir(subPath); err == nil {
-			for _, entry := range entries {
-				if entry.IsDir() {
-					continue
-				}
-				path := filepath.Join(subPath, entry.Name())
-				if isPreviewImage(path) && previewBelongsToMediaFile(entry.Name(), media.FilePath, requirePrefix) {
-					addCandidate(path, sub.priority)
-				}
-			}
-		}
-	}
-
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			path := filepath.Join(dir, entry.Name())
-			if !isPreviewImage(path) {
-				continue
-			}
-			if !previewBelongsToMediaFile(entry.Name(), media.FilePath, requirePrefix) {
-				continue
-			}
-			if priority, ok := previewPriority(entry.Name()); ok {
-				addCandidate(path, priority)
-			}
-		}
-	}
-
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].priority != candidates[j].priority {
-			return candidates[i].priority < candidates[j].priority
-		}
-		leftName := strings.ToLower(filepath.Base(candidates[i].path))
-		rightName := strings.ToLower(filepath.Base(candidates[j].path))
-		if leftName != rightName {
-			return leftName < rightName
-		}
-		return candidates[i].order < candidates[j].order
-	})
-
-	var previews []string
-	seenPaths := make(map[string]bool)
-	seenGroups := make(map[string]bool)
-	for _, candidate := range candidates {
-		if seenPaths[candidate.path] {
-			continue
-		}
-		if candidate.groupKey != "" && seenGroups[candidate.groupKey] {
-			continue
-		}
-		seenPaths[candidate.path] = true
-		if candidate.groupKey != "" {
-			seenGroups[candidate.groupKey] = true
-		}
-		previews = append(previews, candidate.path)
-	}
-
-	return previews, nil
+	return a.getMediaPreviewsByPath(media.FilePath), nil
 }
 
 // PlayFile 播放指定绝对路径的文件

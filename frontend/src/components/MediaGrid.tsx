@@ -1,7 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GetMediaList } from "../../wailsjs/go/main/App";
 import MediaCard from './MediaCard';
-import { loadPersistedMediaListCache, persistMediaListCache } from '../utils/persistentCache';
+import {
+    getCachedMediaListEntry,
+    mergeMediaIntoCachedMediaLists,
+    persistMediaListCache,
+    removeMediaFromCachedMediaLists,
+} from '../utils/persistentCache';
+import { prefetchMediaDetailCacheEntry, seedMediaDetailCache } from '../utils/mediaDetailCache';
 
 interface MediaGridProps {
     libraryId: string;
@@ -16,31 +22,14 @@ interface MediaGridProps {
     onQuickPlayStatus?: (message: string) => void;
     initialScrollTop?: number;
     onScrollPositionChange?: (scrollTop: number) => void;
+    mutation?: MediaGridMutation | null;
 }
 
-interface MediaListCacheEntry {
-    items: any[];
-    total: number;
-}
+export type MediaGridMutation =
+    | { type: 'merge'; media: any }
+    | { type: 'remove'; mediaId: string };
 
-const mediaListCache = new Map<string, MediaListCacheEntry>();
-
-const getCachedMediaListEntry = (cacheKey: string) => {
-    const memoryEntry = mediaListCache.get(cacheKey);
-    if (memoryEntry) {
-        return memoryEntry;
-    }
-
-    const persistedEntry = loadPersistedMediaListCache(cacheKey);
-    if (persistedEntry) {
-        mediaListCache.set(cacheKey, persistedEntry);
-        return persistedEntry;
-    }
-
-    return null;
-};
-
-const getMediaListCacheKey = (
+export const getMediaListCacheKey = (
     libraryId: string,
     keyword: string,
     sortField: string,
@@ -62,6 +51,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     onQuickPlayStatus,
     initialScrollTop = 0,
     onScrollPositionChange,
+    mutation = null,
 }) => {
     const filterType = filter?.type || '';
     const filterValue = filter?.value || '';
@@ -181,10 +171,6 @@ const MediaGrid: React.FC<MediaGridProps> = ({
 
                 const nextItems = Array.isArray(res?.items) ? res.items : [];
                 const nextTotal = Number(res?.total || 0);
-                mediaListCache.set(cacheKey, {
-                    items: nextItems,
-                    total: nextTotal,
-                });
                 persistMediaListCache(cacheKey, {
                     items: nextItems,
                     total: nextTotal,
@@ -211,7 +197,55 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         };
     }, [onScrollPositionChange]);
 
+    useEffect(() => {
+        if (!mutation) {
+            return;
+        }
+
+        if (mutation.type === 'merge') {
+            const normalizedMediaID = typeof mutation.media?.id === 'string' ? mutation.media.id.trim() : '';
+            if (!normalizedMediaID) {
+                return;
+            }
+
+            mergeMediaIntoCachedMediaLists(mutation.media);
+            setMediaItems((prev) => {
+                let changed = false;
+                const nextItems = prev.map((item) => {
+                    if (item?.id !== normalizedMediaID) {
+                        return item;
+                    }
+
+                    changed = true;
+                    return {
+                        ...item,
+                        ...mutation.media,
+                    };
+                });
+                return changed ? nextItems : prev;
+            });
+            return;
+        }
+
+        const normalizedMediaID = typeof mutation.mediaId === 'string' ? mutation.mediaId.trim() : '';
+        if (!normalizedMediaID) {
+            return;
+        }
+
+        removeMediaFromCachedMediaLists(normalizedMediaID);
+        setMediaItems((prev) => {
+            const nextItems = prev.filter((item) => item?.id !== normalizedMediaID);
+            if (nextItems.length === prev.length) {
+                return prev;
+            }
+
+            onCountChange?.(Math.max(0, nextItems.length));
+            return nextItems;
+        });
+    }, [mutation, onCountChange]);
+
     const handleSelectMedia = (media: any) => {
+        seedMediaDetailCache(media);
         onScrollPositionChange?.(latestScrollTopRef.current);
         onSelectMedia(media);
     };
@@ -238,6 +272,10 @@ const MediaGrid: React.FC<MediaGridProps> = ({
                     media={item}
                     onClick={() => handleSelectMedia(item)}
                     onQuickPlayStatus={onQuickPlayStatus}
+                    onPrefetch={() => {
+                        seedMediaDetailCache(item);
+                        prefetchMediaDetailCacheEntry(item.id);
+                    }}
                 />
             ))}
 
