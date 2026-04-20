@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { startTransition, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GetMediaList } from "../../wailsjs/go/main/App";
 import MediaCard from './MediaCard';
 import {
@@ -7,6 +7,7 @@ import {
     persistMediaListCache,
     removeMediaFromCachedMediaLists,
 } from '../utils/persistentCache';
+import { buildMediaSearchIndex, normalizeSearchTerm } from '../utils/mediaSearch';
 import { prefetchMediaDetailCacheEntry, seedMediaDetailCache } from '../utils/mediaDetailCache';
 
 interface MediaGridProps {
@@ -29,6 +30,19 @@ export type MediaGridMutation =
     | { type: 'merge'; media: any }
     | { type: 'remove'; mediaId: string };
 
+type SearchableMediaItem = {
+    media: any;
+    searchIndex: string;
+};
+
+const MEDIA_CARD_WIDTH = 178;
+const MEDIA_CARD_HEIGHT = 297;
+const MEDIA_GRID_MIN_GAP = 18;
+const MEDIA_GRID_MAX_GAP = 24;
+const MEDIA_GRID_ROW_GAP = 24;
+const MEDIA_GRID_HORIZONTAL_PADDING = 48;
+const VIRTUAL_OVERSCAN_ROWS = 2;
+
 export const getMediaListCacheKey = (
     libraryId: string,
     keyword: string,
@@ -37,6 +51,50 @@ export const getMediaListCacheKey = (
     filterType: string,
     filterValue: string,
 ) => JSON.stringify([libraryId, keyword, sortField, sortOrder, filterType, filterValue]);
+
+export const getMediaListBaseCacheKey = (
+    libraryId: string,
+    sortField: string,
+    sortOrder: 'asc' | 'desc',
+    filterType: string,
+    filterValue: string,
+) => JSON.stringify([libraryId, sortField, sortOrder, filterType, filterValue]);
+
+const createSearchableMediaItems = (items: any[]): SearchableMediaItem[] => {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items
+        .filter((item) => typeof item?.id === 'string' && item.id.trim().length > 0)
+        .map((item) => ({
+            media: item,
+            searchIndex: buildMediaSearchIndex(item),
+        }));
+};
+
+const filterSearchableMediaItems = (items: SearchableMediaItem[], keyword: string) => {
+    const normalizedKeyword = normalizeSearchTerm(keyword);
+    if (!normalizedKeyword) {
+        return items.map(({ media }) => media);
+    }
+
+    return items
+        .filter(({ searchIndex }) => searchIndex.includes(normalizedKeyword))
+        .map(({ media }) => media);
+};
+
+const mergeSearchableMediaItem = (item: SearchableMediaItem, media: any): SearchableMediaItem => {
+    const mergedMedia = {
+        ...item.media,
+        ...media,
+    };
+
+    return {
+        media: mergedMedia,
+        searchIndex: buildMediaSearchIndex(mergedMedia),
+    };
+};
 
 const MediaGrid: React.FC<MediaGridProps> = ({
     libraryId,
@@ -55,30 +113,44 @@ const MediaGrid: React.FC<MediaGridProps> = ({
 }) => {
     const filterType = filter?.type || '';
     const filterValue = filter?.value || '';
-    const cacheKey = getMediaListCacheKey(libraryId, keyword, sortField, sortOrder, filterType, filterValue);
-    const initialCache = getCachedMediaListEntry(cacheKey);
-    const [mediaItems, setMediaItems] = useState<any[]>(() => initialCache?.items || []);
-    const [isLoading, setIsLoading] = useState(() => !initialCache);
+    const baseCacheKey = getMediaListBaseCacheKey(libraryId, sortField, sortOrder, filterType, filterValue);
+    const initialCache = getCachedMediaListEntry(baseCacheKey);
+    const initialSearchableItems = createSearchableMediaItems(initialCache?.items || []);
+    const deferredKeyword = useDeferredValue(keyword);
     const containerRef = useRef<HTMLDivElement>(null);
     const latestScrollTopRef = useRef(0);
     const pendingRestoreRef = useRef<number | null>(initialScrollTop);
     const requestTokenRef = useRef(0);
     const [layout, setLayout] = useState({ columns: 4, gap: 20, justify: 'start' });
+    const [viewportHeight, setViewportHeight] = useState(0);
+    const [virtualScrollTop, setVirtualScrollTop] = useState(initialScrollTop);
+    const [baseItems, setBaseItems] = useState<SearchableMediaItem[]>(() => initialSearchableItems);
+    const [mediaItems, setMediaItems] = useState<any[]>(() => filterSearchableMediaItems(initialSearchableItems, keyword));
+    const [isLoading, setIsLoading] = useState(() => !initialCache);
 
     const updateLayout = () => {
-        if (!containerRef.current) return;
-        const containerWidth = containerRef.current.clientWidth - 48;
-        const cardWidth = 178;
-        const minGap = 18;
-        const maxGap = 24;
+        if (!containerRef.current) {
+            return;
+        }
 
-        let cols = Math.floor((containerWidth + minGap) / (cardWidth + minGap));
+        const containerWidth = containerRef.current.clientWidth - MEDIA_GRID_HORIZONTAL_PADDING;
+        let cols = Math.floor((containerWidth + MEDIA_GRID_MIN_GAP) / (MEDIA_CARD_WIDTH + MEDIA_GRID_MIN_GAP));
         cols = Math.max(1, cols);
 
-        const currentGap = cols > 1 ? (containerWidth - cols * cardWidth) / (cols - 1) : 0;
-        const gap = Math.min(Math.max(currentGap, minGap), maxGap);
+        const currentGap = cols > 1 ? (containerWidth - cols * MEDIA_CARD_WIDTH) / (cols - 1) : 0;
+        const gap = Math.min(Math.max(currentGap, MEDIA_GRID_MIN_GAP), MEDIA_GRID_MAX_GAP);
+        const justify = cols > 1 ? 'space-between' : 'start';
 
-        setLayout({ columns: cols, gap, justify: cols > 1 ? 'space-between' : 'start' });
+        setLayout((prev) => (
+            prev.columns === cols && prev.gap === gap && prev.justify === justify
+                ? prev
+                : { columns: cols, gap, justify }
+        ));
+
+        setViewportHeight((prev) => {
+            const nextViewportHeight = containerRef.current?.clientHeight || 0;
+            return prev === nextViewportHeight ? prev : nextViewportHeight;
+        });
     };
 
     useEffect(() => {
@@ -117,6 +189,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     useEffect(() => {
         pendingRestoreRef.current = initialScrollTop;
         latestScrollTopRef.current = initialScrollTop;
+        setVirtualScrollTop(initialScrollTop);
     }, [initialScrollTop, libraryId, keyword, sortField, sortOrder, filterType, filterValue]);
 
     useLayoutEffect(() => {
@@ -138,6 +211,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
                 const restoredScrollTop = Math.min(targetScrollTop, maxScrollTop);
                 containerRef.current.scrollTop = restoredScrollTop;
                 latestScrollTopRef.current = restoredScrollTop;
+                setVirtualScrollTop(restoredScrollTop);
                 pendingRestoreRef.current = null;
                 onScrollPositionChange?.(restoredScrollTop);
             });
@@ -150,20 +224,19 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     }, [isLoading, layout.columns, layout.gap, mediaItems.length, onScrollPositionChange]);
 
     useEffect(() => {
-        const cachedEntry = getCachedMediaListEntry(cacheKey);
+        const cachedEntry = getCachedMediaListEntry(baseCacheKey);
         const requestToken = requestTokenRef.current + 1;
         requestTokenRef.current = requestToken;
 
         if (cachedEntry) {
-            setMediaItems(cachedEntry.items);
-            onCountChange?.(cachedEntry.total);
+            setBaseItems(createSearchableMediaItems(cachedEntry.items));
             setIsLoading(false);
         } else {
-            setMediaItems([]);
+            setBaseItems([]);
             setIsLoading(true);
         }
 
-        void GetMediaList(libraryId, 1, 0, sortField, sortOrder, keyword, filterType, filterValue)
+        void GetMediaList(libraryId, 1, 0, sortField, sortOrder, '', filterType, filterValue)
             .then((res: any) => {
                 if (requestTokenRef.current !== requestToken) {
                     return;
@@ -171,12 +244,11 @@ const MediaGrid: React.FC<MediaGridProps> = ({
 
                 const nextItems = Array.isArray(res?.items) ? res.items : [];
                 const nextTotal = Number(res?.total || 0);
-                persistMediaListCache(cacheKey, {
+                persistMediaListCache(baseCacheKey, {
                     items: nextItems,
                     total: nextTotal,
                 });
-                setMediaItems(nextItems);
-                onCountChange?.(nextTotal);
+                setBaseItems(createSearchableMediaItems(nextItems));
                 setIsLoading(false);
             })
             .catch((err) => {
@@ -189,7 +261,15 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         return () => {
             requestTokenRef.current += 1;
         };
-    }, [cacheKey, filterType, filterValue, keyword, libraryId, onCountChange, refreshVersion, sortField, sortOrder]);
+    }, [baseCacheKey, filterType, filterValue, libraryId, refreshVersion, sortField, sortOrder]);
+
+    useEffect(() => {
+        const nextItems = filterSearchableMediaItems(baseItems, deferredKeyword);
+        startTransition(() => {
+            setMediaItems(nextItems);
+        });
+        onCountChange?.(nextItems.length);
+    }, [baseItems, deferredKeyword, onCountChange]);
 
     useEffect(() => {
         return () => {
@@ -209,18 +289,15 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             }
 
             mergeMediaIntoCachedMediaLists(mutation.media);
-            setMediaItems((prev) => {
+            setBaseItems((prev) => {
                 let changed = false;
                 const nextItems = prev.map((item) => {
-                    if (item?.id !== normalizedMediaID) {
+                    if (item.media?.id !== normalizedMediaID) {
                         return item;
                     }
 
                     changed = true;
-                    return {
-                        ...item,
-                        ...mutation.media,
-                    };
+                    return mergeSearchableMediaItem(item, mutation.media);
                 });
                 return changed ? nextItems : prev;
             });
@@ -233,22 +310,33 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         }
 
         removeMediaFromCachedMediaLists(normalizedMediaID);
-        setMediaItems((prev) => {
-            const nextItems = prev.filter((item) => item?.id !== normalizedMediaID);
-            if (nextItems.length === prev.length) {
-                return prev;
-            }
-
-            onCountChange?.(Math.max(0, nextItems.length));
-            return nextItems;
+        setBaseItems((prev) => {
+            const nextItems = prev.filter((item) => item.media?.id !== normalizedMediaID);
+            return nextItems.length === prev.length ? prev : nextItems;
         });
-    }, [mutation, onCountChange]);
+    }, [mutation]);
 
     const handleSelectMedia = (media: any) => {
         seedMediaDetailCache(media);
         onScrollPositionChange?.(latestScrollTopRef.current);
         onSelectMedia(media);
     };
+
+    const totalRows = Math.ceil(mediaItems.length / layout.columns);
+    const rowHeight = MEDIA_CARD_HEIGHT + MEDIA_GRID_ROW_GAP;
+    const effectiveViewportHeight = viewportHeight > 0 ? viewportHeight : rowHeight;
+    const startRow = Math.max(0, Math.floor(virtualScrollTop / rowHeight) - VIRTUAL_OVERSCAN_ROWS);
+    const endRow = Math.min(
+        totalRows,
+        Math.ceil((virtualScrollTop + effectiveViewportHeight) / rowHeight) + VIRTUAL_OVERSCAN_ROWS,
+    );
+    const startIndex = startRow * layout.columns;
+    const endIndex = Math.min(mediaItems.length, endRow * layout.columns);
+    const visibleItems = mediaItems.slice(startIndex, endIndex);
+    const topOffset = startRow * rowHeight;
+    const totalContentHeight = totalRows === 0
+        ? 0
+        : totalRows * MEDIA_CARD_HEIGHT + Math.max(0, totalRows - 1) * MEDIA_GRID_ROW_GAP;
 
     return (
         <div
@@ -257,37 +345,50 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             onScroll={(event) => {
                 const nextScrollTop = event.currentTarget.scrollTop;
                 latestScrollTopRef.current = nextScrollTop;
+                setVirtualScrollTop(nextScrollTop);
                 onScrollPositionChange?.(nextScrollTop);
             }}
-            style={{
-                gridTemplateColumns: `repeat(${layout.columns}, 178px)`,
-                columnGap: `${layout.gap}px`,
-                justifyContent: layout.justify,
-                rowGap: '24px',
-            }}
         >
-            {mediaItems.map((item) => (
-                <MediaCard
-                    key={item.id}
-                    media={item}
-                    onClick={() => handleSelectMedia(item)}
-                    onQuickPlayStatus={onQuickPlayStatus}
-                    onPrefetch={() => {
-                        seedMediaDetailCache(item);
-                        prefetchMediaDetailCacheEntry(item.id);
-                    }}
-                />
-            ))}
-
             {!isLoading && mediaItems.length === 0 && (
                 <div className="grid-feedback">
                     {'\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u5a92\u4f53\u5185\u5bb9'}
                 </div>
             )}
 
-            {isLoading && mediaItems.length === 0 && (
+            {isLoading && baseItems.length === 0 && (
                 <div className="grid-feedback loading">
                     {'\u6b63\u5728\u52a0\u8f7d\u5a92\u4f53\u5185\u5bb9...'}
+                </div>
+            )}
+
+            {mediaItems.length > 0 && (
+                <div
+                    className="grid-virtual-spacer"
+                    style={{ height: `${Math.max(totalContentHeight, effectiveViewportHeight)}px` }}
+                >
+                    <div
+                        className="grid-virtual-content"
+                        style={{
+                            transform: `translateY(${topOffset}px)`,
+                            gridTemplateColumns: `repeat(${layout.columns}, ${MEDIA_CARD_WIDTH}px)`,
+                            columnGap: `${layout.gap}px`,
+                            justifyContent: layout.justify,
+                            rowGap: `${MEDIA_GRID_ROW_GAP}px`,
+                        }}
+                    >
+                        {visibleItems.map((item) => (
+                            <MediaCard
+                                key={item.id}
+                                media={item}
+                                onClick={() => handleSelectMedia(item)}
+                                onQuickPlayStatus={onQuickPlayStatus}
+                                onPrefetch={() => {
+                                    seedMediaDetailCache(item);
+                                    prefetchMediaDetailCacheEntry(item.id);
+                                }}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

@@ -7,6 +7,7 @@ export type AppMediaActor = model.MediaActor;
 export type AppMedia = Omit<model.Media, "convertValues" | "series" | "actors"> & {
     fanart_path?: string;
     publisher?: string;
+    search_text?: string;
     series?: AppSeries;
     actors?: AppMediaActor[];
 };

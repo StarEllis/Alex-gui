@@ -27,6 +27,7 @@ interface TopBarProps {
     filterLabel?: string;
     searchValue: string;
     onSearch: (keyword: string) => void;
+    searchPlaceholder?: string;
     searchDisabled?: boolean;
     onScanWithMode?: (mode: string) => void;
     onEditLibrary?: () => void;
@@ -75,6 +76,7 @@ const TopBar: React.FC<TopBarProps> = ({
     filterLabel,
     searchValue,
     onSearch,
+    searchPlaceholder = '\u641c\u7d22\u5a92\u4f53\u3001\u6f14\u5458\u3001\u6807\u7b7e',
     searchDisabled = false,
     onScanWithMode,
     onEditLibrary,
@@ -89,6 +91,7 @@ const TopBar: React.FC<TopBarProps> = ({
     const [openMenu, setOpenMenu] = useState<MenuType>(null);
     const [confirmScanMode, setConfirmScanMode] = useState<'overwrite' | null>(null);
     const menuRootRef = useRef<HTMLDivElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         const handlePointerDown = (event: MouseEvent) => {
@@ -112,6 +115,12 @@ const TopBar: React.FC<TopBarProps> = ({
             document.removeEventListener('keydown', handleEscape);
         };
     }, []);
+
+    useEffect(() => {
+        if (searchInputRef.current) {
+            searchInputRef.current.placeholder = searchPlaceholder;
+        }
+    }, [searchPlaceholder]);
 
     const handleScanModeClick = (mode: string) => {
         setOpenMenu(null);
@@ -157,7 +166,7 @@ const TopBar: React.FC<TopBarProps> = ({
                                 </span>
                                 <input
                                     type="text"
-                                    className="workspace-search"
+                                    className="workspace-search" ref={searchInputRef}
                                     placeholder="搜索媒体、演员、标签"
                                     value={searchValue}
                                     onChange={(event) => onSearch(event.target.value)}

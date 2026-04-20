@@ -34,6 +34,17 @@ const malformedURLNFO = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </movie>
 `
 
+const nestedSetSeriesNFO = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<movie>
+  <title>MIAA-085 title</title>
+  <num>MIAA-085</num>
+  <set>
+    <name>Super Deluxe Series</name>
+  </set>
+  <series>Super Deluxe Series</series>
+</movie>
+`
+
 func writeTempNFO(t *testing.T, content string) string {
 	t.Helper()
 
@@ -93,5 +104,53 @@ func TestGetActorsFromNFOToleratesBareAmpersandInURL(t *testing.T) {
 	}
 	if len(directors) != 0 {
 		t.Fatalf("expected no directors, got %+v", directors)
+	}
+}
+
+func TestLoadEditorDataReadsNestedSetSeries(t *testing.T) {
+	service := NewNFOService(zap.NewNop().Sugar())
+	nfoPath := writeTempNFO(t, nestedSetSeriesNFO)
+
+	data, err := service.LoadEditorData(nfoPath, &model.Media{FilePath: `C:\videos\MIAA-085.mp4`})
+	if err != nil {
+		t.Fatalf("LoadEditorData returned error: %v", err)
+	}
+
+	if data.Series != "Super Deluxe Series" {
+		t.Fatalf("expected series from nested set, got %q", data.Series)
+	}
+}
+
+func TestSaveEditorDataWritesSeriesForEditorRoundTrip(t *testing.T) {
+	service := NewNFOService(zap.NewNop().Sugar())
+	nfoPath := writeTempNFO(t, nestedSetSeriesNFO)
+
+	if err := service.SaveEditorData(nfoPath, &NFOEditorData{
+		NFOPath: nfoPath,
+		Title:   "MIAA-085 title",
+		Code:    "MIAA-085",
+		Series:  "Updated Series Name",
+	}); err != nil {
+		t.Fatalf("SaveEditorData returned error: %v", err)
+	}
+
+	content, err := os.ReadFile(nfoPath)
+	if err != nil {
+		t.Fatalf("read saved nfo: %v", err)
+	}
+	saved := string(content)
+	if !strings.Contains(saved, "<name>Updated Series Name</name>") {
+		t.Fatalf("expected nested set name in saved NFO, got %s", saved)
+	}
+	if !strings.Contains(saved, "<series>Updated Series Name</series>") {
+		t.Fatalf("expected series tag in saved NFO, got %s", saved)
+	}
+
+	data, err := service.LoadEditorData(nfoPath, &model.Media{FilePath: `C:\videos\MIAA-085.mp4`})
+	if err != nil {
+		t.Fatalf("LoadEditorData after save returned error: %v", err)
+	}
+	if data.Series != "Updated Series Name" {
+		t.Fatalf("expected saved series after reload, got %q", data.Series)
 	}
 }

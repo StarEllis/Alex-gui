@@ -1,8 +1,10 @@
+import { buildMediaSearchText } from './mediaSearch';
+
 const LIBRARIES_STORAGE_KEY = 'alex.desktop.cache.libraries.v1';
 const CURRENT_LIBRARY_STORAGE_KEY = 'alex.desktop.cache.currentLibraryId.v1';
 const MEDIA_LIST_STORAGE_KEY = 'alex.desktop.cache.mediaList.v1';
 
-const MEDIA_LIST_CACHE_VERSION = 1;
+const MEDIA_LIST_CACHE_VERSION = 2;
 const MEDIA_LIST_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_MEDIA_LIST_ENTRIES = 10;
 
@@ -83,10 +85,19 @@ const readStorageJSON = <T,>(key: string): T | null => {
 const pickCachedMediaFields = (item: any) => ({
     id: typeof item?.id === 'string' ? item.id : '',
     title: typeof item?.title === 'string' ? item.title : '',
+    orig_title: typeof item?.orig_title === 'string' ? item.orig_title : '',
     year: typeof item?.year === 'number' ? item.year : 0,
+    code: typeof item?.code === 'string' ? item.code : '',
+    actor: typeof item?.actor === 'string' ? item.actor : '',
+    genres: typeof item?.genres === 'string' ? item.genres : '',
+    studio: typeof item?.studio === 'string' ? item.studio : '',
+    maker: typeof item?.maker === 'string' ? item.maker : '',
+    label: typeof item?.label === 'string' ? item.label : '',
+    release_date_normalized: typeof item?.release_date_normalized === 'string' ? item.release_date_normalized : '',
     poster_path: typeof item?.poster_path === 'string' ? item.poster_path : '',
     backdrop_path: typeof item?.backdrop_path === 'string' ? item.backdrop_path : '',
     file_path: typeof item?.file_path === 'string' ? item.file_path : '',
+    search_text: buildMediaSearchText(item),
     is_favorite: Boolean(item?.is_favorite),
     is_watched: Boolean(item?.is_watched),
 });

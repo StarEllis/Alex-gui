@@ -296,6 +296,7 @@ type Media struct {
 	Series     *Series      `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
 	Actor      string       `json:"actor" gorm:"-"`
 	Actors     []MediaActor `json:"actors,omitempty" gorm:"-"`
+	SearchText string       `json:"search_text" gorm:"-"`
 	IsFavorite bool         `json:"is_favorite" gorm:"-"`
 	IsWatched  bool         `json:"is_watched" gorm:"-"`
 }

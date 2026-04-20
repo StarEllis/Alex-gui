@@ -397,6 +397,120 @@ func (a *App) hydrateMediaSliceStates(mediaItems []model.Media) {
 	}
 }
 
+type mediaActorSearchRow struct {
+	MediaID  string
+	Name     string
+	OrigName string
+}
+
+func (a *App) loadMediaActorTextMap(mediaIDs []string) map[string]string {
+	actorTextByMediaID := make(map[string]string, len(mediaIDs))
+	if len(mediaIDs) == 0 {
+		return actorTextByMediaID
+	}
+
+	var rows []mediaActorSearchRow
+	if err := a.db.Table("media_people").
+		Select("media_people.media_id, people.name, people.orig_name").
+		Joins("JOIN people ON people.id = media_people.person_id").
+		Where("media_people.role = ? AND media_people.media_id IN ?", "actor", mediaIDs).
+		Order("media_people.media_id ASC").
+		Order("CASE WHEN media_people.sort_order <= 0 THEN 9999 ELSE media_people.sort_order END ASC").
+		Order("media_people.created_at ASC").
+		Scan(&rows).Error; err != nil {
+		a.logger.Warnf("load media actor texts failed: %v", err)
+		return actorTextByMediaID
+	}
+
+	namesByMediaID := make(map[string][]string, len(mediaIDs))
+	seenByMediaID := make(map[string]map[string]bool, len(mediaIDs))
+	for _, row := range rows {
+		name := normalizeActorName(row.Name)
+		if name == "" {
+			name = normalizeActorName(row.OrigName)
+		}
+		key := actorKey(name)
+		if key == "" {
+			continue
+		}
+
+		seenNames := seenByMediaID[row.MediaID]
+		if seenNames == nil {
+			seenNames = make(map[string]bool)
+			seenByMediaID[row.MediaID] = seenNames
+		}
+		if seenNames[key] {
+			continue
+		}
+
+		seenNames[key] = true
+		namesByMediaID[row.MediaID] = append(namesByMediaID[row.MediaID], name)
+	}
+
+	for mediaID, names := range namesByMediaID {
+		if len(names) == 0 {
+			continue
+		}
+		actorTextByMediaID[mediaID] = strings.Join(names, ", ")
+	}
+
+	return actorTextByMediaID
+}
+
+func buildMediaSearchText(media *model.Media, actorText string) string {
+	if media == nil {
+		return ""
+	}
+
+	parts := []string{
+		media.Title,
+		media.OrigTitle,
+		media.Code,
+		media.Maker,
+		media.Label,
+		media.Studio,
+		media.Genres,
+		media.ReleaseDateNormalized,
+		media.FilePath,
+		actorText,
+	}
+
+	if media.Year > 0 {
+		parts = append(parts, fmt.Sprintf("%d", media.Year))
+	}
+
+	var builder strings.Builder
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if builder.Len() > 0 {
+			builder.WriteString("\n")
+		}
+		builder.WriteString(part)
+	}
+
+	return builder.String()
+}
+
+func (a *App) hydrateMediaSearchText(media *model.Media) {
+	if media == nil {
+		return
+	}
+	media.SearchText = buildMediaSearchText(media, media.Actor)
+}
+
+func (a *App) hydrateMediaSliceSearchText(mediaItems []model.Media) {
+	actorTextByMediaID := a.loadMediaActorTextMap(collectMediaIDs(mediaItems))
+	for i := range mediaItems {
+		if mediaItems[i].Actor == "" {
+			mediaItems[i].Actor = actorTextByMediaID[mediaItems[i].ID]
+		}
+		mediaItems[i].SearchText = buildMediaSearchText(&mediaItems[i], mediaItems[i].Actor)
+	}
+}
+
 func (a *App) buildLibraryActorKeySet(libraryID string) map[string]bool {
 	var names []string
 	actorKeys := make(map[string]bool)
@@ -544,6 +658,7 @@ func (a *App) GetMediaList(libraryID string, page, size int, sortBy, sortOrder, 
 			total = int64(len(media))
 		}
 		a.hydrateMediaSliceStates(media)
+		a.hydrateMediaSliceSearchText(media)
 	}
 	return map[string]interface{}{
 		"items": media,
@@ -771,6 +886,7 @@ func (a *App) GetMediaDetail(mediaID string) (*model.Media, error) {
 	actors, actorText := a.resolveMediaActors(&media)
 	media.Actors = actors
 	media.Actor = actorText
+	a.hydrateMediaSearchText(&media)
 	service.ApplyDerivedMediaFields(&media)
 	a.hydrateMediaState(&media)
 

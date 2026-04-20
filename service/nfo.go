@@ -25,6 +25,29 @@ func NewNFOService(logger *zap.SugaredLogger) *NFOService {
 	return &NFOService{logger: logger}
 }
 
+type NFOSet struct {
+	Name string `xml:"name"`
+	Text string `xml:",chardata"`
+}
+
+func (s *NFOSet) Value() string {
+	if s == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(s.Name); value != "" {
+		return value
+	}
+	return strings.TrimSpace(s.Text)
+}
+
+func newNFOSet(value string) *NFOSet {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &NFOSet{Name: value}
+}
+
 // ==================== NFO XML 结构体（增强版） ====================
 
 // NFOMovie 电影 NFO XML 根元素（宽松兼容）
@@ -48,7 +71,8 @@ type NFOMovie struct {
 	Tags      []string   `xml:"tag"`
 	Directors []string   `xml:"director"`
 	Actors    []NFOActor `xml:"actor"`
-	Set       string     `xml:"set"`
+	Set       *NFOSet    `xml:"set,omitempty"`
+	Series    string     `xml:"series"`
 	// 增强字段：日期（多种来源，后续归一化）
 	Premiered   string `xml:"premiered"`
 	ReleaseDate string `xml:"releasedate"`
@@ -480,7 +504,7 @@ func (s *NFOService) LoadEditorData(nfoPath string, media *model.Media) (*NFOEdi
 	data.Code = firstNonEmpty(movie.Num, data.Code)
 	data.ReleaseDate = firstNonEmpty(movie.ReleaseDate, movie.Premiered, movie.Release, data.ReleaseDate)
 	data.Director = firstNonEmpty(joinEditorList(movie.Directors), data.Director)
-	data.Series = firstNonEmpty(movie.Set, data.Series)
+	data.Series = firstNonEmpty(movie.Set.Value(), movie.Series, data.Series)
 	data.Publisher = firstNonEmpty(movie.Publisher, movie.Label, data.Publisher)
 	data.Maker = firstNonEmpty(movie.Maker, movie.Studio, data.Maker)
 	data.Genres = firstNonEmpty(joinEditorList(append(movie.Genres, movie.Tags...)), data.Genres)
@@ -516,7 +540,9 @@ func (s *NFOService) SaveEditorData(nfoPath string, data *NFOEditorData) error {
 	movie.Premiered = strings.TrimSpace(data.ReleaseDate)
 	movie.ReleaseDate = strings.TrimSpace(data.ReleaseDate)
 	movie.Release = strings.TrimSpace(data.ReleaseDate)
-	movie.Set = strings.TrimSpace(data.Series)
+	seriesValue := strings.TrimSpace(data.Series)
+	movie.Set = newNFOSet(seriesValue)
+	movie.Series = seriesValue
 	movie.Directors = splitEditorValues(data.Director)
 	movie.Publisher = strings.TrimSpace(data.Publisher)
 	movie.Label = strings.TrimSpace(data.Publisher)

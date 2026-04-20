@@ -399,6 +399,7 @@ export namespace model {
 	    series?: Series;
 	    actor: string;
 	    actors?: MediaActor[];
+	    search_text: string;
 	    is_favorite: boolean;
 	    is_watched: boolean;
 	
@@ -472,6 +473,7 @@ export namespace model {
 	        this.series = this.convertValues(source["series"], Series);
 	        this.actor = source["actor"];
 	        this.actors = this.convertValues(source["actors"], MediaActor);
+	        this.search_text = source["search_text"];
 	        this.is_favorite = source["is_favorite"];
 	        this.is_watched = source["is_watched"];
 	    }

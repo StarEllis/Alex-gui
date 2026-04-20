@@ -33,7 +33,7 @@ type SortField = 'created_at' | 'release_date' | 'video_codec' | 'last_watched' 
 type SortViewName = 'libs' | 'watched' | 'favorite';
 type SortConfig = { field: SortField; order: SortOrder };
 type SortOption = { field: SortField; label: string };
-type FilterState = { type: string; value: string; label: string } | null;
+type FilterState = { type: string; value: string; label: string; showHeaderLabel?: boolean } | null;
 type FilterReturnContext = {
     view: ViewName;
     media: any | null;
@@ -58,7 +58,8 @@ const VIEW_LABELS: Record<Exclude<ViewName, 'libs'>, string> = {
     favorite: '收藏',
 };
 
-const SEARCHABLE_VIEWS = new Set<ViewName>(['libs', 'watched', 'favorite']);
+const SEARCH_INPUT_VIEWS = new Set<ViewName>(['libs', 'watched', 'favorite', 'actor', 'genre']);
+const MEDIA_ACTION_VIEWS = new Set<ViewName>(['libs', 'watched', 'favorite']);
 
 const LIBRARY_SORT_OPTIONS: SortOption[] = [
     { field: 'created_at', label: '加入日期' },
@@ -405,8 +406,12 @@ function App() {
         setFilterReturnContext(null);
     };
 
-    const applyFilter = (filter: { type: string; value: string; label: string }, returnContext?: FilterReturnContext) => {
-        setActiveFilter(filter);
+    const applyFilter = (
+        filter: { type: string; value: string; label: string },
+        returnContext?: FilterReturnContext,
+        showHeaderLabel = true,
+    ) => {
+        setActiveFilter({ ...filter, showHeaderLabel });
         setSearchKeyword(filter.label);
         setFilterReturnContext(returnContext || null);
         setSelectedMedia(null);
@@ -421,7 +426,7 @@ function App() {
         applyFilter(filter, {
             view,
             media: selectedMedia,
-        });
+        }, false);
     };
 
     const handleSelectMedia = (media: any) => {
@@ -558,9 +563,14 @@ function App() {
     const currentLibraryName = currentLib?.name || '未选择媒体库';
     const baseCount = typeof currentLib?.media_count === 'number' ? currentLib.media_count : mediaCount;
     const headerCount = (view === 'libs' || view === 'watched' || view === 'favorite') ? mediaCount : baseCount;
-    const searchEnabled = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
+    const searchEnabled = Boolean(currentLib && SEARCH_INPUT_VIEWS.has(view));
     const showLibraryActions = Boolean(currentLib && view === 'libs');
-    const showListActions = Boolean(currentLib && SEARCHABLE_VIEWS.has(view));
+    const showListActions = Boolean(currentLib && MEDIA_ACTION_VIEWS.has(view));
+    const searchPlaceholder = view === 'actor'
+        ? '\u641c\u7d22\u6f14\u5458'
+        : view === 'genre'
+            ? '\u641c\u7d22\u6807\u7b7e'
+            : '\u641c\u7d22\u5a92\u4f53\u3001\u6f14\u5458\u3001\u6807\u7b7e';
     const isDetailOpen = Boolean(selectedMedia);
     const showScanProgressPanel = Boolean(scanProgress && !statusMsg);
     const scanProgressText = scanProgress
@@ -625,6 +635,7 @@ function App() {
                     <CategoryGrid
                         type="actor"
                         libraryId={currentLib.id}
+                        keyword={searchKeyword}
                         refreshVersion={contentRefreshVersion}
                         fetchFn={GetActorStats}
                         onSelect={(value, label) => applyFilterFromView('actor', { type: 'actor', value, label })}
@@ -635,6 +646,7 @@ function App() {
                     <CategoryGrid
                         type="genre"
                         libraryId={currentLib.id}
+                        keyword={searchKeyword}
                         refreshVersion={contentRefreshVersion}
                         fetchFn={GetGenreStats}
                         onSelect={(value, label) => applyFilterFromView('genre', { type: 'genre', value, label })}
@@ -685,9 +697,10 @@ function App() {
                             hidden={isDetailOpen}
                             currentLibraryName={currentLibraryName}
                             mediaCount={headerCount || 0}
-                            filterLabel={activeFilter?.label}
+                            filterLabel={activeFilter?.showHeaderLabel === false ? undefined : activeFilter?.label}
                             searchValue={searchKeyword}
                             onSearch={setSearchKeyword}
+                            searchPlaceholder={searchPlaceholder}
                             searchDisabled={!searchEnabled}
                             onScanWithMode={showLibraryActions ? handleScanWithMode : undefined}
                             onEditLibrary={showLibraryActions && currentLib ? () => setEditingLib(currentLib) : undefined}
