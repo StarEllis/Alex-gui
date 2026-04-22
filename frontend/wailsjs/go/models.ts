@@ -66,6 +66,12 @@ export namespace main {
 	    enable_video_thumbnail: boolean;
 	    thumbnail_preview_count: number;
 	    thumbnail_min_duration_seconds: number;
+	    remote_bind_host: string;
+	    remote_username: string;
+	    remote_password: string;
+	    jellyfin_enabled: boolean;
+	    jellyfin_port: number;
+	    jellyfin_server_name: string;
 	    emby_enabled: boolean;
 	    emby_user: string;
 	    emby_url: string;
@@ -104,6 +110,12 @@ export namespace main {
 	        this.enable_video_thumbnail = source["enable_video_thumbnail"];
 	        this.thumbnail_preview_count = source["thumbnail_preview_count"];
 	        this.thumbnail_min_duration_seconds = source["thumbnail_min_duration_seconds"];
+	        this.remote_bind_host = source["remote_bind_host"];
+	        this.remote_username = source["remote_username"];
+	        this.remote_password = source["remote_password"];
+	        this.jellyfin_enabled = source["jellyfin_enabled"];
+	        this.jellyfin_port = source["jellyfin_port"];
+	        this.jellyfin_server_name = source["jellyfin_server_name"];
 	        this.emby_enabled = source["emby_enabled"];
 	        this.emby_user = source["emby_user"];
 	        this.emby_url = source["emby_url"];

@@ -35,10 +35,13 @@ type App struct {
 	scanner         *service.ScannerService
 	thumbnailWorker *service.ThumbnailWorker
 	logger          *zap.SugaredLogger
+	remote          *remoteAccessState
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{
+		remote: newRemoteAccessState(),
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -90,6 +93,14 @@ func (a *App) startup(ctx context.Context) {
 	a.thumbnailWorker = service.NewThumbnailWorker(a.repos.Media, thumbSvc, thumbnailSettingsProvider, a.logger, wsHub)
 	a.thumbnailWorker.Start()
 	// a.scanner.SetMatchRuleRepo(a.repos.MatchRule)
+
+	if settings, err := a.GetDesktopSettings(); err == nil {
+		if err := a.syncRemoteServices(settings); err != nil {
+			a.logger.Warnf("start remote services failed: %v", err)
+		}
+	} else {
+		a.logger.Warnf("load desktop settings for remote services failed: %v", err)
+	}
 
 	a.logger.Infof("Application backend started successfully! DB: %s", dbPath)
 }
@@ -1078,6 +1089,12 @@ type DesktopSettings struct {
 	EnableVideoThumbnail        bool   `json:"enable_video_thumbnail"`
 	ThumbnailPreviewCount       int    `json:"thumbnail_preview_count"`
 	ThumbnailMinDurationSeconds int    `json:"thumbnail_min_duration_seconds"`
+	RemoteBindHost              string `json:"remote_bind_host"`
+	RemoteUsername              string `json:"remote_username"`
+	RemotePassword              string `json:"remote_password"`
+	JellyfinEnabled             bool   `json:"jellyfin_enabled"`
+	JellyfinPort                int    `json:"jellyfin_port"`
+	JellyfinServerName          string `json:"jellyfin_server_name"`
 
 	// Emby 设置
 	EmbyEnabled bool   `json:"emby_enabled"`
@@ -1118,15 +1135,41 @@ func (a *App) GetDesktopSettings() (*DesktopSettings, error) {
 	if settings.ThumbnailMinDurationSeconds <= 0 {
 		settings.ThumbnailMinDurationSeconds = thumbnailDefaults.MinDurationSeconds
 	}
+	if strings.TrimSpace(settings.RemoteBindHost) == "" {
+		settings.RemoteBindHost = defaultRemoteBindHost
+	}
+	if settings.JellyfinPort <= 0 {
+		settings.JellyfinPort = defaultJellyfinPort
+	}
+	if strings.TrimSpace(settings.JellyfinServerName) == "" {
+		settings.JellyfinServerName = defaultJellyfinServerName
+	}
 	return &settings, nil
 }
 
 func (a *App) UpdateDesktopSettings(settings *DesktopSettings) error {
+	if err := a.validateRemoteSettings(settings); err != nil {
+		return err
+	}
+
+	previous, _ := a.GetDesktopSettings()
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(settingsPath, data, 0644)
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		return err
+	}
+	if err := a.syncRemoteServices(settings); err != nil {
+		if previous != nil {
+			if rollbackData, marshalErr := json.MarshalIndent(previous, "", "  "); marshalErr == nil {
+				_ = os.WriteFile(settingsPath, rollbackData, 0644)
+			}
+			_ = a.syncRemoteServices(previous)
+		}
+		return err
+	}
+	return nil
 }
 
 // RestartApp 尝试重启软件

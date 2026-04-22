@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { normalizeSearchTerm } from '../utils/mediaSearch';
 
 interface StatsItem {
     name: string;
@@ -10,14 +11,19 @@ interface StatsItem {
 interface CategoryGridProps {
     type: 'directory' | 'actor' | 'genre' | 'series';
     libraryId: string;
+    keyword?: string;
     refreshVersion?: number;
     onSelect: (value: string, label: string) => void;
     fetchFn: (libId: string) => Promise<StatsItem[]>;
 }
 
-const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, refreshVersion = 0, onSelect, fetchFn }) => {
+const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, keyword = '', refreshVersion = 0, onSelect, fetchFn }) => {
     const [items, setItems] = useState<StatsItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const normalizedKeyword = normalizeSearchTerm(keyword);
+    const visibleItems = normalizedKeyword
+        ? items.filter((item) => normalizeSearchTerm(item.name).includes(normalizedKeyword))
+        : items;
 
     useEffect(() => {
         let active = true;
@@ -63,7 +69,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, refreshVer
     return (
         <div className={`stats-grid-container stats-grid-container-${type}`}>
             <div className={`stats-grid stats-grid-${type}`}>
-                {items.map((item) => (
+                {visibleItems.map((item) => (
                     <button
                         key={item.filter_value || item.name}
                         type="button"
@@ -78,7 +84,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, refreshVer
                 ))}
             </div>
 
-            {items.length === 0 && (
+            {items.length === 0 && !normalizedKeyword && (
                 <div className="stats-grid-empty">
                     暂无数据
                 </div>

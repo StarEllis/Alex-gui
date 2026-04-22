@@ -34,8 +34,8 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:     "alex-desktop",
-		Width:     1090,
-		Height:    770,
+		Width:     1260,
+		Height:    860,
 		MinWidth:  1090,
 		MinHeight: 770,
 		Frameless: true,
@@ -45,6 +45,7 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 10, G: 14, B: 23, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		Windows: &windows.Options{
 			Theme:                             windows.Dark,
 			DisableFramelessWindowDecorations: false,

@@ -42,7 +42,22 @@ const TEXT = {
     thumbnailMinDurationDesc: '\u53ea\u6709\u4e25\u683c\u5927\u4e8e\u8fd9\u4e2a\u65f6\u957f\u7684\u89c6\u9891\u624d\u4f1a\u89e6\u53d1\u81ea\u52a8\u622a\u56fe\u3002',
     thumbnailPreviewCount: '\u9884\u89c8\u56fe\u6570\u91cf',
     thumbnailPreviewCountDesc: '\u751f\u6210\u5230 extrafanart \u76ee\u5f55\u7684\u9884\u89c8\u56fe\u5f20\u6570\u3002',
-    embySettings: 'Emby \u8bbe\u7f6e',
+    remoteAccess: '\u8fdc\u7a0b Jellyfin',
+    remoteAccessDesc: 'Infuse \u53ef\u4ee5\u901a\u8fc7 Jellyfin sidecar \u8fde\u63a5\u8fd9\u4e2a\u5a92\u4f53\u5e93\u3002',
+    remoteBindHost: '\u76d1\u542c\u5730\u5740',
+    remoteBindHostDesc: '\u586b 0.0.0.0 \u53ef\u4ee5\u88ab\u5c40\u57df\u7f51\u8bbe\u5907\u8bbf\u95ee\uff0c127.0.0.1 \u5219\u53ea\u9650\u672c\u673a\u3002',
+    remoteUsername: '\u8fdc\u7a0b\u7528\u6237\u540d',
+    remoteUsernameDesc: 'Jellyfin sidecar \u4f7f\u7528\u8fd9\u7ec4\u767b\u5f55\u51ed\u636e\u3002',
+    remotePassword: '\u8fdc\u7a0b\u5bc6\u7801',
+    remotePasswordDesc: '\u5efa\u8bae\u4f7f\u7528\u4e00\u4e2a\u5355\u72ec\u7684 Infuse \u8fde\u63a5\u5bc6\u7801\u3002',
+    jellyfinEnabled: '\u542f\u7528 Jellyfin Sidecar',
+    jellyfinEnabledDesc: '\u63d0\u4f9b Infuse \u66f4\u719f\u6089\u7684\u5a92\u4f53\u5e93\u3001\u6d77\u62a5\u3001\u64ad\u653e\u548c\u8fdb\u5ea6\u63a5\u53e3\u3002',
+    jellyfinPort: 'Jellyfin \u7aef\u53e3',
+    jellyfinPortDesc: '\u9ed8\u8ba4 18096\u3002Infuse \u91cc\u53ef\u6309 Jellyfin \u670d\u52a1\u5668\u6dfb\u52a0\u3002',
+    jellyfinServerName: '\u670d\u52a1\u540d\u79f0',
+    jellyfinServerNameDesc: '\u5ba2\u6237\u7aef\u91cc\u663e\u793a\u7684\u670d\u52a1\u5668\u540d\u3002',
+    jellyfinHint: 'Jellyfin \u5730\u5740',
+    remoteLanHint: '\u5982\u679c\u76d1\u542c\u5730\u5740\u586b 0.0.0.0\uff0c\u4e0b\u9762\u7684 URL \u91cc\u8bf7\u628a 0.0.0.0 \u66ff\u6362\u6210\u8fd9\u53f0\u673a\u5668\u7684\u5c40\u57df\u7f51 IP\u3002',
 } as const;
 
 const cloneSettings = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -84,7 +99,7 @@ const getThumbnailPreviewCount = (count: unknown) => {
 const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     const [settings, setSettings] = useState<any>(null);
     const [savedSettings, setSavedSettings] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<'general' | 'scan' | 'emby' | 'about'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'scan' | 'remote' | 'about'>('general');
     const [msg, setMsg] = useState('');
 
     useEffect(() => {
@@ -345,7 +360,134 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             </div>
         </div>
     );
+    const renderRemote = () => {
+        const bindHost = settings.remote_bind_host || '0.0.0.0';
+        const jellyfinPort = Number(settings.jellyfin_port) > 0 ? Number(settings.jellyfin_port) : 18096;
+        const jellyfinURL = `http://${bindHost}:${jellyfinPort}`;
 
+        return (
+            <div className="settings-section">
+                <div className="settings-section-title">{TEXT.remoteAccess}</div>
+
+                <div className="settings-card">
+                    <div className="settings-description">{TEXT.remoteAccessDesc}</div>
+
+                    <div className="settings-program-block">
+                        <div className="settings-toggle-copy">
+                            <div className="settings-label">{TEXT.remoteBindHost}</div>
+                            <div className="settings-description">{TEXT.remoteBindHostDesc}</div>
+                        </div>
+
+                        <div className="settings-program-controls">
+                            <input
+                                className="settings-input settings-program-input"
+                                type="text"
+                                value={settings.remote_bind_host || ''}
+                                placeholder="0.0.0.0"
+                                onChange={(e) => updateSettings({ remote_bind_host: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="settings-program-block">
+                        <div className="settings-toggle-copy">
+                            <div className="settings-label">{TEXT.remoteUsername}</div>
+                            <div className="settings-description">{TEXT.remoteUsernameDesc}</div>
+                        </div>
+
+                        <div className="settings-program-controls">
+                            <input
+                                className="settings-input settings-program-input"
+                                type="text"
+                                value={settings.remote_username || ''}
+                                onChange={(e) => updateSettings({ remote_username: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="settings-program-block">
+                        <div className="settings-toggle-copy">
+                            <div className="settings-label">{TEXT.remotePassword}</div>
+                            <div className="settings-description">{TEXT.remotePasswordDesc}</div>
+                        </div>
+
+                        <div className="settings-program-controls">
+                            <input
+                                className="settings-input settings-program-input"
+                                type="password"
+                                value={settings.remote_password || ''}
+                                onChange={(e) => updateSettings({ remote_password: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <label className="settings-toggle-row">
+                        <div className="settings-toggle-copy">
+                            <div className="settings-label">{TEXT.jellyfinEnabled}</div>
+                            <div className="settings-description">{TEXT.jellyfinEnabledDesc}</div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={!!settings.jellyfin_enabled}
+                            onChange={(e) => updateSettings({ jellyfin_enabled: e.target.checked })}
+                        />
+                    </label>
+
+                    <div className={`settings-program-block ${settings.jellyfin_enabled ? '' : 'is-disabled'}`}>
+                        <div className="settings-toggle-copy">
+                            <div className="settings-label">{TEXT.jellyfinPort}</div>
+                            <div className="settings-description">{TEXT.jellyfinPortDesc}</div>
+                        </div>
+
+                        <div className="settings-program-controls">
+                            <input
+                                className="settings-input settings-program-input"
+                                type="number"
+                                min={1}
+                                max={65535}
+                                step={1}
+                                value={jellyfinPort}
+                                onChange={(e) => updateSettings({ jellyfin_port: Math.max(1, Number(e.target.value) || 0) })}
+                                disabled={!settings.jellyfin_enabled}
+                            />
+                        </div>
+                    </div>
+
+                    <div className={`settings-program-block ${settings.jellyfin_enabled ? '' : 'is-disabled'}`}>
+                        <div className="settings-toggle-copy">
+                            <div className="settings-label">{TEXT.jellyfinServerName}</div>
+                            <div className="settings-description">{TEXT.jellyfinServerNameDesc}</div>
+                        </div>
+
+                        <div className="settings-program-controls">
+                            <input
+                                className="settings-input settings-program-input"
+                                type="text"
+                                value={settings.jellyfin_server_name || ''}
+                                onChange={(e) => updateSettings({ jellyfin_server_name: e.target.value })}
+                                disabled={!settings.jellyfin_enabled}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="settings-description">{`${TEXT.jellyfinHint}：${jellyfinURL}`}</div>
+                    <div className="settings-description">{TEXT.remoteLanHint}</div>
+                </div>
+
+                <div className="settings-footer">
+                    <button
+                        className="settings-btn settings-btn-primary"
+                        type="button"
+                        onClick={handleSave}
+                        disabled={!hasChanges}
+                    >
+                        {TEXT.save}
+                    </button>
+                    {msg && <span className="settings-feedback">{msg}</span>}
+                </div>
+            </div>
+        );
+    };
     const renderPlaceholder = (title: string) => (
         <div className="settings-section">
             <div className="settings-section-title">{title}</div>
@@ -359,7 +501,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                 <div className="settings-sidebar-header">{TEXT.settings}</div>
                 <div className={`settings-nav-item ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>{TEXT.general}</div>
                 <div className={`settings-nav-item ${activeTab === 'scan' ? 'active' : ''}`} onClick={() => setActiveTab('scan')}>{TEXT.scan}</div>
-                <div className={`settings-nav-item ${activeTab === 'emby' ? 'active' : ''}`} onClick={() => setActiveTab('emby')}>Emby</div>
+                <div className={`settings-nav-item ${activeTab === 'remote' ? 'active' : ''}`} onClick={() => setActiveTab('remote')}>{TEXT.remoteAccess}</div>
                 <div className={`settings-nav-item ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>{TEXT.about}</div>
                 <div className="sidebar-spacer"></div>
                 <div className="settings-return-btn" onClick={onClose}>{TEXT.back}</div>
@@ -368,7 +510,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             <div className="settings-main">
                 {activeTab === 'general' && renderGeneral()}
                 {activeTab === 'scan' && renderScan()}
-                {activeTab === 'emby' && renderPlaceholder(TEXT.embySettings)}
+                {activeTab === 'remote' && renderRemote()}
                 {activeTab === 'about' && renderPlaceholder(TEXT.about)}
             </div>
         </div>
