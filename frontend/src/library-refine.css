@@ -427,6 +427,10 @@ body {
   width: 100%;
 }
 
+.workspace-header-main.no-search {
+  grid-template-columns: minmax(160px, 1fr) auto;
+}
+
 .workspace-header-heading {
   display: flex;
   flex-direction: column;
@@ -570,6 +574,11 @@ body {
   padding-left: 20px;
   --wails-draggable: no-drag;
   position: relative;
+}
+
+.workspace-header-main.no-search .workspace-header-actions {
+  padding-left: 0;
+  justify-self: end;
 }
 
 .workspace-menu-shell {

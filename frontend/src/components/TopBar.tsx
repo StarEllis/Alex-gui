@@ -25,6 +25,7 @@ interface TopBarProps {
     mediaCount: number;
     hidden?: boolean;
     filterLabel?: string;
+    showSearch?: boolean;
     searchValue: string;
     onSearch: (keyword: string) => void;
     searchPlaceholder?: string;
@@ -74,6 +75,7 @@ const TopBar: React.FC<TopBarProps> = ({
     mediaCount,
     hidden = false,
     filterLabel,
+    showSearch = true,
     searchValue,
     onSearch,
     searchPlaceholder = '\u641c\u7d22\u5a92\u4f53\u3001\u6f14\u5458\u3001\u6807\u7b7e',
@@ -147,7 +149,7 @@ const TopBar: React.FC<TopBarProps> = ({
     return (
         <>
             <div className={`topbar ${hidden ? 'topbar-hidden' : ''}`} ref={menuRootRef} onDoubleClick={handleHeaderDoubleClick}>
-                <div className="workspace-header-main">
+                <div className={`workspace-header-main ${showSearch ? '' : 'no-search'}`.trim()}>
                     <div className="workspace-header-heading">
                         <div className="workspace-header-title-row">
                             <span className="workspace-library-current" title={currentLibraryName}>
@@ -158,7 +160,7 @@ const TopBar: React.FC<TopBarProps> = ({
                         {headerHint && <div className="workspace-header-subtitle">{headerHint}</div>}
                     </div>
 
-                    <div className="workspace-header-search no-drag">
+                    {showSearch && <div className="workspace-header-search no-drag">
                         <div className="workspace-search-group">
                             <label className={`workspace-search-shell ${searchDisabled ? 'disabled' : ''} ${showClearAction ? 'has-clear' : ''}`}>
                                 <span className="workspace-search-icon-wrap">
@@ -184,7 +186,7 @@ const TopBar: React.FC<TopBarProps> = ({
                                 )}
                             </label>
                         </div>
-                    </div>
+                    </div>}
 
                     <div className="workspace-header-actions no-drag">
 

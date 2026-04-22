@@ -653,7 +653,7 @@ function App() {
                     />
                 );
             case 'settings':
-                return <SettingsPage onClose={handleNavigateHome} />;
+                return <SettingsPage />;
             case 'libs':
             default:
                 return (
@@ -698,6 +698,7 @@ function App() {
                             currentLibraryName={currentLibraryName}
                             mediaCount={headerCount || 0}
                             filterLabel={activeFilter?.showHeaderLabel === false ? undefined : activeFilter?.label}
+                            showSearch={view !== 'settings'}
                             searchValue={searchKeyword}
                             onSearch={setSearchKeyword}
                             searchPlaceholder={searchPlaceholder}
@@ -709,7 +710,7 @@ function App() {
                             sortField={sortField}
                             sortOrder={sortOrder}
                             sortOptions={showListActions ? currentSortOptions : undefined}
-                            onBackButtonClick={view !== 'libs' ? handleNavigateHome : undefined}
+                            onBackButtonClick={view !== 'libs' && view !== 'settings' ? handleNavigateHome : undefined}
                             onClearFilter={activeFilter || searchKeyword.trim() ? clearFilter : undefined}
                         />
 
