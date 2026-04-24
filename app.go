@@ -36,12 +36,15 @@ type App struct {
 	thumbnailWorker *service.ThumbnailWorker
 	logger          *zap.SugaredLogger
 	remote          *remoteAccessState
+	desktop         *desktopIntegration
 }
 
 func NewApp() *App {
-	return &App{
+	app := &App{
 		remote: newRemoteAccessState(),
 	}
+	app.desktop = newDesktopIntegration(app)
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -95,6 +98,9 @@ func (a *App) startup(ctx context.Context) {
 	// a.scanner.SetMatchRuleRepo(a.repos.MatchRule)
 
 	if settings, err := a.GetDesktopSettings(); err == nil {
+		if err := a.syncDesktopIntegration(settings); err != nil {
+			a.logger.Warnf("sync desktop integration failed: %v", err)
+		}
 		if err := a.syncRemoteServices(settings); err != nil {
 			a.logger.Warnf("start remote services failed: %v", err)
 		}
@@ -631,10 +637,11 @@ func (a *App) GetMediaList(libraryID string, page, size int, sortBy, sortOrder, 
 	var media []model.Media
 	// 简单的排序处理
 	if sortBy == "created_at" || sortBy == "added_at" || sortBy == "" {
+		a.backfillMediaNfoModTime(libraryID)
 		a.backfillMediaFileCreatedAt(libraryID)
 	}
 
-	sortField := "COALESCE(media.file_created_at, media.file_mod_time, media.created_at)"
+	sortField := "COALESCE(media.nfo_mod_time, media.file_created_at, media.file_mod_time, media.created_at)"
 	switch sortBy {
 	case "release_date":
 		sortField = "CASE WHEN media.release_date_normalized != '' THEN media.release_date_normalized ELSE printf('%04d-01-01', media.year) END"
@@ -643,9 +650,9 @@ func (a *App) GetMediaList(libraryID string, page, size int, sortBy, sortOrder, 
 	case "last_watched":
 		sortField = "COALESCE(last_watch.last_watched_at, '')"
 	case "created_at", "added_at", "":
-		sortField = "COALESCE(media.file_created_at, media.file_mod_time, media.created_at)"
+		sortField = "COALESCE(media.nfo_mod_time, media.file_created_at, media.file_mod_time, media.created_at)"
 	default:
-		sortField = "COALESCE(media.file_created_at, media.file_mod_time, media.created_at)"
+		sortField = "COALESCE(media.nfo_mod_time, media.file_created_at, media.file_mod_time, media.created_at)"
 	}
 
 	dir := "DESC"
@@ -716,6 +723,49 @@ func (a *App) backfillMediaFileCreatedAt(libraryID string) {
 		_ = a.db.Model(&model.Media{}).
 			Where("id = ?", row.ID).
 			Update("file_created_at", fileCreatedAt).
+			Error
+	}
+}
+
+type mediaNFOTimeBackfillRow struct {
+	ID       string
+	FilePath string
+}
+
+func (a *App) backfillMediaNfoModTime(libraryID string) {
+	query := a.db.Model(&model.Media{}).
+		Select("id, file_path").
+		Where("nfo_mod_time IS NULL AND nfo_raw_xml != ''")
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+
+	var rows []mediaNFOTimeBackfillRow
+	if err := query.Find(&rows).Error; err != nil || len(rows) == 0 {
+		return
+	}
+
+	nfoService := service.NewNFOService(a.logger)
+	for _, row := range rows {
+		nfoPath := ""
+		if a.scanner != nil {
+			nfoPath = a.scanner.FindNFOForMedia(row.FilePath)
+		} else {
+			nfoPath = nfoService.FindNFOForMedia(row.FilePath)
+		}
+		if nfoPath == "" {
+			continue
+		}
+
+		info, err := os.Stat(nfoPath)
+		if err != nil || info == nil || info.IsDir() {
+			continue
+		}
+
+		nfoModTime := info.ModTime().UTC().Truncate(time.Second)
+		_ = a.db.Model(&model.Media{}).
+			Where("id = ?", row.ID).
+			Update("nfo_mod_time", &nfoModTime).
 			Error
 	}
 }
@@ -1153,6 +1203,17 @@ func (a *App) UpdateDesktopSettings(settings *DesktopSettings) error {
 	}
 
 	previous, _ := a.GetDesktopSettings()
+	rollback := func() {
+		if previous == nil {
+			return
+		}
+		if rollbackData, marshalErr := json.MarshalIndent(previous, "", "  "); marshalErr == nil {
+			_ = os.WriteFile(settingsPath, rollbackData, 0644)
+		}
+		_ = a.syncDesktopIntegration(previous)
+		_ = a.syncRemoteServices(previous)
+	}
+
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
@@ -1160,13 +1221,12 @@ func (a *App) UpdateDesktopSettings(settings *DesktopSettings) error {
 	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
 		return err
 	}
+	if err := a.syncDesktopIntegration(settings); err != nil {
+		rollback()
+		return err
+	}
 	if err := a.syncRemoteServices(settings); err != nil {
-		if previous != nil {
-			if rollbackData, marshalErr := json.MarshalIndent(previous, "", "  "); marshalErr == nil {
-				_ = os.WriteFile(settingsPath, rollbackData, 0644)
-			}
-			_ = a.syncRemoteServices(previous)
-		}
+		rollback()
 		return err
 	}
 	return nil
@@ -1457,6 +1517,7 @@ func (a *App) syncMediaFromNFO(mediaID string, nfoPath string) {
 		"backdrop_path":           updated.BackdropPath,
 		"nfo_extra_fields":        updated.NfoExtraFields,
 		"nfo_raw_xml":             updated.NfoRawXml,
+		"nfo_mod_time":            updated.NfoModTime,
 		"release_date_normalized": updated.ReleaseDateNormalized,
 	}
 	if err := a.db.Model(&model.Media{}).Where("id = ?", mediaID).Updates(updates).Error; err != nil {

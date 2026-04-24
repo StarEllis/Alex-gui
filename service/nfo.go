@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"alex-desktop/model"
 	"go.uber.org/zap"
@@ -590,6 +591,10 @@ func (s *NFOService) ParseMovieNFO(nfoPath string, media *model.Media) error {
 
 	// 保留原始 XML 文本
 	media.NfoRawXml = string(data)
+	if info, statErr := os.Stat(nfoPath); statErr == nil && info != nil && !info.IsDir() {
+		nfoModTime := info.ModTime().UTC().Truncate(time.Second)
+		media.NfoModTime = &nfoModTime
+	}
 
 	var nfo NFOMovie
 	if err := s.unmarshalNFOXML(data, &nfo, nfoPath); err != nil {

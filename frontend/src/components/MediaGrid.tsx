@@ -7,7 +7,7 @@ import {
     persistMediaListCache,
     removeMediaFromCachedMediaLists,
 } from '../utils/persistentCache';
-import { buildMediaSearchIndex, normalizeSearchTerm } from '../utils/mediaSearch';
+import { buildMediaSearchIndex, normalizeSearchField, normalizeSearchTerm } from '../utils/mediaSearch';
 import { prefetchMediaDetailCacheEntry, seedMediaDetailCache } from '../utils/mediaDetailCache';
 
 interface MediaGridProps {
@@ -33,6 +33,12 @@ export type MediaGridMutation =
 type SearchableMediaItem = {
     media: any;
     searchIndex: string;
+    codeIndex: string;
+    titleIndex: string;
+    actorIndex: string;
+    genreIndex: string;
+    metadataIndex: string;
+    pathIndex: string;
 };
 
 const MEDIA_CARD_WIDTH = 178;
@@ -70,7 +76,52 @@ const createSearchableMediaItems = (items: any[]): SearchableMediaItem[] => {
         .map((item) => ({
             media: item,
             searchIndex: buildMediaSearchIndex(item),
+            codeIndex: normalizeSearchField(item.code),
+            titleIndex: normalizeSearchTerm([item.title, item.orig_title].filter(Boolean).join('\n')),
+            actorIndex: normalizeSearchField(item.actor),
+            genreIndex: normalizeSearchField(item.genres),
+            metadataIndex: normalizeSearchTerm([
+                item.studio,
+                item.maker,
+                item.label,
+                item.release_date_normalized,
+                typeof item.year === 'number' && item.year > 0 ? String(item.year) : '',
+            ].filter(Boolean).join('\n')),
+            pathIndex: normalizeSearchField(item.file_path),
         }));
+};
+
+const getSearchPriority = (item: SearchableMediaItem, normalizedKeyword: string) => {
+    if (!normalizedKeyword || !item.searchIndex.includes(normalizedKeyword)) {
+        return null;
+    }
+
+    if (item.codeIndex === normalizedKeyword) {
+        return 0;
+    }
+    if (item.codeIndex.startsWith(normalizedKeyword)) {
+        return 1;
+    }
+    if (item.codeIndex.includes(normalizedKeyword)) {
+        return 2;
+    }
+    if (item.titleIndex.includes(normalizedKeyword)) {
+        return 3;
+    }
+    if (item.actorIndex.includes(normalizedKeyword)) {
+        return 4;
+    }
+    if (item.genreIndex.includes(normalizedKeyword)) {
+        return 5;
+    }
+    if (item.metadataIndex.includes(normalizedKeyword)) {
+        return 6;
+    }
+    if (item.pathIndex.includes(normalizedKeyword)) {
+        return 7;
+    }
+
+    return 8;
 };
 
 const filterSearchableMediaItems = (items: SearchableMediaItem[], keyword: string) => {
@@ -80,7 +131,13 @@ const filterSearchableMediaItems = (items: SearchableMediaItem[], keyword: strin
     }
 
     return items
-        .filter(({ searchIndex }) => searchIndex.includes(normalizedKeyword))
+        .map((item, index) => ({
+            media: item.media,
+            index,
+            priority: getSearchPriority(item, normalizedKeyword),
+        }))
+        .filter((item): item is { media: any; index: number; priority: number } => item.priority !== null)
+        .sort((left, right) => left.priority - right.priority || left.index - right.index)
         .map(({ media }) => media);
 };
 
@@ -93,6 +150,18 @@ const mergeSearchableMediaItem = (item: SearchableMediaItem, media: any): Search
     return {
         media: mergedMedia,
         searchIndex: buildMediaSearchIndex(mergedMedia),
+        codeIndex: normalizeSearchField(mergedMedia.code),
+        titleIndex: normalizeSearchTerm([mergedMedia.title, mergedMedia.orig_title].filter(Boolean).join('\n')),
+        actorIndex: normalizeSearchField(mergedMedia.actor),
+        genreIndex: normalizeSearchField(mergedMedia.genres),
+        metadataIndex: normalizeSearchTerm([
+            mergedMedia.studio,
+            mergedMedia.maker,
+            mergedMedia.label,
+            mergedMedia.release_date_normalized,
+            typeof mergedMedia.year === 'number' && mergedMedia.year > 0 ? String(mergedMedia.year) : '',
+        ].filter(Boolean).join('\n')),
+        pathIndex: normalizeSearchField(mergedMedia.file_path),
     };
 };
 
@@ -186,10 +255,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         };
     }, [layoutVersion]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         pendingRestoreRef.current = initialScrollTop;
         latestScrollTopRef.current = initialScrollTop;
         setVirtualScrollTop(initialScrollTop);
+
+        if (containerRef.current) {
+            containerRef.current.scrollTop = Math.max(0, initialScrollTop);
+        }
     }, [initialScrollTop, libraryId, keyword, sortField, sortOrder, filterType, filterValue]);
 
     useLayoutEffect(() => {
@@ -221,7 +294,20 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             window.cancelAnimationFrame(frameId);
             window.cancelAnimationFrame(nestedFrameId);
         };
-    }, [isLoading, layout.columns, layout.gap, mediaItems.length, onScrollPositionChange]);
+    }, [
+        filterType,
+        filterValue,
+        initialScrollTop,
+        isLoading,
+        keyword,
+        layout.columns,
+        layout.gap,
+        libraryId,
+        mediaItems.length,
+        onScrollPositionChange,
+        sortField,
+        sortOrder,
+    ]);
 
     useEffect(() => {
         const cachedEntry = getCachedMediaListEntry(baseCacheKey);
@@ -270,12 +356,6 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         });
         onCountChange?.(nextItems.length);
     }, [baseItems, deferredKeyword, onCountChange]);
-
-    useEffect(() => {
-        return () => {
-            onScrollPositionChange?.(latestScrollTopRef.current);
-        };
-    }, [onScrollPositionChange]);
 
     useEffect(() => {
         if (!mutation) {

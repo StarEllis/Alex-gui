@@ -234,6 +234,7 @@ type Media struct {
 	FileSize           int64      `json:"file_size"`
 	FileCreatedAt      *time.Time `json:"file_created_at" gorm:"index"`
 	FileModTime        *time.Time `json:"file_mod_time"`
+	NfoModTime         *time.Time `json:"nfo_mod_time" gorm:"index"`
 	VideoFingerprint   string     `json:"video_fingerprint" gorm:"type:text"`
 	SidecarFingerprint string     `json:"sidecar_fingerprint" gorm:"type:text"`
 	MediaType          string     `json:"media_type" gorm:"type:text;default:movie"` // movie / episode

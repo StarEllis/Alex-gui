@@ -37,6 +37,8 @@ type FilterState = { type: string; value: string; label: string; showHeaderLabel
 type FilterReturnContext = {
     view: ViewName;
     media: any | null;
+    searchKeyword: string;
+    filter: FilterState;
 } | null;
 type ScanProgressState = {
     libraryId: string;
@@ -390,17 +392,22 @@ function App() {
 
     const clearFilter = () => {
         const hasFilterContext = Boolean(activeFilter || filterReturnContext);
-        setActiveFilter(null);
-        setSearchKeyword('');
 
         if (hasFilterContext) {
             if (filterReturnContext) {
+                setActiveFilter(filterReturnContext.filter);
+                setSearchKeyword(filterReturnContext.searchKeyword);
                 setView(filterReturnContext.view);
                 setSelectedMedia(filterReturnContext.media);
             } else {
+                setActiveFilter(null);
+                setSearchKeyword('');
                 setView('libs');
                 setSelectedMedia(null);
             }
+        } else {
+            setActiveFilter(null);
+            setSearchKeyword('');
         }
 
         setFilterReturnContext(null);
@@ -419,13 +426,20 @@ function App() {
     };
 
     const applyFilterFromView = (sourceView: ViewName, filter: { type: string; value: string; label: string }) => {
-        applyFilter(filter, { view: sourceView, media: null });
+        applyFilter(filter, {
+            view: sourceView,
+            media: null,
+            searchKeyword,
+            filter: activeFilter,
+        });
     };
 
     const applyFilterFromDetail = (filter: { type: string; value: string; label: string }) => {
         applyFilter(filter, {
             view,
             media: selectedMedia,
+            searchKeyword,
+            filter: activeFilter,
         }, false);
     };
 
