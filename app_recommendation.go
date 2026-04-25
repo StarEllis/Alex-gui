@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"alex-desktop/service"
+	"navi-desktop/service"
 )
 
 var recommendationServices sync.Map

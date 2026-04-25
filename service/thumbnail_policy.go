@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"alex-desktop/model"
+	"navi-desktop/model"
 )
 
 const (

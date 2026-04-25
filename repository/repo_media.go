@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"alex-desktop/model"
 	"gorm.io/gorm"
+	"navi-desktop/model"
 )
 
 // ==================== MediaRepo ====================

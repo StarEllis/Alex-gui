@@ -50,7 +50,7 @@ type ScanProgressState = {
     message: string;
 };
 
-const APP_TITLE = 'ALEX';
+const APP_TITLE = 'Navi';
 
 const VIEW_LABELS: Record<Exclude<ViewName, 'libs'>, string> = {
     settings: '设置',

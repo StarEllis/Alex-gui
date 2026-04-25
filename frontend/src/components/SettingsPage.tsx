@@ -41,7 +41,7 @@ const TEXT = {
     about: '关于',
     aboutIntro: '了解当前设置中心的设计范围与后续扩展方向。',
     startup: '开机启动',
-    startupDesc: '启动系统后自动运行 ALEX。',
+    startupDesc: '启动系统后自动运行 Navi。',
     tray: '最小化到托盘',
     trayDesc: '关闭主窗口时保留在系统托盘中。',
     externalPlayer: '使用外部播放器',

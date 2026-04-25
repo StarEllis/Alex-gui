@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"alex-desktop/model"
 	"go.uber.org/zap"
+	"navi-desktop/model"
 )
 
 const malformedURLNFO = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

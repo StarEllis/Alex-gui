@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"alex-desktop/model"
+	"navi-desktop/model"
 )
 
 func TestHasAllThumbnailAssetsRequiresPrimaryArtworkOnly(t *testing.T) {

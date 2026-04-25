@@ -3,9 +3,9 @@ package repository
 import (
 	"time"
 
-	"alex-desktop/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"navi-desktop/model"
 )
 
 // ==================== AICacheRepo ====================

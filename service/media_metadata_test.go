@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"alex-desktop/model"
+	"navi-desktop/model"
 )
 
 func TestApplyDerivedMediaFields(t *testing.T) {

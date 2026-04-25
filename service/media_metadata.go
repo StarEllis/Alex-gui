@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"alex-desktop/model"
+	"navi-desktop/model"
 )
 
 var mediaCodePattern = regexp.MustCompile(`(?i)\b([A-Z0-9]{2,10})[-_ ](\d{2,6})\b`)

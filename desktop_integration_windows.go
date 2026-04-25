@@ -17,7 +17,7 @@ import (
 
 const (
 	startupRegistryKey       = `Software\Microsoft\Windows\CurrentVersion\Run`
-	startupRegistryValueName = "alex-desktop"
+	startupRegistryValueName = "Navi"
 )
 
 type desktopIntegration struct {
@@ -206,7 +206,7 @@ func resolveStartupExecutablePath() (string, error) {
 	}
 
 	if workingDir, wdErr := os.Getwd(); wdErr == nil {
-		candidate := filepath.Join(workingDir, "build", "bin", "alex-desktop.exe")
+		candidate := filepath.Join(workingDir, "build", "bin", "Navi.exe")
 		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
 			if absolutePath, absErr := filepath.Abs(candidate); absErr == nil {
 				return absolutePath, nil

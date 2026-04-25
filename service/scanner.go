@@ -18,10 +18,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"alex-desktop/config"
-	"alex-desktop/model"
-	"alex-desktop/repository"
 	"go.uber.org/zap"
+	"navi-desktop/config"
+	"navi-desktop/model"
+	"navi-desktop/repository"
 )
 
 // 支持的视频文件扩展名

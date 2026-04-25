@@ -1,4 +1,4 @@
-module alex-desktop
+module navi-desktop
 
 go 1.23.0
 

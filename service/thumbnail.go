@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"alex-desktop/config"
-	"alex-desktop/model"
 	"go.uber.org/zap"
+	"navi-desktop/config"
+	"navi-desktop/model"
 )
 
 const (

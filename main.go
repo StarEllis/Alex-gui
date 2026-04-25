@@ -33,7 +33,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "alex-desktop",
+		Title:     "Navi",
 		Width:     1260,
 		Height:    860,
 		MinWidth:  1090,

@@ -4,22 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"unicode"
-	"unicode/utf8"
-
-	"alex-desktop/config"
-	"alex-desktop/model"
-	"alex-desktop/repository"
-	"alex-desktop/service"
-	"fmt"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"navi-desktop/config"
+	"navi-desktop/model"
+	"navi-desktop/repository"
+	"navi-desktop/service"
 
 	"github.com/glebarez/sqlite"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -55,7 +55,7 @@ func (a *App) startup(ctx context.Context) {
 	a.logger = l.Sugar()
 
 	// 2. 初始化持久层配置 (SQLite本地库)
-	dbPath := "alex.db"
+	dbPath := "navi.db"
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		a.logger.Fatalf("连接数据库失败: %v", err)

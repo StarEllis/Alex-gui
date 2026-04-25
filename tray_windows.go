@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	trayWindowClassName = "AlexDesktopTrayWindow"
+	trayWindowClassName = "NaviDesktopTrayWindow"
 
 	wmApp         = 0x8000
 	wmCommand     = 0x0111
@@ -228,7 +228,7 @@ func (t *trayIcon) createNativeTray() (uintptr, uintptr, uintptr, error) {
 	}
 
 	className, _ := syscall.UTF16PtrFromString(trayWindowClassName)
-	windowTitle, _ := syscall.UTF16PtrFromString("ALEX")
+	windowTitle, _ := syscall.UTF16PtrFromString("Navi")
 	hwnd, _, err := procCreateWindowExW.Call(
 		0,
 		uintptr(unsafe.Pointer(className)),
@@ -254,7 +254,7 @@ func (t *trayIcon) createNativeTray() (uintptr, uintptr, uintptr, error) {
 		return 0, 0, 0, fmt.Errorf("create tray menu: %w", err)
 	}
 
-	if err := appendTrayMenuItem(menuHandle, mfString, trayCommandShow, "打开 ALEX"); err != nil {
+	if err := appendTrayMenuItem(menuHandle, mfString, trayCommandShow, "打开 Navi"); err != nil {
 		procDestroyMenu.Call(menuHandle)
 		procDestroyIcon.Call(iconHandle)
 		procDestroyWindow.Call(hwnd)
@@ -409,7 +409,7 @@ func addTrayIcon(hwnd uintptr, iconHandle uintptr) error {
 	notifyIcon.UFlags = nifMessage | nifIcon | nifTip | nifShowTip
 	notifyIcon.UCallbackMessage = wmTrayIcon
 	notifyIcon.HIcon = iconHandle
-	copy(notifyIcon.SzTip[:], syscall.StringToUTF16("ALEX"))
+	copy(notifyIcon.SzTip[:], syscall.StringToUTF16("Navi"))
 
 	if ok, _, err := procShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&notifyIcon))); ok == 0 {
 		return fmt.Errorf("add tray icon: %w", err)

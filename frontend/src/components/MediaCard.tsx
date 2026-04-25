@@ -93,4 +93,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ media, onClick, onQuickPlayStatus
     );
 };
 
-export default MediaCard;
+export default React.memo(MediaCard, (prev, next) => (
+    prev.media === next.media
+    && prev.onQuickPlayStatus === next.onQuickPlayStatus
+));

@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"alex-desktop/model"
 	"gorm.io/gorm"
+	"navi-desktop/model"
 )
 
 // DB 暴露底层数据库连接（用于事务等高级操作）

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"alex-desktop/model"
-	"alex-desktop/repository"
 	"go.uber.org/zap"
+	"navi-desktop/model"
+	"navi-desktop/repository"
 )
 
 const (

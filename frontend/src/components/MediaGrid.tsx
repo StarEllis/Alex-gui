@@ -124,10 +124,35 @@ const getSearchPriority = (item: SearchableMediaItem, normalizedKeyword: string)
     return 8;
 };
 
+const FILTER_ONLY_SEARCH_TERMS = new Set([
+    '4k',
+    '8k',
+    '2160p',
+    '1080p',
+    '720p',
+    'hevc',
+    'h265',
+    'h 265',
+    'h264',
+    'h 264',
+    'avc',
+    '字幕',
+    '中文字幕',
+    '破解',
+    '无码',
+    '有码',
+]);
+
 const filterSearchableMediaItems = (items: SearchableMediaItem[], keyword: string) => {
     const normalizedKeyword = normalizeSearchTerm(keyword);
     if (!normalizedKeyword) {
         return items.map(({ media }) => media);
+    }
+
+    if (FILTER_ONLY_SEARCH_TERMS.has(normalizedKeyword)) {
+        return items
+            .filter((item) => item.searchIndex.includes(normalizedKeyword))
+            .map(({ media }) => media);
     }
 
     return items
@@ -190,12 +215,29 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     const latestScrollTopRef = useRef(0);
     const pendingRestoreRef = useRef<number | null>(initialScrollTop);
     const requestTokenRef = useRef(0);
+    const scrollFrameRef = useRef<number | null>(null);
+    const scrollNotifyTimerRef = useRef<number | null>(null);
+    const onScrollPositionChangeRef = useRef(onScrollPositionChange);
     const [layout, setLayout] = useState({ columns: 4, gap: 20, justify: 'start' });
     const [viewportHeight, setViewportHeight] = useState(0);
     const [virtualScrollTop, setVirtualScrollTop] = useState(initialScrollTop);
     const [baseItems, setBaseItems] = useState<SearchableMediaItem[]>(() => initialSearchableItems);
     const [mediaItems, setMediaItems] = useState<any[]>(() => filterSearchableMediaItems(initialSearchableItems, keyword));
     const [isLoading, setIsLoading] = useState(() => !initialCache);
+
+    useEffect(() => {
+        onScrollPositionChangeRef.current = onScrollPositionChange;
+    }, [onScrollPositionChange]);
+
+    useEffect(() => () => {
+        if (scrollFrameRef.current !== null) {
+            window.cancelAnimationFrame(scrollFrameRef.current);
+        }
+        if (scrollNotifyTimerRef.current !== null) {
+            window.clearTimeout(scrollNotifyTimerRef.current);
+        }
+        onScrollPositionChangeRef.current?.(latestScrollTopRef.current);
+    }, []);
 
     const updateLayout = () => {
         if (!containerRef.current) {
@@ -402,6 +444,28 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         onSelectMedia(media);
     };
 
+    const scheduleScrollUpdate = () => {
+        if (scrollFrameRef.current !== null) {
+            return;
+        }
+
+        scrollFrameRef.current = window.requestAnimationFrame(() => {
+            scrollFrameRef.current = null;
+            setVirtualScrollTop(latestScrollTopRef.current);
+        });
+    };
+
+    const scheduleScrollPositionNotify = () => {
+        if (scrollNotifyTimerRef.current !== null) {
+            window.clearTimeout(scrollNotifyTimerRef.current);
+        }
+
+        scrollNotifyTimerRef.current = window.setTimeout(() => {
+            scrollNotifyTimerRef.current = null;
+            onScrollPositionChangeRef.current?.(latestScrollTopRef.current);
+        }, 120);
+    };
+
     const totalRows = Math.ceil(mediaItems.length / layout.columns);
     const rowHeight = MEDIA_CARD_HEIGHT + MEDIA_GRID_ROW_GAP;
     const effectiveViewportHeight = viewportHeight > 0 ? viewportHeight : rowHeight;
@@ -425,8 +489,8 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             onScroll={(event) => {
                 const nextScrollTop = event.currentTarget.scrollTop;
                 latestScrollTopRef.current = nextScrollTop;
-                setVirtualScrollTop(nextScrollTop);
-                onScrollPositionChange?.(nextScrollTop);
+                scheduleScrollUpdate();
+                scheduleScrollPositionNotify();
             }}
         >
             {!isLoading && mediaItems.length === 0 && (

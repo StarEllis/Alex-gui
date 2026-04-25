@@ -208,7 +208,7 @@ const NFOEditModal: React.FC<NFOEditModalProps> = ({
                         </div>
                         <div className="nfo-edit-brand-copy">
                             <div className="nfo-edit-title">
-                                <span className="nfo-edit-title-brand">ALEX</span>
+                                <span className="nfo-edit-title-brand">Navi</span>
                                 <span className="nfo-edit-title-text">媒体 NFO编辑器</span>
                             </div>
                             <div className="nfo-edit-path" title={form.nfo_path}>

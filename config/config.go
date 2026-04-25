@@ -28,8 +28,8 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		App: AppConfig{
-			FFprobePath: resolveBinaryPath("ALEX_FFPROBE_PATH", "ffprobe_path", `C:\ffmpeg\bin\ffprobe.exe`, "ffprobe"),
-			FFmpegPath:  resolveBinaryPath("ALEX_FFMPEG_PATH", "ffmpeg_path", `C:\ffmpeg\bin\ffmpeg.exe`, "ffmpeg"),
+			FFprobePath: resolveBinaryPath("NAVI_FFPROBE_PATH", "ffprobe_path", `C:\ffmpeg\bin\ffprobe.exe`, "ffprobe"),
+			FFmpegPath:  resolveBinaryPath("NAVI_FFMPEG_PATH", "ffmpeg_path", `C:\ffmpeg\bin\ffmpeg.exe`, "ffmpeg"),
 		},
 		Cache: CacheConfig{
 			CacheDir: "cache",

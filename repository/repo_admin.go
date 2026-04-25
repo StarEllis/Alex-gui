@@ -3,8 +3,8 @@ package repository
 import (
 	"fmt"
 
-	"alex-desktop/model"
 	"gorm.io/gorm"
+	"navi-desktop/model"
 )
 
 // ==================== AccessLogRepo ====================

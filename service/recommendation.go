@@ -9,10 +9,10 @@ import (
 	"time"
 	"unicode"
 
-	"alex-desktop/model"
-	"alex-desktop/repository"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"navi-desktop/model"
+	"navi-desktop/repository"
 )
 
 const (

@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"alex-desktop/model"
 	"gorm.io/gorm"
+	"navi-desktop/model"
 )
 
 // ==================== V3: VideoChapterRepo ====================

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"alex-desktop/model"
 	"go.uber.org/zap"
+	"navi-desktop/model"
 )
 
 // NFOService NFO 本地元数据解析服务

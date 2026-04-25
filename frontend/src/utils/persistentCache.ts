@@ -1,8 +1,8 @@
 import { buildMediaSearchText } from './mediaSearch';
 
-const LIBRARIES_STORAGE_KEY = 'alex.desktop.cache.libraries.v1';
-const CURRENT_LIBRARY_STORAGE_KEY = 'alex.desktop.cache.currentLibraryId.v1';
-const MEDIA_LIST_STORAGE_KEY = 'alex.desktop.cache.mediaList.v1';
+const LIBRARIES_STORAGE_KEY = 'navi.desktop.cache.libraries.v1';
+const CURRENT_LIBRARY_STORAGE_KEY = 'navi.desktop.cache.currentLibraryId.v1';
+const MEDIA_LIST_STORAGE_KEY = 'navi.desktop.cache.mediaList.v1';
 
 const MEDIA_LIST_CACHE_VERSION = 2;
 const MEDIA_LIST_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;

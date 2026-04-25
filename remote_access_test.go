@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"alex-desktop/model"
-	"alex-desktop/repository"
+	"navi-desktop/model"
+	"navi-desktop/repository"
 
 	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"

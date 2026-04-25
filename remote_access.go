@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"alex-desktop/model"
+	"navi-desktop/model"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -31,7 +31,7 @@ import (
 const (
 	defaultRemoteBindHost     = "0.0.0.0"
 	defaultJellyfinPort       = 18096
-	defaultJellyfinServerName = "Alex Media Sidecar"
+	defaultJellyfinServerName = "Navi Media Sidecar"
 	jellyfinTicksPerSecond    = int64(10_000_000)
 	jellyfinUserID            = desktopUserID
 	remoteAccessLogPath       = "remote_access.log"
@@ -209,7 +209,7 @@ func (a *App) newJellyfinMux(settings *DesktopSettings) http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"Name":    settings.JellyfinServerName,
-			"Message": "Alex Jellyfin compatible sidecar",
+			"Message": "Navi Jellyfin compatible sidecar",
 		})
 	})
 	mux.HandleFunc("GET /System/Info/Public", a.handleJellyfinPublicInfo(settings))
@@ -269,7 +269,7 @@ func (a *App) wrapJellyfinCompatibility(next http.Handler, settings *DesktopSett
 			if normalized.Method == http.MethodPost || normalized.Method == http.MethodHead {
 				writeJSON(w, http.StatusOK, map[string]any{
 					"Name":    settings.JellyfinServerName,
-					"Message": "Alex Jellyfin compatible sidecar",
+					"Message": "Navi Jellyfin compatible sidecar",
 				})
 				return
 			}
@@ -384,7 +384,7 @@ func (a *App) handleJellyfinSystemInfo(settings *DesktopSettings) http.HandlerFu
 			"Id":                         a.remoteServerID(),
 			"StartupWizardCompleted":     true,
 			"OperatingSystemDisplayName": runtime.GOOS,
-			"PackageName":                "alex-sidecar",
+			"PackageName":                "navi-sidecar",
 			"HasPendingRestart":          false,
 			"IsShuttingDown":             false,
 			"SupportsLibraryMonitor":     false,

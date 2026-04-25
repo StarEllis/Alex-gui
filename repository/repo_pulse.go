@@ -3,8 +3,8 @@ package repository
 import (
 	"time"
 
-	"alex-desktop/model"
 	"gorm.io/gorm"
+	"navi-desktop/model"
 )
 
 // PulseRepo Pulse 数据中心仓储

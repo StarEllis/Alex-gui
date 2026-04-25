@@ -8,8 +8,8 @@ import (
 )
 
 func TestBuildStartupCommand(t *testing.T) {
-	got := buildStartupCommand(`C:\Program Files\ALEX\alex-desktop.exe`)
-	want := `"C:\Program Files\ALEX\alex-desktop.exe"`
+	got := buildStartupCommand(`C:\Program Files\Navi\Navi.exe`)
+	want := `"C:\Program Files\Navi\Navi.exe"`
 	if got != want {
 		t.Fatalf("buildStartupCommand() = %q, want %q", got, want)
 	}
@@ -20,9 +20,9 @@ func TestIsTemporaryExecutablePath(t *testing.T) {
 		path string
 		want bool
 	}{
-		{path: `C:\Users\Philo\AppData\Local\Temp\go-build123\alex-desktop.exe`, want: true},
-		{path: `C:\Users\Philo\AppData\Local\Temp\wails\temp\alex-desktop.exe`, want: true},
-		{path: `C:\Program Files\ALEX\alex-desktop.exe`, want: false},
+		{path: `C:\Users\Philo\AppData\Local\Temp\go-build123\Navi.exe`, want: true},
+		{path: `C:\Users\Philo\AppData\Local\Temp\wails\temp\Navi.exe`, want: true},
+		{path: `C:\Program Files\Navi\Navi.exe`, want: false},
 	}
 
 	for _, testCase := range testCases {
